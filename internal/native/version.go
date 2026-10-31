@@ -83,15 +83,7 @@ func (a *workspaceState) versionView(c *ui.Context) {
 
 	if !a.infoReady {
 		if a.err == "" {
-			ui.Column(c).Grow(1).FillWidth().Center().Padding(24).Children(func() {
-				ui.Column(c).MaxWidth(480).Padding(24, 28).Gap(10).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Center().Children(func() {
-					ui.Row(c).Size(32, 32).Center().Radius(8).Background(pal.baseBg).Children(func() {
-						ui.Icon(c, iconVersionReg).Size(16, 16).TextColor(pal.baseAccent)
-					})
-					ui.Text(c, "选择两个 PE 或两个 .reg 文件").FontSize(17).Bold()
-					ui.Text(c, "支持提取可执行文件 FileVersion 资源或对比注册表导出键值").FontSize(11).TextColor(t.TextMuted)
-				})
-			})
+			a.modeEmptyView(c, pal, 5)
 		}
 		return
 	}

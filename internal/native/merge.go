@@ -247,15 +247,9 @@ func (a *workspaceState) mergeView(c *ui.Context) {
 		})
 	})
 	if a.mergeResult == nil || a.mergeBuffer == nil {
-		ui.Column(c).Grow(1).FillWidth().Center().Padding(24).Children(func() {
-			ui.Column(c).MaxWidth(480).Padding(24, 28).Gap(10).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Center().Children(func() {
-				ui.Row(c).Size(32, 32).Center().Radius(8).Background(pal.baseBg).Children(func() {
-					ui.Icon(c, iconGitMerge).Size(16, 16).TextColor(pal.baseAccent)
-				})
-				ui.Text(c, "文本合并").FontSize(20).Bold()
-				ui.Text(c, "填写左右文件。有共同祖先时再填写基准文件，然后开始比较。").FontSize(12).TextColor(t.TextMuted)
-			})
-		})
+		if a.err == "" {
+			a.modeEmptyView(c, pal, 2)
+		}
 		return
 	}
 	count := a.mergeResult.ConflictCount()

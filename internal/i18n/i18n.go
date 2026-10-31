@@ -121,6 +121,11 @@ var messages = map[string]map[Language]string{
 		ZhTW: "交換兩側",
 		EnUS: "Swap Sides",
 	},
+	"action.reset": {
+		ZhCN: "重置",
+		ZhTW: "重設",
+		EnUS: "Reset",
+	},
 	"action.clear": {
 		ZhCN: "清空两侧",
 		ZhTW: "清空兩側",
@@ -585,6 +590,304 @@ var messages = map[string]map[Language]string{
 		ZhCN: "已交换左右两侧文本",
 		ZhTW: "已交換左右兩側文本",
 		EnUS: "Sides swapped",
+	},
+	"status.resetDone": {
+		ZhCN: "已重置当前比较",
+		ZhTW: "已重設目前比較",
+		EnUS: "Comparison reset",
+	},
+
+	// Mode Empty State Guides
+	// Kind 0: File Compare
+	"intro.fileTag": {
+		ZhCN: "双栏代码/文本 · 词级高亮对比",
+		ZhTW: "雙欄程式碼/文字 · 詞級高亮對比",
+		EnUS: "Dual-Pane Code & Text · Intra-Line Diff",
+	},
+	"intro.fileTitle": {
+		ZhCN: "文件比较",
+		ZhTW: "檔案比較",
+		EnUS: "File Compare",
+	},
+	"intro.fileDesc": {
+		ZhCN: "在上方输入或浏览选择左右两侧文件，点击「开始比较」或按 Enter 查看完整差异。",
+		ZhTW: "在上方輸入或瀏覽選擇左右兩側檔案，點擊「開始比較」或按 Enter 查看完整差異。",
+		EnUS: "Enter or browse left and right files above, then click 'Start Compare' or press Enter.",
+	},
+	"intro.fileFeat1Title": {
+		ZhCN: "行内词级对比",
+		ZhTW: "行內詞級對比",
+		EnUS: "Intra-Line Diff",
+	},
+	"intro.fileFeat1Desc": {
+		ZhCN: "精确高亮每行差异内部字符插入、删除与变更",
+		ZhTW: "精確高亮每行差異內部字元插入、刪除與變更",
+		EnUS: "Pinpoints character-level insertions, deletions, and changes",
+	},
+	"intro.fileFeat2Title": {
+		ZhCN: "双向安全编辑",
+		ZhTW: "雙向安全編輯",
+		EnUS: "Two-Way Editing",
+	},
+	"intro.fileFeat2Desc": {
+		ZhCN: "支持两侧实时编辑、块级差异应用与快速保存",
+		ZhTW: "支援兩側即時編輯、區塊差異套用與快速儲存",
+		EnUS: "Live two-way editing, hunk applying, and fast saving",
+	},
+	"intro.fileFeat3Title": {
+		ZhCN: "对齐锚点与规则",
+		ZhTW: "對齊錨點與規則",
+		EnUS: "Manual Anchors",
+	},
+	"intro.fileFeat3Desc": {
+		ZhCN: "支持手动设置对齐标记、忽略空白与忽略空行",
+		ZhTW: "支援手動設置對齊標記、忽略空白與忽略空行",
+		EnUS: "Manual alignment anchors, ignore whitespace & blank lines",
+	},
+	"intro.fileScratchHint": {
+		ZhCN: "无需本地文件？",
+		ZhTW: "無需本機檔案？",
+		EnUS: "No local files?",
+	},
+	"intro.toScratch": {
+		ZhCN: "纯文本粘贴比较",
+		ZhTW: "純文字貼上比較",
+		EnUS: "Paste Text Compare",
+	},
+
+	// Kind 1: Directory Compare
+	"intro.dirTag": {
+		ZhCN: "目录树结构 · 递归比对与安全同步",
+		ZhTW: "目錄樹結構 · 遞歸比對與安全同步",
+		EnUS: "Directory Tree · Recursive Diff & Safe Sync",
+	},
+	"intro.dirTitle": {
+		ZhCN: "目录比较",
+		ZhTW: "目錄比較",
+		EnUS: "Directory Compare",
+	},
+	"intro.dirDesc": {
+		ZhCN: "在上方输入或浏览选择左右两个文件夹，点击「开始比较」递归扫描目录结构与文件差异。",
+		ZhTW: "在上方輸入或瀏覽選擇左右兩個資料夾，點擊「開始比較」遞歸掃描目錄結構與檔案差異。",
+		EnUS: "Enter or browse left and right folders above, then click 'Start Compare' to scan directories.",
+	},
+	"intro.dirFeat1Title": {
+		ZhCN: "全树递归扫描",
+		ZhTW: "全樹遞歸掃描",
+		EnUS: "Recursive Scan",
+	},
+	"intro.dirFeat1Desc": {
+		ZhCN: "快速遍历整棵目录树，支持按通配符与时间权限比对",
+		ZhTW: "快速遍歷整棵目錄樹，支援按萬用字元與時間權限比對",
+		EnUS: "Traverses directory trees with glob filter, time, and permissions",
+	},
+	"intro.dirFeat2Title": {
+		ZhCN: "状态分类过滤",
+		ZhTW: "狀態分類過濾",
+		EnUS: "Status Filtering",
+	},
+	"intro.dirFeat2Desc": {
+		ZhCN: "区分不同、仅在左侧、仅在右侧与相同文件，一目了然",
+		ZhTW: "區分不同、僅在左側、僅在右側與相同檔案，一目了然",
+		EnUS: "Filters different, left-only, right-only, and identical items",
+	},
+	"intro.dirFeat3Title": {
+		ZhCN: "安全同步与回滚",
+		ZhTW: "安全同步與回滾",
+		EnUS: "Safe Sync & Rollback",
+	},
+	"intro.dirFeat3Desc": {
+		ZhCN: "多向同步前自动备份目标文件，支持一键记录回滚",
+		ZhTW: "多向同步前自動備份目標檔案，支援一鍵記錄回滾",
+		EnUS: "Automatic backup before sync with one-click journal rollback",
+	},
+
+	// Kind 2: Text Merge
+	"intro.mergeTag": {
+		ZhCN: "三方/两方合并 · 智能冲突决策",
+		ZhTW: "三方/兩方合併 · 智慧衝突決策",
+		EnUS: "3-Way / 2-Way Merge · Conflict Resolution",
+	},
+	"intro.mergeTitle": {
+		ZhCN: "文本合并",
+		ZhTW: "文本合併",
+		EnUS: "Text Merge",
+	},
+	"intro.mergeDesc": {
+		ZhCN: "输入左右两侧文件，有共同祖先时可指定基准文件，进行逐块冲突比对与合并决策。",
+		ZhTW: "輸入左右兩側檔案，有共同祖先時可指定基準檔案，進行逐塊衝突比對與合併決策。",
+		EnUS: "Enter left and right files with optional base ancestor to resolve conflicts.",
+	},
+	"intro.mergeFeat1Title": {
+		ZhCN: "共同祖先基准",
+		ZhTW: "共同祖先基準",
+		EnUS: "Base Ancestor",
+	},
+	"intro.mergeFeat1Desc": {
+		ZhCN: "支持 Git 风格三方合并，精确定位两路改动冲突点",
+		ZhTW: "支援 Git 風格三方合併，精確定位兩路改動衝突點",
+		EnUS: "Git-style 3-way merge to isolate two-branch conflict hunks",
+	},
+	"intro.mergeFeat2Title": {
+		ZhCN: "逐块采纳决策",
+		ZhTW: "逐塊採納決策",
+		EnUS: "Hunk Actions",
+	},
+	"intro.mergeFeat2Desc": {
+		ZhCN: "一键采纳左侧、采纳右侧或保留修改，解决冲突",
+		ZhTW: "一鍵採納左側、採納右側或保留修改，解決衝突",
+		EnUS: "One-click adopt left, right, or custom edits per conflict",
+	},
+	"intro.mergeFeat3Title": {
+		ZhCN: "合并输出预览",
+		ZhTW: "合併輸出預覽",
+		EnUS: "Output Preview",
+	},
+	"intro.mergeFeat3Desc": {
+		ZhCN: "实时生成最终合并结果，可自由编辑并直接保存文件",
+		ZhTW: "即時生成最終合併結果，可自由編輯並直接儲存檔案",
+		EnUS: "Live preview of merge results with editable output buffer",
+	},
+
+	// Kind 3: Picture Compare
+	"intro.pictureTag": {
+		ZhCN: "像素级图像比对 · 视觉差异可视化",
+		ZhTW: "像素級圖像比對 · 視覺差異視覺化",
+		EnUS: "Pixel-Level Diff · Visual Inspection",
+	},
+	"intro.pictureTitle": {
+		ZhCN: "图片比较",
+		ZhTW: "圖片比較",
+		EnUS: "Picture Compare",
+	},
+	"intro.pictureDesc": {
+		ZhCN: "选择两张 PNG、JPEG 或 GIF 格式图片，以像素级精度对比视觉差异。",
+		ZhTW: "選擇兩張 PNG、JPEG 或 GIF 格式圖片，以像素級精度比對視覺差異。",
+		EnUS: "Select two PNG, JPEG, or GIF images to inspect pixel differences.",
+	},
+	"intro.pictureFeat1Title": {
+		ZhCN: "多重视角比对",
+		ZhTW: "多重視角比對",
+		EnUS: "Multiple Views",
+	},
+	"intro.pictureFeat1Desc": {
+		ZhCN: "支持并排排列、半透明覆盖叠加与高亮像素差值模式",
+		ZhTW: "支援並排排列、半透明覆蓋疊加與高亮像素差值模式",
+		EnUS: "Supports side-by-side, semi-transparent overlay, and pixel difference",
+	},
+	"intro.pictureFeat2Title": {
+		ZhCN: "容差与色彩替换",
+		ZhTW: "容差與色彩取代",
+		EnUS: "Tolerance & Replace",
+	},
+	"intro.pictureFeat2Desc": {
+		ZhCN: "可调整 2/255 容差过滤压缩噪点，支持特定色彩替换",
+		ZhTW: "可調整 2/255 容差過濾壓縮噪點，支援特定色彩取代",
+		EnUS: "Adjustable 2/255 tolerance for compression noise and color replacement",
+	},
+	"intro.pictureFeat3Title": {
+		ZhCN: "缩放适应与翻转",
+		ZhTW: "縮放適應與翻轉",
+		EnUS: "Zoom & Transform",
+	},
+	"intro.pictureFeat3Desc": {
+		ZhCN: "自动适应视口，支持 1:1、200% 缩放与水平垂直翻转",
+		ZhTW: "自動適應視口，支援 1:1、200% 縮放與水平垂直翻轉",
+		EnUS: "Viewport fitting, 1:1, 200% zoom, and horizontal/vertical flip",
+	},
+
+	// Kind 4: Media Compare
+	"intro.mediaTag": {
+		ZhCN: "音频 ID3v2 标签 · 元数据结构比对",
+		ZhTW: "音訊 ID3v2 標籤 · 元數據結構比對",
+		EnUS: "Audio ID3v2 Tags & Metadata Comparison",
+	},
+	"intro.mediaTitle": {
+		ZhCN: "媒体标签",
+		ZhTW: "媒體標籤",
+		EnUS: "Media Tags",
+	},
+	"intro.mediaDesc": {
+		ZhCN: "选择两个音频文件，直接比对 ID3v2 元数据标签与头部信息差异。",
+		ZhTW: "選擇兩個音訊檔案，直接比對 ID3v2 元數據標籤與頭部資訊差異。",
+		EnUS: "Select two audio files to compare ID3v2 metadata tags and header attributes.",
+	},
+	"intro.mediaFeat1Title": {
+		ZhCN: "核心标签比对",
+		ZhTW: "核心標籤比對",
+		EnUS: "Core Metadata",
+	},
+	"intro.mediaFeat1Desc": {
+		ZhCN: "解析对比歌曲标题、艺术家、专辑、曲目编号与年份",
+		ZhTW: "解析對比歌曲標題、藝術家、專輯、曲目編號與年份",
+		EnUS: "Extracts title, artist, album, track number, and release year",
+	},
+	"intro.mediaFeat2Title": {
+		ZhCN: "头部极速分析",
+		ZhTW: "頭部極速分析",
+		EnUS: "Instant Header Parse",
+	},
+	"intro.mediaFeat2Desc": {
+		ZhCN: "只读取音频头部标签，无需全量解码波形音频数据",
+		ZhTW: "只讀取音訊頭部標籤，無需全量解碼波形音訊數據",
+		EnUS: "Lightweight header reading without decoding full audio streams",
+	},
+	"intro.mediaFeat3Title": {
+		ZhCN: "差异直观高亮",
+		ZhTW: "差異直觀高亮",
+		EnUS: "Visual Diff Highlighting",
+	},
+	"intro.mediaFeat3Desc": {
+		ZhCN: "字段级差异高亮展示，快速找出元数据录入不一致",
+		ZhTW: "欄位級差異高亮展示，快速找出元數據輸入不一致",
+		EnUS: "Highlights mismatched fields clearly to identify metadata discrepancies",
+	},
+
+	// Kind 5: Version & Registry
+	"intro.versionTag": {
+		ZhCN: "PE 文件版本资源与注册表导出对比",
+		ZhTW: "PE 檔案版本資源與登錄檔匯出比對",
+		EnUS: "PE FileVersion & Registry Export Diff",
+	},
+	"intro.versionTitle": {
+		ZhCN: "版本与注册表",
+		ZhTW: "版本與登錄檔",
+		EnUS: "Version & Registry",
+	},
+	"intro.versionDesc": {
+		ZhCN: "选择两个 Windows 可执行文件 (EXE/DLL) 或两个 .reg 注册表导出文件进行结构比对。",
+		ZhTW: "選擇兩個 Windows 執行檔 (EXE/DLL) 或兩個 .reg 登錄檔匯出檔案進行結構比對。",
+		EnUS: "Select two Windows executables (EXE/DLL) or two .reg registry files to compare.",
+	},
+	"intro.versionFeat1Title": {
+		ZhCN: "PE FileVersion 比对",
+		ZhTW: "PE FileVersion 比對",
+		EnUS: "FileVersion Inspection",
+	},
+	"intro.versionFeat1Desc": {
+		ZhCN: "解析文件版本号、产品版本、公司名、版权信息与说明",
+		ZhTW: "解析檔案版本號、產品版本、公司名、版權資訊與說明",
+		EnUS: "Parses file version, product version, company name, and copyright",
+	},
+	"intro.versionFeat2Title": {
+		ZhCN: ".reg 键值对比",
+		ZhTW: ".reg 鍵值對比",
+		EnUS: "Registry Key & Value Diff",
+	},
+	"intro.versionFeat2Desc": {
+		ZhCN: "分析注册表路径、键名、数据类型与键值内容的变更",
+		ZhTW: "分析登錄檔路徑、鍵名、資料類型與鍵值內容的變更",
+		EnUS: "Tracks registry paths, value names, types, and data modifications",
+	},
+	"intro.versionFeat3Title": {
+		ZhCN: "离线静态安全",
+		ZhTW: "離線靜態安全",
+		EnUS: "Offline & Safe",
+	},
+	"intro.versionFeat3Desc": {
+		ZhCN: "纯离线静态文件解析，不读取或修改本机实时注册表",
+		ZhTW: "純離線靜態檔案解析，不讀取或修改本機即時登錄檔",
+		EnUS: "Offline static file parsing without querying or modifying live host registry",
 	},
 
 	// Settings Dialog

@@ -60,15 +60,7 @@ func (a *workspaceState) mediaView(c *ui.Context) {
 
 	if !a.mediaReady {
 		if a.err == "" {
-			ui.Column(c).Grow(1).FillWidth().Center().Padding(24).Children(func() {
-				ui.Column(c).MaxWidth(480).Padding(24, 28).Gap(10).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Center().Children(func() {
-					ui.Row(c).Size(32, 32).Center().Radius(8).Background(pal.baseBg).Children(func() {
-						ui.Icon(c, iconMediaTag).Size(16, 16).TextColor(pal.baseAccent)
-					})
-					ui.Text(c, "选择两个含 ID3v2 标签的文件").FontSize(17).Bold()
-					ui.Text(c, "直接解析音频头部标题、艺术家与专辑字段，不执行流式解码").FontSize(11).TextColor(t.TextMuted)
-				})
-			})
+			a.modeEmptyView(c, pal, 4)
 		}
 		return
 	}

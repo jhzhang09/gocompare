@@ -210,15 +210,7 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 
 	if a.pictureBitmap == nil || a.pictureResult == nil {
 		if a.err == "" {
-			ui.Column(c).Grow(1).FillWidth().Center().Padding(24).Children(func() {
-				ui.Column(c).MaxWidth(480).Padding(24, 28).Gap(10).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Center().Children(func() {
-					ui.Row(c).Size(32, 32).Center().Radius(8).Background(pal.baseBg).Children(func() {
-						ui.Icon(c, iconImageDiff).Size(16, 16).TextColor(pal.baseAccent)
-					})
-					ui.Text(c, i18n.T("picture.emptyTitle")).FontSize(17).Bold()
-					ui.Text(c, i18n.T("picture.emptyDesc")).FontSize(11).TextColor(t.TextMuted)
-				})
-			})
+			a.modeEmptyView(c, pal, 3)
 		}
 		return
 	}

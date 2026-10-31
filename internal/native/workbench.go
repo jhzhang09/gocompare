@@ -323,7 +323,7 @@ func (a *workspaceState) view(c *ui.Context) {
 			case a.kind == 0 && a.panes[0] != nil:
 				a.textView(c)
 			default:
-				a.welcomeView(c, pal)
+				a.modeEmptyView(c, pal, a.kind)
 			}
 
 			message := a.message
@@ -451,39 +451,160 @@ func (a *workspaceState) renderHeaderBadge(c *ui.Context, pal uiPalette) {
 	}
 }
 
-func (a *workspaceState) welcomeView(c *ui.Context, pal uiPalette) {
+func (a *workspaceState) canReset() bool {
+	if strings.TrimSpace(a.paths[0]) != "" || strings.TrimSpace(a.paths[1]) != "" {
+		return true
+	}
+	if a.err != "" {
+		return true
+	}
+	switch a.kind {
+	case 0:
+		return a.panes[0] != nil || a.panes[1] != nil
+	case 1:
+		return a.directoryRows != nil || strings.TrimSpace(a.dirFilter) != ""
+	case 2:
+		return a.mergeResult != nil || strings.TrimSpace(a.mergeBase) != "" || strings.TrimSpace(a.mergeOutput) != ""
+	case 3:
+		return a.pictureLeft != nil || a.pictureRight != nil
+	case 4:
+		return a.mediaReady
+	case 5:
+		return a.infoReady
+	case 6:
+		return a.scratchPanes[0] != nil && (a.scratchPanes[0].buffer.Len() > 0 || a.scratchPanes[1].buffer.Len() > 0)
+	}
+	return false
+}
+
+func (a *workspaceState) resetCurrentMode() {
+	if a.busy {
+		return
+	}
+	a.paths = [2]string{"", ""}
+	a.err = ""
+	a.message = ""
+	a.confirm = false
+
+	switch a.kind {
+	case 0:
+		a.stopComparison()
+		a.panes = [2]*pane{nil, nil}
+		a.diff = editor.DiffState{}
+		a.anchors = nil
+		a.anchorLeftSet = false
+		a.anchorRightSet = false
+	case 1:
+		a.directoryRows = nil
+		a.directoryRoots = [2]string{"", ""}
+		a.syncPlan = nil
+		a.syncChoice = ""
+		a.dirFilter = ""
+		a.directoryNote = ""
+	case 2:
+		a.clearMerge()
+		a.mergeBase = ""
+		a.mergeOutput = ""
+	case 3:
+		a.clearPictures()
+		a.pictureMode = pictureSide
+		a.pictureTol = 2
+		a.pictureZoom = 0
+	case 4:
+		a.clearMedia()
+	case 5:
+		a.clearVersion()
+	case 6:
+		if a.scratchPanes[0] != nil {
+			a.scratchPanes[0].buffer.Set("")
+		}
+		if a.scratchPanes[1] != nil {
+			a.scratchPanes[1].buffer.Set("")
+		}
+		a.scratchDiff = editor.DiffState{}
+		a.refreshComparison()
+	}
+	if a.modeSessions != nil {
+		a.modeSessions[a.kind] = nil
+	}
+	a.message = i18n.T("status.resetDone")
+}
+
+func (a *workspaceState) modeEmptyView(c *ui.Context, pal uiPalette, kind int) {
 	t := c.Theme()
+	icon := modeIcon(kind)
+	var (
+		tagKey   string
+		titleKey string
+		descKey  string
+		f1TKey, f1DKey string
+		f2TKey, f2DKey string
+		f3TKey, f3DKey string
+	)
+	switch kind {
+	case 1:
+		tagKey, titleKey, descKey = "intro.dirTag", "intro.dirTitle", "intro.dirDesc"
+		f1TKey, f1DKey = "intro.dirFeat1Title", "intro.dirFeat1Desc"
+		f2TKey, f2DKey = "intro.dirFeat2Title", "intro.dirFeat2Desc"
+		f3TKey, f3DKey = "intro.dirFeat3Title", "intro.dirFeat3Desc"
+	case 2:
+		tagKey, titleKey, descKey = "intro.mergeTag", "intro.mergeTitle", "intro.mergeDesc"
+		f1TKey, f1DKey = "intro.mergeFeat1Title", "intro.mergeFeat1Desc"
+		f2TKey, f2DKey = "intro.mergeFeat2Title", "intro.mergeFeat2Desc"
+		f3TKey, f3DKey = "intro.mergeFeat3Title", "intro.mergeFeat3Desc"
+	case 3:
+		tagKey, titleKey, descKey = "intro.pictureTag", "intro.pictureTitle", "intro.pictureDesc"
+		f1TKey, f1DKey = "intro.pictureFeat1Title", "intro.pictureFeat1Desc"
+		f2TKey, f2DKey = "intro.pictureFeat2Title", "intro.pictureFeat2Desc"
+		f3TKey, f3DKey = "intro.pictureFeat3Title", "intro.pictureFeat3Desc"
+	case 4:
+		tagKey, titleKey, descKey = "intro.mediaTag", "intro.mediaTitle", "intro.mediaDesc"
+		f1TKey, f1DKey = "intro.mediaFeat1Title", "intro.mediaFeat1Desc"
+		f2TKey, f2DKey = "intro.mediaFeat2Title", "intro.mediaFeat2Desc"
+		f3TKey, f3DKey = "intro.mediaFeat3Title", "intro.mediaFeat3Desc"
+	case 5:
+		tagKey, titleKey, descKey = "intro.versionTag", "intro.versionTitle", "intro.versionDesc"
+		f1TKey, f1DKey = "intro.versionFeat1Title", "intro.versionFeat1Desc"
+		f2TKey, f2DKey = "intro.versionFeat2Title", "intro.versionFeat2Desc"
+		f3TKey, f3DKey = "intro.versionFeat3Title", "intro.versionFeat3Desc"
+	default: // 0: 文件比较
+		tagKey, titleKey, descKey = "intro.fileTag", "intro.fileTitle", "intro.fileDesc"
+		f1TKey, f1DKey = "intro.fileFeat1Title", "intro.fileFeat1Desc"
+		f2TKey, f2DKey = "intro.fileFeat2Title", "intro.fileFeat2Desc"
+		f3TKey, f3DKey = "intro.fileFeat3Title", "intro.fileFeat3Desc"
+	}
+
 	ui.Column(c).Grow(1).FillWidth().Center().Padding(24).Children(func() {
-		ui.Column(c).MaxWidth(600).Padding(24, 28).Gap(10).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.04)).Center().Children(func() {
-			ui.Row(c).Gap(6).Children(func() {
-				statusPill(c, "差异对齐 · 双向编辑 · 安全保存", pal.baseAccent, pal.baseBg)
+		ui.Column(c).MaxWidth(620).Padding(24, 28).Gap(10).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.04)).Center().Children(func() {
+			ui.Row(c).Size(36, 36).Center().Radius(10).Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.2)).Children(func() {
+				ui.Icon(c, icon).Size(18, 18).TextColor(pal.baseAccent)
 			})
-			ui.Text(c, "选择两侧来源，查看每一处变化").FontSize(20).Bold()
-			ui.Text(c, "浏览选择文件或目录，也可以粘贴路径后按 Enter。").FontSize(12).TextColor(t.TextMuted)
+			statusPill(c, i18n.T(tagKey), pal.baseAccent, pal.baseBg)
+			ui.Text(c, i18n.T(titleKey)).FontSize(20).Bold()
+			ui.Text(c, i18n.T(descKey)).FontSize(12).TextColor(t.TextMuted)
 
 			ui.Row(c).FillWidth().Gap(8).Margin(8, 0, 0).Children(func() {
-				cards := []struct {
-					kind int
-					head string
-					desc string
-				}{
-					{6, "纯文本粘贴比较", "直接在双栏中粘贴/键入文本对比"},
-					{0, "双栏代码比较", "行内词级对比与实时双向编辑"},
-					{1, "目录结构比对", "递归比对与带备份安全同步"},
+				feats := []struct{ t, d string }{
+					{i18n.T(f1TKey), i18n.T(f1DKey)},
+					{i18n.T(f2TKey), i18n.T(f2DKey)},
+					{i18n.T(f3TKey), i18n.T(f3DKey)},
 				}
-				for _, card := range cards {
-					card := card
-					box := ui.Column(c).Grow(1).Basis(0).Padding(10, 12).Gap(4).Radius(8).Background(pal.subtleSurface).Border(1, pal.cardBorder).Cursor(ui.CursorPointer)
-					box.OnClick(func() { a.selectKind(card.kind) })
+				for _, f := range feats {
+					box := ui.Column(c).Grow(1).Basis(0).Padding(10, 12).Gap(4).Radius(8).Background(pal.subtleSurface).Border(1, pal.cardBorder)
 					box.Children(func() {
-						ui.Row(c).Gap(5).Children(func() {
-							ui.Icon(c, modeIcon(card.kind)).Size(13, 13).TextColor(pal.baseAccent)
-							ui.Text(c, card.head).FontSize(12).Bold().SingleLine()
-						})
-						ui.Text(c, card.desc).FontSize(10).TextColor(t.TextMuted)
+						ui.Text(c, f.t).FontSize(11).Bold().TextColor(pal.sidebarText).SingleLine()
+						ui.Text(c, f.d).FontSize(10).TextColor(t.TextMuted)
 					})
 				}
 			})
+
+			if kind == 0 {
+				ui.Row(c).Margin(6, 0, 0).Gap(8).Center().Children(func() {
+					ui.Text(c, i18n.T("intro.fileScratchHint")).FontSize(11).TextColor(t.TextMuted)
+					scratchBtn := ui.Button(c, i18n.T("intro.toScratch")).Padding(3, 10).Radius(6).FontSize(11).Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.2)).TextColor(pal.baseAccent)
+					scratchBtn.OnClick(func() { a.selectKind(6) })
+				})
+			}
 		})
 	})
 }
@@ -502,6 +623,13 @@ func (a *workspaceState) actionToolbar(c *ui.Context, pal uiPalette) {
 		swapBtn.Children(func() {
 			ui.Icon(c, iconSwap).Size(11, 11)
 			ui.Text(c, i18n.T("action.swap")).FontSize(11).SingleLine()
+		})
+
+		resetBtn := ui.Button(c, "").Label(i18n.T("action.reset")).Padding(4, 9).Gap(4).Radius(6).Disabled(a.busy || !a.canReset())
+		resetBtn.OnClick(a.resetCurrentMode)
+		resetBtn.Children(func() {
+			ui.Icon(c, iconReset).Size(11, 11)
+			ui.Text(c, i18n.T("action.reset")).FontSize(11).SingleLine()
 		})
 
 		if a.kind == 0 && a.panes[0] != nil {
@@ -545,6 +673,13 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 	rightLen := rightBuf.Len()
 
 	ui.Row(c).Height(38).Padding(0, 14).Gap(6).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		resetBtn := ui.Button(c, "").Label(i18n.T("action.reset")).Padding(4, 8).Gap(3).Radius(6).Disabled(a.busy || !a.canReset())
+		resetBtn.OnClick(a.resetCurrentMode)
+		resetBtn.Children(func() {
+			ui.Icon(c, iconReset).Size(11, 11)
+			ui.Text(c, i18n.T("action.reset")).FontSize(11).SingleLine()
+		})
+
 		clearBtn := ui.Button(c, i18n.T("action.clear")).Padding(4, 8).Radius(6).FontSize(11).Disabled(leftLen == 0 && rightLen == 0)
 		clearBtn.OnClick(func() {
 			leftBuf.Set("")
