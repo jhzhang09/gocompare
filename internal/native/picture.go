@@ -51,6 +51,11 @@ func (a *workspaceState) loadPictures() {
 			a.pictureRight = right
 			a.pictureMode = pictureSide
 			a.pictureTol = 2
+			if left.Bounds().Dx() <= 32 && left.Bounds().Dy() <= 32 && right.Bounds().Dx() <= 32 && right.Bounds().Dy() <= 32 {
+				a.pictureZoom = 3 // 20x pixel grid for test images
+			} else {
+				a.pictureZoom = 0 // 适应窗口 (Fit) for real images
+			}
 			a.renderPicture()
 			a.err = ""
 			a.message = "已加载图片"
@@ -152,10 +157,25 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 		modeBtn("水平翻转", a.pictureMode == pictureFlipH, func() { a.showPicture(pictureFlipH) })
 		modeBtn("垂直翻转", a.pictureMode == pictureFlipV, func() { a.showPicture(pictureFlipV) })
 
+		if a.pictureLeft != nil && a.pictureRight != nil && (a.pictureLeft.Bounds().Dx() > 32 || a.pictureLeft.Bounds().Dy() > 32) {
+			ui.Divider(c).Height(14)
+			modeBtn("适应窗口", a.pictureZoom == 0, func() { a.pictureZoom = 0 })
+			modeBtn("1:1 实际", a.pictureZoom == 1, func() { a.pictureZoom = 1 })
+			modeBtn("200%", a.pictureZoom == 2, func() { a.pictureZoom = 2 })
+		}
+
 		ui.Box(c).Grow(1)
 		if a.pictureLeft != nil && a.pictureRight != nil {
 			lb, rb := a.pictureLeft.Bounds(), a.pictureRight.Bounds()
 			statusPill(c, fmt.Sprintf("%d×%d vs %d×%d px", lb.Dx(), lb.Dy(), rb.Dx(), rb.Dy()), pal.sameFg, pal.sameBg)
+			diff := picture.FirstDifference(a.pictureLeft, a.pictureRight)
+			if !diff.Found {
+				statusPill(c, "两图完全一致", pal.successFg, pal.successBg)
+			} else if !diff.SameSize {
+				statusPill(c, "尺寸不同", pal.diffFg, pal.diffBg)
+			} else {
+				statusPill(c, fmt.Sprintf("存在差异 (首处: %d, %d)", diff.X, diff.Y), pal.diffFg, pal.diffBg)
+			}
 		}
 		if a.pictureNote != "" {
 			fg, bg := pal.baseAccent, pal.baseBg
@@ -184,9 +204,56 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 	}
 
 	b := a.pictureResult.Bounds()
-	w := float32(b.Dx() * pictureCanvasScale)
-	h := float32(b.Dy() * pictureCanvasScale)
-	ui.Column(c).Grow(1).FillWidth().Padding(12, 16).Children(func() {
-		ui.Image(c, a.pictureBitmap).Size(w, h).MaxWidth(w).MaxHeight(h).AlignSelf(ui.Start).Label("图片画布")
+	bw := float32(b.Dx())
+	bh := float32(b.Dy())
+
+	var scale float32
+	switch a.pictureZoom {
+	case 1: // 1:1
+		scale = 1.0
+	case 2: // 2:1
+		scale = 2.0
+	case 3: // 20x pixel grid
+		scale = float32(pictureCanvasScale)
+	default: // 0: 适应窗口 (Fit to Window)
+		if bw <= 32 && bh <= 32 {
+			scale = float32(pictureCanvasScale)
+		} else {
+			maxW := float32(1160)
+			maxH := float32(700)
+			scaleW := maxW / bw
+			scaleH := maxH / bh
+			scale = scaleW
+			if scaleH < scale {
+				scale = scaleH
+			}
+			if scale > 1.0 {
+				scale = 1.0
+			}
+		}
+	}
+	w := bw * scale
+	h := bh * scale
+
+	ui.ScrollBoth(c).Grow(1).FillWidth().Children(func() {
+		ui.Column(c).Padding(12, 16).Gap(6).AlignSelf(ui.Start).Children(func() {
+			if a.pictureMode == pictureSide && a.pictureLeft != nil && a.pictureRight != nil && (bw > 32 || bh > 32) {
+				lw := float32(a.pictureLeft.Bounds().Dx()) * scale
+				rw := float32(a.pictureRight.Bounds().Dx()) * scale
+				ui.Row(c).Width(w).Children(func() {
+					ui.Row(c).Width(lw).Gap(4).Children(func() {
+						sideBadge(c, 0, pal)
+						ui.Text(c, "左侧图片").FontSize(11).Bold().TextColor(pal.sidebarText)
+						ui.Text(c, fmt.Sprintf("%d×%d px", a.pictureLeft.Bounds().Dx(), a.pictureLeft.Bounds().Dy())).FontSize(10).TextColor(t.TextMuted)
+					})
+					ui.Row(c).Width(rw).Gap(4).Children(func() {
+						sideBadge(c, 1, pal)
+						ui.Text(c, "右侧图片").FontSize(11).Bold().TextColor(pal.sidebarText)
+						ui.Text(c, fmt.Sprintf("%d×%d px", a.pictureRight.Bounds().Dx(), a.pictureRight.Bounds().Dy())).FontSize(10).TextColor(t.TextMuted)
+					})
+				})
+			}
+			ui.Image(c, a.pictureBitmap).Size(w, h).MaxWidth(w).MaxHeight(h).AlignSelf(ui.Start).Label("图片画布")
+		})
 	})
 }

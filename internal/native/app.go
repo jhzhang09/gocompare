@@ -72,6 +72,7 @@ type modeSession struct {
 	pictureBitmap *ui.Bitmap
 	pictureMode   int
 	pictureTol    uint8
+	pictureZoom   int
 	pictureNote   string
 
 	mediaLeft  media.Tags
@@ -141,6 +142,7 @@ type workspaceState struct {
 
 	pictureMode   int
 	pictureTol    uint8
+	pictureZoom   int
 	pictureGen    uint64
 	pictureLeft   image.Image
 	pictureRight  image.Image
@@ -676,6 +678,7 @@ func (a *workspaceState) saveModeSession(kind int) {
 		pictureBitmap:    a.pictureBitmap,
 		pictureMode:      a.pictureMode,
 		pictureTol:       a.pictureTol,
+		pictureZoom:      a.pictureZoom,
 		pictureNote:      a.pictureNote,
 		mediaLeft:        a.mediaLeft,
 		mediaRight:       a.mediaRight,
@@ -728,6 +731,7 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.pictureBitmap = sess.pictureBitmap
 	a.pictureMode = sess.pictureMode
 	a.pictureTol = sess.pictureTol
+	a.pictureZoom = sess.pictureZoom
 	a.pictureNote = sess.pictureNote
 	a.mediaLeft = sess.mediaLeft
 	a.mediaRight = sess.mediaRight
