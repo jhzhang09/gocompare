@@ -16,6 +16,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
+      # Windows runner 默认把 LF 转成 CRLF，vendor 文件会与 MyGo 补丁对不上。
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
