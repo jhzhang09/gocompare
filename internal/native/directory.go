@@ -106,6 +106,7 @@ func (a *workspaceState) openDirectoryEntry(entry compare.Entry) {
 		}
 		return
 	}
+	a.saveModeSession(1)
 	a.paths = [2]string{filepath.Join(a.directoryRoots[0], filepath.FromSlash(entry.Path)), filepath.Join(a.directoryRoots[1], filepath.FromSlash(entry.Path))}
 	a.allowMissing = true
 	a.kind = 0

@@ -33,12 +33,66 @@ func newPane(f *document.File) *pane {
 	return &pane{file: f, buffer: b, edit: editor.State{Buffer: b, Label: filepath.Base(f.Path)}}
 }
 
+type modeSession struct {
+	paths          [2]string
+	panes          [2]*pane
+	diff           editor.DiffState
+	anchors        []textcompare.Anchor
+	anchorLeft     int
+	anchorRight    int
+	anchorLeftSet  bool
+	anchorRightSet bool
+	mode           int
+
+	directoryRoots   [2]string
+	directoryRows    []compare.Entry
+	directoryList    ui.ListState
+	syncPlan         *operations.Plan
+	dirFilter        string
+	compareMode      bool
+	compareTime      bool
+	followLinks      bool
+	closedDirs       map[string]bool
+	directoryOptions compare.ScanOptions
+
+	mergeBase   string
+	mergeOutput string
+	mergeResult *merge.Result
+	mergeRows   []merge.AlignRow
+	mergeAlign  ui.ListState
+	mergeBuffer *editor.Buffer
+	mergeEdit   editor.State
+	mergeLeft   *document.File
+
+	pictureLeft   image.Image
+	pictureRight  image.Image
+	pictureResult *image.RGBA
+	pictureBitmap *ui.Bitmap
+	pictureMode   int
+	pictureTol    uint8
+	pictureNote   string
+
+	mediaLeft  media.Tags
+	mediaRight media.Tags
+	mediaReady bool
+
+	infoKind  string
+	infoLeft  string
+	infoRight string
+	infoDiffs []string
+	infoReady bool
+
+	message string
+}
+
 type workspaceState struct {
 	optionsOpen        bool
 	ignoreSpace        bool
 	compareIgnoreSpace bool
 	ignoreBlankLines   bool
 	blankLineBackups   [2]string
+	inlineDiff         bool
+	modeSessions       map[int]*modeSession
 	closedDirs         map[string]bool
 	dirSearch          string
 	directoryOptions   compare.ScanOptions
@@ -522,4 +576,131 @@ func (a *workspaceState) setIgnoreBlankLines(enabled bool) {
 
 func (a *workspaceState) toggleIgnoreBlankLines() {
 	a.setIgnoreBlankLines(!a.ignoreBlankLines)
+}
+
+func (a *workspaceState) setInlineDiff(enabled bool) {
+	a.inlineDiff = enabled
+	inline := editor.DiffInlineNone
+	if enabled {
+		inline = editor.DiffInlineWordAlt
+	}
+	a.activeDiff().Inline = inline
+	a.refreshComparison()
+}
+
+func (a *workspaceState) ensureModeSessions() {
+	if a.modeSessions == nil {
+		a.modeSessions = make(map[int]*modeSession)
+	}
+}
+
+func (a *workspaceState) saveModeSession(kind int) {
+	a.ensureModeSessions()
+	var closed map[string]bool
+	if a.closedDirs != nil {
+		closed = make(map[string]bool, len(a.closedDirs))
+		for k, v := range a.closedDirs {
+			closed[k] = v
+		}
+	}
+	anchors := append([]textcompare.Anchor(nil), a.anchors...)
+	a.modeSessions[kind] = &modeSession{
+		paths:            a.paths,
+		panes:            a.panes,
+		diff:             a.diff,
+		anchors:          anchors,
+		anchorLeft:       a.anchorLeft,
+		anchorRight:      a.anchorRight,
+		anchorLeftSet:    a.anchorLeftSet,
+		anchorRightSet:   a.anchorRightSet,
+		mode:             a.mode,
+		directoryRoots:   a.directoryRoots,
+		directoryRows:    a.directoryRows,
+		directoryList:    a.directoryList,
+		syncPlan:         a.syncPlan,
+		dirFilter:        a.dirFilter,
+		compareMode:      a.compareMode,
+		compareTime:      a.compareTime,
+		followLinks:      a.followLinks,
+		closedDirs:       closed,
+		directoryOptions: a.directoryOptions,
+		mergeBase:        a.mergeBase,
+		mergeOutput:      a.mergeOutput,
+		mergeResult:      a.mergeResult,
+		mergeRows:        a.mergeRows,
+		mergeAlign:       a.mergeAlign,
+		mergeBuffer:      a.mergeBuffer,
+		mergeEdit:        a.mergeEdit,
+		mergeLeft:        a.mergeLeft,
+		pictureLeft:      a.pictureLeft,
+		pictureRight:     a.pictureRight,
+		pictureResult:    a.pictureResult,
+		pictureBitmap:    a.pictureBitmap,
+		pictureMode:      a.pictureMode,
+		pictureTol:       a.pictureTol,
+		pictureNote:      a.pictureNote,
+		mediaLeft:        a.mediaLeft,
+		mediaRight:       a.mediaRight,
+		mediaReady:       a.mediaReady,
+		infoKind:         a.infoKind,
+		infoLeft:         a.infoLeft,
+		infoRight:        a.infoRight,
+		infoDiffs:        append([]string(nil), a.infoDiffs...),
+		infoReady:        a.infoReady,
+		message:          a.message,
+	}
+}
+
+func (a *workspaceState) restoreModeSession(kind int) bool {
+	a.ensureModeSessions()
+	sess, ok := a.modeSessions[kind]
+	if !ok {
+		return false
+	}
+	a.paths = sess.paths
+	a.panes = sess.panes
+	a.diff = sess.diff
+	a.anchors = sess.anchors
+	a.anchorLeft = sess.anchorLeft
+	a.anchorRight = sess.anchorRight
+	a.anchorLeftSet = sess.anchorLeftSet
+	a.anchorRightSet = sess.anchorRightSet
+	a.mode = sess.mode
+	a.directoryRoots = sess.directoryRoots
+	a.directoryRows = sess.directoryRows
+	a.directoryList = sess.directoryList
+	a.syncPlan = sess.syncPlan
+	a.dirFilter = sess.dirFilter
+	a.compareMode = sess.compareMode
+	a.compareTime = sess.compareTime
+	a.followLinks = sess.followLinks
+	a.closedDirs = sess.closedDirs
+	a.directoryOptions = sess.directoryOptions
+	a.mergeBase = sess.mergeBase
+	a.mergeOutput = sess.mergeOutput
+	a.mergeResult = sess.mergeResult
+	a.mergeRows = sess.mergeRows
+	a.mergeAlign = sess.mergeAlign
+	a.mergeBuffer = sess.mergeBuffer
+	a.mergeEdit = sess.mergeEdit
+	a.mergeLeft = sess.mergeLeft
+	a.pictureLeft = sess.pictureLeft
+	a.pictureRight = sess.pictureRight
+	a.pictureResult = sess.pictureResult
+	a.pictureBitmap = sess.pictureBitmap
+	a.pictureMode = sess.pictureMode
+	a.pictureTol = sess.pictureTol
+	a.pictureNote = sess.pictureNote
+	a.mediaLeft = sess.mediaLeft
+	a.mediaRight = sess.mediaRight
+	a.mediaReady = sess.mediaReady
+	a.infoKind = sess.infoKind
+	a.infoLeft = sess.infoLeft
+	a.infoRight = sess.infoRight
+	a.infoDiffs = sess.infoDiffs
+	a.infoReady = sess.infoReady
+	if sess.message != "" {
+		a.message = sess.message
+	}
+	return true
 }

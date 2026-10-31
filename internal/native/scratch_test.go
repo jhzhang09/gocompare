@@ -49,9 +49,9 @@ func TestScratchTextCompareInitAndSample(t *testing.T) {
 		t.Fatal("expected diff hunks between sample texts, got 0")
 	}
 
-	// Click 互换两侧
-	if err := tt.Click("互换两侧"); err != nil {
-		t.Fatalf("failed to click 互换两侧: %v", err)
+	// Click 交换两侧
+	if err := tt.Click("交换两侧"); err != nil {
+		t.Fatalf("failed to click 交换两侧: %v", err)
 	}
 	tt.Frame()
 
@@ -136,6 +136,12 @@ func TestScratchTextCompareIgnoreSpaceAndInline(t *testing.T) {
 		t.Fatal("expected diff before ignore space")
 	}
 
+	// Open 比较选项
+	if err := tt.Click("比较选项"); err != nil {
+		t.Fatalf("failed to click 比较选项: %v", err)
+	}
+	tt.Frame()
+
 	// Click 忽略空白
 	if err := tt.Click("忽略空白"); err != nil {
 		t.Fatalf("failed to click 忽略空白: %v", err)
@@ -215,6 +221,12 @@ func TestScratchIgnoreBlankLines(t *testing.T) {
 	if len(diff.Hunks()) == 0 {
 		t.Fatal("expected diff before ignore blank lines")
 	}
+
+	// Open 比较选项
+	if err := tt.Click("比较选项"); err != nil {
+		t.Fatalf("failed to click 比较选项: %v", err)
+	}
+	tt.Frame()
 
 	// Click 忽略空行
 	if err := tt.Click("忽略空行"); err != nil {
@@ -310,5 +322,80 @@ func TestFileCompareIgnoreBlankLines(t *testing.T) {
 	}
 	if len(diff.Hunks()) == 0 {
 		t.Fatal("expected diff to reappear in file compare")
+	}
+}
+
+func TestModeSwitchPreservesState(t *testing.T) {
+	dir := t.TempDir()
+	leftFile := filepath.Join(dir, "file_left.txt")
+	rightFile := filepath.Join(dir, "file_right.txt")
+	_ = os.WriteFile(leftFile, []byte("left file content\n"), 0644)
+	_ = os.WriteFile(rightFile, []byte("right file content\n"), 0644)
+
+	leftDir := filepath.Join(dir, "d1")
+	rightDir := filepath.Join(dir, "d2")
+	_ = os.Mkdir(leftDir, 0755)
+	_ = os.Mkdir(rightDir, 0755)
+	_ = os.WriteFile(filepath.Join(leftDir, "sub.txt"), []byte("sub left"), 0644)
+	_ = os.WriteFile(filepath.Join(rightDir, "sub.txt"), []byte("sub right"), 0644)
+
+	// 1. Start with file compare
+	a := &workspaceState{paths: [2]string{leftFile, rightFile}}
+	a.load()
+	if a.panes[0] == nil || a.kind != 0 {
+		t.Fatalf("expected file compare loaded, got kind=%d, panes=%v", a.kind, a.panes[0] != nil)
+	}
+
+	// 2. Switch to directory compare and load directories
+	a.selectKind(1)
+	if a.kind != 1 || a.panes[0] != nil {
+		t.Fatalf("expected switch to kind 1 with empty panes, got kind=%d, panes=%v", a.kind, a.panes[0] != nil)
+	}
+	a.paths = [2]string{leftDir, rightDir}
+	a.load()
+	if len(a.directoryRows) == 0 {
+		t.Fatalf("expected directory compare rows loaded, got %d", len(a.directoryRows))
+	}
+
+	// 3. Switch to scratch text compare (kind 6) and set text
+	a.selectKind(6)
+	if a.kind != 6 {
+		t.Fatalf("expected kind 6, got %d", a.kind)
+	}
+	a.scratchPanes[0].buffer.Set("scratch custom left\n")
+	a.scratchPanes[1].buffer.Set("scratch custom right\n")
+	a.refreshComparison()
+
+	// 4. Switch back to directory compare (kind 1) -> must NOT be blank!
+	a.selectKind(1)
+	if a.kind != 1 {
+		t.Fatalf("expected kind 1, got %d", a.kind)
+	}
+	if len(a.directoryRows) == 0 {
+		t.Fatal("directory comparison was wiped blank after switching modes!")
+	}
+	if a.directoryRoots != [2]string{leftDir, rightDir} {
+		t.Fatalf("unexpected directory roots: %v", a.directoryRoots)
+	}
+
+	// 5. Switch back to file compare (kind 0) -> must NOT be blank!
+	a.selectKind(0)
+	if a.kind != 0 {
+		t.Fatalf("expected kind 0, got %d", a.kind)
+	}
+	if a.panes[0] == nil || a.panes[1] == nil {
+		t.Fatal("file comparison panes were wiped blank after switching modes!")
+	}
+	if a.panes[0].buffer.String() != "left file content\n" {
+		t.Fatalf("unexpected restored file content: %q", a.panes[0].buffer.String())
+	}
+
+	// 6. Switch back to scratch text compare (kind 6) -> custom text must be intact!
+	a.selectKind(6)
+	if a.kind != 6 {
+		t.Fatalf("expected kind 6, got %d", a.kind)
+	}
+	if a.scratchPanes[0].buffer.String() != "scratch custom left\n" {
+		t.Fatalf("unexpected scratch text: %q", a.scratchPanes[0].buffer.String())
 	}
 }
