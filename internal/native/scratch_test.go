@@ -274,7 +274,13 @@ func TestFileCompareIgnoreBlankLines(t *testing.T) {
 		t.Fatal("expected diff before ignore blank lines")
 	}
 
-	// Click 忽略空行 in file compare toolbar
+	// Open 比较选项
+	if err := tt.Click("比较选项"); err != nil {
+		t.Fatalf("failed to click 比较选项: %v", err)
+	}
+	tt.Frame()
+
+	// Click 忽略空行 checkbox in options drawer
 	if err := tt.Click("忽略空行"); err != nil {
 		t.Fatalf("failed to click 忽略空行 in file compare: %v", err)
 	}
@@ -282,6 +288,9 @@ func TestFileCompareIgnoreBlankLines(t *testing.T) {
 
 	if !a.ignoreBlankLines {
 		t.Fatal("ignoreBlankLines should be true")
+	}
+	if a.dirty() {
+		t.Fatal("dirty() should be false when ignoreBlankLines is active")
 	}
 	if len(diff.Hunks()) != 0 {
 		t.Fatalf("expected 0 hunks in file compare after ignore blank lines, got %d", len(diff.Hunks()))
@@ -295,6 +304,9 @@ func TestFileCompareIgnoreBlankLines(t *testing.T) {
 
 	if a.ignoreBlankLines {
 		t.Fatal("ignoreBlankLines should be false")
+	}
+	if a.dirty() {
+		t.Fatal("dirty() should remain false after restoring blank lines")
 	}
 	if len(diff.Hunks()) == 0 {
 		t.Fatal("expected diff to reappear in file compare")

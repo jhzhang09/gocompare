@@ -229,6 +229,9 @@ func (a *workspaceState) frameworkVersion() string {
 }
 
 func (a *workspaceState) dirty() bool {
+	if a.ignoreBlankLines {
+		return false
+	}
 	if a.kind == 2 && a.mergeBuffer != nil && a.mergeBuffer.Modified() {
 		return true
 	}
@@ -350,7 +353,7 @@ func (a *workspaceState) browse(side int) {
 	}
 }
 func (a *workspaceState) save(side int) {
-	if a.busy || a.panes[side] == nil {
+	if a.busy || a.panes[side] == nil || a.ignoreBlankLines {
 		return
 	}
 	p := a.panes[side]

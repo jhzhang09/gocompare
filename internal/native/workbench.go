@@ -289,24 +289,6 @@ func (a *workspaceState) view(c *ui.Context) {
 						ui.Button(c, "← 应用到左侧").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(0) })
 						ui.Button(c, "应用到右侧 →").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(1) })
 
-						ignoreSpaceBtn := ui.Button(c, "").Label("忽略空白").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready)
-						if a.ignoreSpace {
-							ignoreSpaceBtn.Background(pal.baseBg).Border(1, pal.baseAccent).TextColor(pal.baseAccent)
-						}
-						ignoreSpaceBtn.OnClick(func() { a.ignoreSpace = !a.ignoreSpace; a.refreshComparison() })
-						ignoreSpaceBtn.Children(func() {
-							ui.Text(c, "忽略空白").FontSize(11).SingleLine()
-						})
-
-						ignoreBlankBtn := ui.Button(c, "").Label("忽略空行").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready)
-						if a.ignoreBlankLines {
-							ignoreBlankBtn.Background(pal.baseBg).Border(1, pal.baseAccent).TextColor(pal.baseAccent)
-						}
-						ignoreBlankBtn.OnClick(a.toggleIgnoreBlankLines)
-						ignoreBlankBtn.Children(func() {
-							ui.Text(c, "忽略空行").FontSize(11).SingleLine()
-						})
-
 						findBtn := ui.Button(c, "").Label("查找").Padding(4, 8).Gap(3).Radius(6)
 						findBtn.OnClick(func() { a.diff.Run(editor.Find) })
 						findBtn.Children(func() {
@@ -393,6 +375,9 @@ func (a *workspaceState) view(c *ui.Context) {
 		}
 	}
 	c.OnShortcut(ui.Cmd, ui.KeyS, func() {
+		if a.ignoreBlankLines {
+			return
+		}
 		if a.kind == 2 && a.mergeBuffer != nil && a.mergeBuffer.Modified() {
 			a.saveMerge()
 			return
@@ -560,7 +545,8 @@ func (a *workspaceState) textView(c *ui.Context) {
 			if p.file.Missing() {
 				name += "（不存在）"
 			}
-			if p.buffer.Modified() {
+			isDirty := p.buffer.Modified() && !a.ignoreBlankLines
+			if isDirty {
 				name += " •"
 			}
 			parent := filepath.Base(filepath.Dir(p.file.Path))
@@ -570,11 +556,13 @@ func (a *workspaceState) textView(c *ui.Context) {
 					ui.Text(c, parent+"/").Shrink(0).FontSize(11).TextColor(t.TextMuted).SingleLine()
 				}
 				ui.Text(c, name).Bold().FontSize(12).Grow(1).MinWidth(0).SingleLine().Tooltip(p.file.Path)
-				if p.buffer.Modified() {
+				if isDirty {
 					statusPill(c, "未保存", pal.diffFg, pal.diffBg)
+				} else if a.ignoreBlankLines {
+					statusPill(c, "已忽略空行", pal.baseAccent, pal.baseBg)
 				}
 				saveLabel := []string{"保存左侧", "保存右侧"}[side]
-				saveBtn := ui.Button(c, "").Label(saveLabel).Shrink(0).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy || !p.buffer.Modified())
+				saveBtn := ui.Button(c, "").Label(saveLabel).Shrink(0).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy || !isDirty)
 				saveBtn.OnClick(func() { a.save(side) })
 				saveBtn.Children(func() {
 					ui.Icon(c, iconSave).Size(11, 11)
