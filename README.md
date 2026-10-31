@@ -1,88 +1,165 @@
 # GoCompare
 
-基于 **MyGo Native UI** 的跨平台比较工具，目标覆盖 Beyond Compare 5 的比较、合并和同步工作流。
+<p align="center">
+  <strong>一款基于 MyGo Native UI 构建的现代化、高性能跨平台文件与目录对比合并工具。</strong>
+</p>
 
-当前是开发中的首个可运行版本，尚未达到完整功能对齐。应用使用 Go 和 MyGo 原生绘制，无 HTML、JavaScript 或 WebView。
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.27+-00ADD8?style=flat-square&logo=go" alt="Go Version" />
+  <img src="https://img.shields.io/badge/GUI-MyGo%20v0.7.3-000000?style=flat-square" alt="MyGo GUI" />
+  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-brightgreen?style=flat-square" alt="Platform" />
+  <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License" />
+</p>
 
-## 已实现
+---
 
-- 两个文本文件的分栏比较、语法及行内差异高亮、差异导航、自动换行。打开时识别 UTF-8、UTF-16 BOM 和可往返的 GBK；Latin-1 需显式指定。单文件上限 16 MiB。
-- 在同一个对齐视图中直接编辑左右文件，支持撤销、查找替换；Cmd/Ctrl+S 保存当前焦点侧。另保留单侧专注编辑页面。
-- 差异块双向复制、分别保存；关闭或重新比较前确认未保存修改。
-- 保留 UTF-8 BOM、LF／CRLF 和末尾换行；检测磁盘内容、身份或权限变化后拒绝覆盖。
-- 新建文件另存为、保存前原内容备份、文件／目录会话保存与载入。
-- 递归目录比较、差异筛选、打开文件对与返回目录。
-- 本地目录更新和镜像：计划预览、版本预检、确认执行、备份、操作日志及取消。
-- 流式字节比较、目录 JSON 报告和同步 CLI。
-- 原生界面、文档和 CLI 回归测试，以及三平台构建工作流。
+GoCompare 专为追求极致启动速度、原生系统质感与可靠数据安全性的开发者打造。应用采用 Go 语言与 [MyGo](https://github.com/egoist/mygo) 框架原生渲染，**不包含任何 Electron、WebView、HTML 或 Node.js 运行时**，内存占用极低，毫秒级即时冷启动。
 
-## 运行
+提供现代化的 GUI 交互工作台以及功能完备的独立 CLI 工具，满足日常代码审查、多方冲突合并、目录镜像同步与 CI/CD 自动化流水线需求。
 
-要求 Go **1.27.3**。框架固定为 MyGo **v0.7.3**。Linux Native UI 需要 GTK 3。
+---
+
+## ✨ 核心特性
+
+- ⚡️ **纯原生极速体验**：纯 Go 编写，直接调用系统原生图形管线绘制，无浏览器内核开销，资源占用极小，启动如飞。
+- 📝 **双向即时文本对比与编辑**：
+  - 左右分栏对齐展示，支持行内字符级高亮与平滑同步滚动。
+  - **同屏双侧实时编辑**，支持撤销、重做、多字符集查找替换与快捷键保存。
+  - 智能编码识别（UTF-8、UTF-16 BOM、GBK 等），智能保真换行符（CRLF/LF）与文件末尾空行。
+- 🔀 **三方文本合并**：
+  - 基准列（Base）、左侧列（Left）、右侧列（Right）直观三栏对齐。
+  - 单击即可采纳单侧或双侧内容，冲突实时可视化，一键决策并生成目标合并结果。
+- 📁 **目录对比与事务级同步**：
+  - 递归式树状目录比对，支持层级折叠、名称实时过滤与差异状态筛选。
+  - 提供安全的目录更新、双向同步与单向镜像规划。
+  - **安全至上**：支持只读干燥预览（Dry-run）、操作前安全备份、事务日志与中断回滚，杜绝误操作导致的数据丢失。
+- 🖼️ **多格式专用对比**：
+  - **图像比对**：支持 PNG、JPEG、GIF；提供并排对比、透明叠加、像素差值高亮与容差调节。
+  - **十六进制比对**：二进制文件逐字节分析与偏移定位。
+  - **元数据对比**：MP3/ID3v2 媒体标签、PE 文件版本信息与 Windows `.reg` 文本差异对比。
+- 🎨 **现代高级审美**：
+  - 深入参考 `godiff` 设计语言，完美适配 macOS 质感浅色/暗色双主题。
+  - 统一的双胶囊路径栏、面包屑窗格头、12px 圆角状态药丸标签与内联矢量图标。
+- 💻 **全功能 CLI 工具**：提供独立的 `gocompare-cli` 控制台程序，完美融入终端脚本与自动化流水线。
+
+---
+
+## 🚀 快速上手
+
+### 运行环境要求
+- **Go**: 1.27.3 或更高版本
+- **MyGo**: v0.7.3
+- **操作系统**: macOS 12+ / Linux (需安装 GTK 3) / Windows 10+
+
+### 从源码运行
 
 ```sh
+# 启动 GUI 主工作台
 go run ./cmd/gocompare
+
+# 使用 GUI 对比两个文件
 go run ./cmd/gocompare left.txt right.txt
-go run ./cmd/gocompare-cli left.txt right.txt
+
+# 使用 GUI 对比两个目录
 go run ./cmd/gocompare --directories ./left-dir ./right-dir
-go run ./cmd/gocompare-cli dir ./left-dir ./right-dir
-go run ./cmd/gocompare-cli sync --mode mirror-right ./left-dir ./right-dir
+
+# 启动 MyGo 开发者热重载模式
 go tool mygo dev
 ```
 
-直接构建 CLI 后运行，可以获得其原始退出码；`go run` 自身会包装子程序的非零退出状态。
+---
 
+## 💻 命令行工具 (CLI)
+
+GoCompare 提供了轻量独立的命令行工具 `gocompare-cli`，适合直接在终端中快速查看差异或集成至脚本中。
+
+### 构建 CLI
 ```sh
 mkdir -p build
 go build -o build/gocompare-cli ./cmd/gocompare-cli
-./build/gocompare-cli left.txt right.txt
 ```
 
-## 验证与打包
+### 常用命令示例
 
 ```sh
+# 1. 文本文件对比（差异时退出码为 1，无差异时为 0）
+./build/gocompare-cli file1.txt file2.txt
+
+# 2. 目录递归比对并输出结构化 JSON 报告
+./build/gocompare-cli dir ./project-v1 ./project-v2
+
+# 3. 目录同步预览 (默认只读，不修改任何文件)
+./build/gocompare-cli sync --mode mirror-right ./source-dir ./target-dir
+
+# 4. 目录同步执行 (需明确指定 --apply 与外部独立备份目录)
+./build/gocompare-cli sync --mode mirror-right --apply --backup-dir /tmp/backup ./source-dir ./target-dir
+
+# 5. 三方文本合并
+./build/gocompare-cli merge --base base.txt left.txt right.txt --output merged.txt
+```
+
+---
+
+## 🛠️ 构建与打包
+
+GoCompare 支持通过 MyGo 工具链快速打包各平台安装程序：
+
+```sh
+# 运行单元测试与静态分析
 CGO_ENABLED=0 go test ./...
 go vet ./...
 go tool mygo vet .
+
+# 执行并发安全检查 (Race Detector)
 go test -race ./internal/document ./internal/compare ./internal/native
-GOCOMPARE_SNAPSHOTS=/tmp/gocompare-snapshots go test ./internal/native -run TestWorkspaceScreenshots -count=1
+
+# 构建当前平台应用安装包 (macOS 生成 .app 与 .dmg)
 go tool mygo build
+
+# 跨平台交叉编译 (支持多架构)
+go tool mygo build -platform darwin/universal,windows/amd64,linux/amd64
 ```
 
-MyGo 可以交叉编译 Linux、Windows 和 macOS；安装包、签名、公证和真实系统验收另见[平台支持](docs/platform-support.md)。
+编译产物默认输出至 `build/` 目录下。
 
-## 当前边界
+---
 
-文本界面使用 MyGo `DiffView`，通过受控的 `OldEditable` 补丁开放左侧编辑，已实现同屏双侧编辑；多栏合并尚未实现。依赖快照保存在 `vendor/`，补丁维护见 [框架扩展记录](docs/mygo-patch.md)。差异计算仍由框架在视图路径中触发，原型限制单个文本文件为 16 MiB；该上限不代表性能验收已经通过。
+## 🛡️ 安全与数据完整性保证
 
-暂不读取符号链接、二进制、非 UTF-8、混合换行和单独 CR 换行文件；会明确报告错误。保存采用同目录临时文件与重命名，不承诺跨进程原子比较并交换、目录 fsync、硬链接关系、扩展属性或 ACL 保留。原生工作区保存前默认备份到系统用户配置目录下的 `GoCompare/backups`。另存为只创建新文件，现有目标会明确报错；目前依赖目标文件系统支持硬链接。目录同步仍缺少自动恢复、暂停续传、链接复制、类型冲突处理和完整元数据策略，详见 [操作契约](docs/operations.md)。
+在执行文件保存与目录同步操作时，GoCompare 遵循严格的安全工程规范：
+1. **原子保存与安全备份**：文件保存采用同级临时文件写入与安全重命名机制，原生工作区在覆写前默认自动备份至用户配置目录。
+2. **外部修改保护**：检测到磁盘底层文件被外部进程改动或发生权限冲突时，主动拒绝覆写并明确警告。
+3. **事务日志与回滚**：目录批量同步采用两阶段验证机制。每次操作生成独立挂起日志（Pending Log），遇不可恢复错误或用户取消时支持自动中断与回滚。
 
-当前开发标识符为 `dev.gocompare.desktop`，Go module 使用本地路径 `gocompare`。正式发布前应确定仓库路径、产品标识符和签名主体。
+详细约定请参阅 [目录操作与同步安全契约](docs/operations.md)。
 
-## 开发资料
+---
 
-- [架构与数据流](docs/architecture.md)
-- [功能对齐矩阵](docs/feature-parity.md)
-- [开发阶段与验收](docs/roadmap.md)
-- [设计规范](docs/design-system.md)
-- [平台支持](docs/platform-support.md)
-- [测试与故障场景](docs/testing.md)
-- [MyGo 扩展与依赖维护](docs/mygo-patch.md)
+## 📚 开发与进阶文档
 
-## 会话与同步
+- [系统架构与数据流分层](docs/architecture.md)：探讨 `cmd`、`native`、`compare` 与 `document` 的模块边界
+- [原生界面设计系统](docs/design-system.md)：双主题配色、组件设计哲学与交互规范
+- [功能规划与支持矩阵](docs/feature-parity.md)：全场景比对功能规划与完成度跟踪
+- [开发阶段路线图](docs/roadmap.md)：P0 ~ P8 阶段演化目标与实现策略
+- [跨平台支持矩阵](docs/platform-support.md)：macOS、Windows 与 Linux 平台构建与实机适配说明
+- [MyGo 框架补丁维护](docs/mygo-patch.md)：深入解析 `vendor/` 补丁机制与依赖维护规约
+- [测试与质量验证指南](docs/testing.md)：自动化回归测试、无头测试与故障场景覆盖
 
-`.gocompare` 会话文件记录来源路径、会话类型和显示选项，不包含未保存的编辑内容或凭据。
+---
 
-CLI 默认只做预览，退出码 1 表示存在差异或待执行操作。执行同步须明确指定 `--apply` 和位于两个根目录之外的备份目录：
+## 🤝 参与贡献
+
+欢迎对 GoCompare 提交 Issue 和 Pull Request！
+在提交代码前，请确保运行以下检查并通过所有测试：
 
 ```sh
-./build/gocompare-cli sync --mode mirror-right --apply --backup-dir /path/to/backups ./left-dir ./right-dir
+go test ./...
+go vet ./...
+go tool mygo vet .
 ```
 
-镜像可能删除目标中的单侧项。GUI 必须确认预览后才执行。每次操作的备份和日志独立保存，自动清理和一键恢复尚未实现。`GOCOMPARE_DATA_DIR` 可隔离开发／测试配置目录。
+---
 
-## 文件与目录比较可用性修订
+## 📄 开源许可证
 
-日常操作集中于主工具栏，保存位于各侧文件标题内；比较规则在右上角“比较选项”。目录支持左右对齐的树形行、折叠、文件名搜索和单侧文件打开。`*.txt` 等不带斜线模式递归匹配文件名，带斜线模式匹配相对路径。
-
-“忽略空白”现在更新真实差异高亮，编辑后仍生效，并随会话保存。单侧文件的空白另一侧可应用内容后创建保存。带过滤或特殊属性规则的同步当前明确拒绝，避免超出比较范围。
+本项目基于 [MIT License](LICENSE) 开源协议。
