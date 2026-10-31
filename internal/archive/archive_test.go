@@ -80,3 +80,14 @@ func TestTarGzReadOnlyAnd7zRejected(t *testing.T) {
 		t.Fatalf("7z: %v", err)
 	}
 }
+
+func TestArchiveRejectsOversizedEntry(t *testing.T) {
+	huge := make([]byte, (32<<20)+1)
+	z, err := Write("zip", []Entry{{Name: "huge.bin", Data: huge}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Read("zip", z); err == nil || err.Error() != "archive entry exceeds 32 MiB" {
+		t.Fatalf("expected oversized zip entry error, got %v", err)
+	}
+}

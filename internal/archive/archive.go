@@ -77,12 +77,18 @@ func writeZip(entries []Entry) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+const (
+	maxEntryBytes   = 32 << 20
+	maxArchiveBytes = 128 << 20
+)
+
 func readZip(data []byte) ([]Entry, error) {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, err
 	}
 	var out []Entry
+	var total int
 	for _, f := range zr.File {
 		dir := f.FileInfo().IsDir() || strings.HasSuffix(f.Name, "/")
 		e := Entry{Name: f.Name, Dir: dir}
@@ -91,10 +97,17 @@ func readZip(data []byte) ([]Entry, error) {
 			if err != nil {
 				return nil, err
 			}
-			e.Data, err = io.ReadAll(io.LimitReader(r, 32<<20))
+			e.Data, err = io.ReadAll(io.LimitReader(r, maxEntryBytes+1))
 			r.Close()
 			if err != nil {
 				return nil, err
+			}
+			if len(e.Data) > maxEntryBytes {
+				return nil, errors.New("archive entry exceeds 32 MiB")
+			}
+			total += len(e.Data)
+			if total > maxArchiveBytes {
+				return nil, errors.New("archive total size exceeds 128 MiB")
 			}
 		}
 		out = append(out, e)
@@ -110,6 +123,7 @@ func readTarGz(data []byte) ([]Entry, error) {
 	defer gz.Close()
 	tr := tar.NewReader(gz)
 	var out []Entry
+	var total int
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -120,9 +134,16 @@ func readTarGz(data []byte) ([]Entry, error) {
 		}
 		e := Entry{Name: h.Name, Dir: h.Typeflag == tar.TypeDir || strings.HasSuffix(h.Name, "/")}
 		if !e.Dir {
-			e.Data, err = io.ReadAll(io.LimitReader(tr, 32<<20))
+			e.Data, err = io.ReadAll(io.LimitReader(tr, maxEntryBytes+1))
 			if err != nil {
 				return nil, err
+			}
+			if len(e.Data) > maxEntryBytes {
+				return nil, errors.New("archive entry exceeds 32 MiB")
+			}
+			total += len(e.Data)
+			if total > maxArchiveBytes {
+				return nil, errors.New("archive total size exceeds 128 MiB")
 			}
 		}
 		out = append(out, e)

@@ -135,3 +135,28 @@ func TestSaveAsAndBackup(t *testing.T) {
 		t.Fatalf("stale backup allowed: %v", err)
 	}
 }
+
+func TestBackupPreservesDetectedNonUTF8Encoding(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	gbkPath := filepath.Join(dir, "gbk.txt")
+	gbkRaw := []byte{0xd6, 0xd0, 0xce, 0xc4, '\r', '\n'}
+	if err := os.WriteFile(gbkPath, gbkRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := ReadDetected(ctx, gbkPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Encoding != "gbk" || !f.CRLF {
+		t.Fatalf("detected encoding=%s crlf=%v", f.Encoding, f.CRLF)
+	}
+	backupPath, err := f.Backup(ctx, filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatalf("backup failed for GBK file: %v", err)
+	}
+	got, err := os.ReadFile(backupPath)
+	if err != nil || string(got) != string(gbkRaw) {
+		t.Fatalf("backup bytes mismatch: %x want %x (err=%v)", got, gbkRaw, err)
+	}
+}

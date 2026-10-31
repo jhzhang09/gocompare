@@ -157,12 +157,8 @@ func (d *File) SaveAsOverwrite(ctx context.Context, path, text string, destBasel
 
 // Backup 将原始内容备份到指定目录，返回备份路径。内容变化时拒绝备份旧基线。
 func (d *File) Backup(ctx context.Context, dir string) (string, error) {
-	current, err := Read(ctx, d.Path)
-	if err != nil {
+	if err := d.unchanged(ctx); err != nil {
 		return "", err
-	}
-	if current.digest != d.digest || !os.SameFile(current.info, d.info) {
-		return "", ErrChanged
 	}
 	data, err := d.encoded(d.Text)
 	if err != nil {

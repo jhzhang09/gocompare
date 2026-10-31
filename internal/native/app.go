@@ -61,6 +61,7 @@ type workspaceState struct {
 	syncPlan           *operations.Plan
 
 	confirmSync    bool
+	syncGen        uint64
 	lastJournal    string
 	syncRolledBack bool
 	directoryNote  string
@@ -262,6 +263,7 @@ func (a *workspaceState) load() {
 	}
 	paths := a.paths
 	allowMissing := a.allowMissing
+	a.allowMissing = false
 	if strings.TrimSpace(paths[0]) == "" || strings.TrimSpace(paths[1]) == "" {
 		a.err = "请先选择左右两个文件"
 		return

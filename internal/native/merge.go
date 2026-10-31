@@ -13,7 +13,6 @@ import (
 )
 
 // openMergeWindow 另开一个只含文本合并的窗口，不切换当前文件比较或目录比较。
-// 应用尚未就绪时仍创建同一份窗口内容，测试用 ui.NewTester 驱动它。
 func (a *workspaceState) openMergeWindow() {
 	if a.busy {
 		return
@@ -31,7 +30,7 @@ func (a *workspaceState) openMergeWindow() {
 		backupDir:   a.backupDir,
 	}
 	if a.win != nil && mygo.App.IsReady() {
-		child.attachWindow()
+		child.attachWindow(a)
 	}
 	child.load()
 	if child.win == nil && child.err != "" {
@@ -43,7 +42,7 @@ func (a *workspaceState) openMergeWindow() {
 	a.message = "合并已在新窗口打开"
 }
 
-func (a *workspaceState) attachWindow() {
+func (a *workspaceState) attachWindow(parent *workspaceState) {
 	a.win = mygo.NewWindow(mygo.WindowOptions{
 		Title:     "GoCompare 合并",
 		Width:     1200,
@@ -52,9 +51,27 @@ func (a *workspaceState) attachWindow() {
 		MinHeight: 520,
 		Content:   ui.View(a.mergeWindowView),
 	})
+	a.win.OnClose(func(e *mygo.CloseEvent) {
+		if a.busy {
+			e.PreventDefault()
+			return
+		}
+		if a.dirty() {
+			e.PreventDefault()
+			a.guard(func() { a.win.Destroy() })
+		}
+	})
 	a.win.OnClosed(func() {
 		if a.cancel != nil {
 			a.cancel()
+		}
+		if parent != nil {
+			for i, w := range parent.mergeWindows {
+				if w == a {
+					parent.mergeWindows = append(parent.mergeWindows[:i], parent.mergeWindows[i+1:]...)
+					break
+				}
+			}
 		}
 	})
 }
@@ -62,20 +79,47 @@ func (a *workspaceState) attachWindow() {
 // mergeWindowView 是独立合并窗口的全部内容，不含文件比较工具栏。
 func (a *workspaceState) mergeWindowView(c *ui.Context) {
 	t := c.Theme()
-	ui.Column(c).Fill().Background(t.Background).Children(func() {
-		ui.Row(c).Padding(12, 20).Gap(12).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-			ui.Text(c, "GoCompare 合并").FontSize(20).Bold().Label("独立合并窗口")
-			ui.Text(c, "输出与文件比较分开保存").FontSize(12).TextColor(t.TextMuted)
+	pal := paletteFor(t)
+	ui.Column(c).Fill().Background(pal.appBg).Children(func() {
+		ui.Row(c).Height(44).Padding(0, 16).Gap(8).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+			ui.Row(c).Size(24, 24).Center().Radius(6).Background(pal.baseBg).Children(func() {
+				ui.Icon(c, iconGitMerge).Size(13, 13).TextColor(pal.baseAccent)
+			})
+			ui.Text(c, "GoCompare 合并").FontSize(15).Bold().Label("独立合并窗口")
+			statusPill(c, "独立输出缓冲区", pal.baseAccent, pal.baseBg)
 		})
 		if a.err != "" {
-			ui.Text(c, a.err).Padding(10, 20).TextColor(ui.Hex("#b5472e")).Label("错误")
+			ui.Row(c).Padding(6, 16).Gap(8).Background(pal.dangerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.dangerFg.Alpha(0.2)).Children(func() {
+				ui.Icon(c, iconAlert).Size(13, 13).TextColor(pal.dangerFg)
+				ui.Text(c, a.err).Grow(1).FontSize(11).TextColor(pal.dangerFg).Label("错误")
+			})
 		}
 		a.mergeView(c)
 		message := a.message
 		if a.busy {
 			message = "正在处理文件…"
 		}
-		ui.Text(c, message).Padding(6, 20).FontSize(12).TextColor(t.TextMuted)
+		ui.Row(c).Height(26).Padding(0, 14).Gap(6).Background(pal.subtleSurface).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
+			ui.Box(c).Size(5, 5).Radius(999).Background(pal.successFg)
+			ui.Text(c, message).Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
+		})
+	})
+	if a.confirm {
+		choice := ui.AlertDialog(c, &a.confirm, "放弃未保存的修改？", "可取消后先保存合并输出。", "取消", "放弃修改")
+		if choice == 1 {
+			fn := a.pending
+			a.pending = nil
+			if fn != nil {
+				fn()
+			}
+		} else if !a.confirm {
+			a.pending = nil
+		}
+	}
+	c.OnShortcut(ui.Cmd, ui.KeyS, func() {
+		if a.mergeBuffer != nil && a.mergeBuffer.Modified() {
+			a.saveMerge()
+		}
 	})
 }
 
@@ -107,11 +151,22 @@ func (a *workspaceState) loadMerge() {
 			a.busy = false
 			if err != nil {
 				a.err = err.Error()
+				a.clearMerge()
 				return
 			}
 			a.installMerge(lf, result)
 		})
 	})
+}
+
+func (a *workspaceState) clearMerge() {
+	a.mergeResult = nil
+	a.mergeRows = nil
+	a.mergeAlign = ui.ListState{}
+	a.mergeBuffer = nil
+	a.mergeEdit = editor.State{}
+	a.mergeLeft = nil
+	a.mergeConflict = 0
 }
 
 func (a *workspaceState) installMerge(left *document.File, result merge.Result) {
@@ -179,69 +234,101 @@ func (a *workspaceState) saveMerge() {
 
 func (a *workspaceState) mergeView(c *ui.Context) {
 	t := c.Theme()
-	ui.Row(c).Padding(8, 20).Gap(8).Children(func() {
-		ui.TextInput(c.Key("merge-base"), &a.mergeBase).Grow(1).Disabled(a.busy).Label("基准文件，可留空")
-		ui.TextInput(c.Key("merge-output"), &a.mergeOutput).Grow(1).Disabled(a.busy).Label("输出路径")
-		ui.Button(c, "保存输出").Disabled(a.busy || a.mergeBuffer == nil).OnClick(a.saveMerge)
+	pal := paletteFor(t)
+	ui.Row(c).Padding(6, 14).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		sideBadge(c, 2, pal)
+		ui.TextInput(c.Key("merge-base"), &a.mergeBase).Grow(1).Placeholder("基准共同祖先文件（可留空）").Disabled(a.busy).Label("基准文件，可留空")
+		ui.TextInput(c.Key("merge-output"), &a.mergeOutput).Grow(1).Placeholder("合并结果输出路径…").Disabled(a.busy).Label("输出路径")
+		saveBtn := ui.PrimaryButton(c, "").Label("保存输出").Padding(4, 10).Gap(4).Radius(5).Disabled(a.busy || a.mergeBuffer == nil)
+		saveBtn.OnClick(a.saveMerge)
+		saveBtn.Children(func() {
+			ui.Icon(c, iconSave).Size(11, 11)
+			ui.Text(c, "保存输出").FontSize(11).Bold().SingleLine()
+		})
 	})
 	if a.mergeResult == nil || a.mergeBuffer == nil {
-		ui.Column(c).Grow(1).FillWidth().Center().Gap(8).Children(func() {
-			ui.Text(c, "文本合并").FontSize(28).Bold()
-			ui.Text(c, "填写左右文件。有共同祖先时再填写基准文件，然后开始比较。").TextColor(t.TextMuted)
+		ui.Column(c).Grow(1).FillWidth().Center().Padding(24).Children(func() {
+			ui.Column(c).MaxWidth(480).Padding(24, 28).Gap(10).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Center().Children(func() {
+				ui.Row(c).Size(32, 32).Center().Radius(8).Background(pal.baseBg).Children(func() {
+					ui.Icon(c, iconGitMerge).Size(16, 16).TextColor(pal.baseAccent)
+				})
+				ui.Text(c, "文本合并").FontSize(20).Bold()
+				ui.Text(c, "填写左右文件。有共同祖先时再填写基准文件，然后开始比较。").FontSize(12).TextColor(t.TextMuted)
+			})
 		})
 		return
 	}
 	count := a.mergeResult.ConflictCount()
-	ui.Row(c).Padding(8, 20).Gap(8).Children(func() {
-		ui.Button(c, "采用左侧").Disabled(a.busy || count == 0).OnClick(func() { a.takeConflict(merge.ChoiceLeft) })
-		ui.Button(c, "采用右侧").Disabled(a.busy || count == 0).OnClick(func() { a.takeConflict(merge.ChoiceRight) })
-		ui.Button(c, "采用双方").Disabled(a.busy || count == 0).OnClick(func() { a.takeConflict(merge.ChoiceBoth) })
-		ui.Button(c, "采用基准").Disabled(a.busy || count == 0 || a.mergeBase == "").OnClick(func() { a.takeConflict(merge.ChoiceBase) })
-		ui.Button(c, "上一冲突").Disabled(a.busy || count == 0).OnClick(func() {
+	ui.Row(c).Height(34).Padding(0, 14).Gap(5).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Button(c, "采用左侧").Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy || count == 0).OnClick(func() { a.takeConflict(merge.ChoiceLeft) })
+		ui.Button(c, "采用右侧").Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy || count == 0).OnClick(func() { a.takeConflict(merge.ChoiceRight) })
+		ui.Button(c, "采用双方").Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy || count == 0).OnClick(func() { a.takeConflict(merge.ChoiceBoth) })
+		ui.Button(c, "采用基准").Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy || count == 0 || a.mergeBase == "").OnClick(func() { a.takeConflict(merge.ChoiceBase) })
+		ui.Divider(c).Height(14)
+		ui.Button(c, "上一冲突").Padding(3, 7).Radius(5).FontSize(11).Disabled(a.busy || count == 0).OnClick(func() {
 			if a.mergeConflict > 0 {
 				a.mergeConflict--
 			}
 		})
-		ui.Button(c, "下一冲突").Disabled(a.busy || count == 0).OnClick(func() {
+		ui.Button(c, "下一冲突").Padding(3, 7).Radius(5).FontSize(11).Disabled(a.busy || count == 0).OnClick(func() {
 			if a.mergeConflict+1 < count {
 				a.mergeConflict++
 			}
 		})
+		ui.Box(c).Grow(1)
 		label := "没有冲突"
+		fg, bg := pal.successFg, pal.successBg
 		if count > 0 {
 			label = fmt.Sprintf("冲突 %d / %d", a.mergeConflict+1, count)
+			fg, bg = pal.dangerFg, pal.dangerBg
 		}
-		ui.Text(c, label).TextColor(t.TextMuted)
+		statusPill(c, label, fg, bg)
 	})
 	a.alignmentView(c)
+	ui.Row(c).Height(24).Padding(0, 14).Gap(6).Background(pal.subtleSurface).BorderWidth(1, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Text(c, "合并结果输出").FontSize(10).Bold().TextColor(t.TextMuted)
+	})
 	a.mergeEdit.ReadOnly = a.busy
-	editor.View(c.Key("merge-output-view"), &a.mergeEdit).Grow(1).FillWidth().MinHeight(120)
+	editor.View(c.Key("merge-output-view"), &a.mergeEdit).Grow(1).FillWidth().MinHeight(80)
 }
 
 // alignmentView 在同一屏显示基准、左侧和右侧的对齐行。输出编辑器仍在下方。
-// 两方合并没有基准，不画空的基准列。列表只构建可见行，三列在同一行里一起滚动。
 func (a *workspaceState) alignmentView(c *ui.Context) {
 	t := c.Theme()
+	pal := paletteFor(t)
 	rows := a.mergeRows
 	showBase := a.mergeResult != nil && a.mergeResult.HasBase()
-	ui.Row(c).Padding(4, 20).Gap(8).Children(func() {
+	ui.Row(c).Height(26).Padding(0, 14).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		if showBase {
-			ui.Text(c, "基准").Grow(1).Bold().Label("对齐列 基准")
+			ui.Row(c).Grow(1).Basis(0).Gap(5).Children(func() {
+				sideBadge(c, 2, pal)
+				ui.Text(c, "基准").Bold().FontSize(11).Label("对齐列 基准")
+			})
 		}
-		ui.Text(c, "左侧").Grow(1).Bold().Label("对齐列 左侧")
-		ui.Text(c, "右侧").Grow(1).Bold().Label("对齐列 右侧")
+		ui.Row(c).Grow(1).Basis(0).Gap(5).Children(func() {
+			sideBadge(c, 0, pal)
+			ui.Text(c, "左侧").Bold().FontSize(11).Label("对齐列 左侧")
+		})
+		ui.Row(c).Grow(1).Basis(0).Gap(5).Children(func() {
+			sideBadge(c, 1, pal)
+			ui.Text(c, "右侧").Bold().FontSize(11).Label("对齐列 右侧")
+		})
 	})
 	if len(rows) == 0 {
-		ui.Text(c, "没有可对齐的行").Padding(8, 20).TextColor(t.TextMuted)
+		ui.Text(c, "没有可对齐的行").Padding(6, 14).TextColor(t.TextMuted)
 		return
 	}
-	ui.List(c, &a.mergeAlign, len(rows)).Grow(2).FillWidth().MinHeight(160).Rows(func(row ui.ListRow) {
+	ui.List(c, &a.mergeAlign, len(rows)).Grow(2).FillWidth().MinHeight(110).Rows(func(row ui.ListRow) {
 		item := rows[row.Index]
-		line := ui.Row(row.Context).Padding(2, 20).Gap(8)
+		line := ui.Row(row.Context).Padding(2, 14).Gap(8).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder.Alpha(0.3))
 		if item.Conflict {
-			line.Background(ui.Hex("#f8e6e1"))
+			bg, activeBg := ui.Hex("#fef2f2"), ui.Hex("#fee2e2")
+			if t.Dark {
+				bg, activeBg = ui.Hex("#3d221e"), ui.Hex("#592b25")
+			}
+			line.Background(bg)
 			if item.ConflictIndex == a.mergeConflict {
-				line.Background(ui.Hex("#f0c2b8"))
+				line.Background(activeBg)
 			}
 		}
 		line.Children(func() {
@@ -262,7 +349,7 @@ func alignCell(c *ui.Context, side string, index int, text string, present bool)
 			shown = "空行"
 		}
 	}
-	ui.Text(c, shown).Grow(1).Shrink(1).MinWidth(0).SingleLine().FontSize(13).Label(alignCellLabel(side, index, text, present))
+	ui.Text(c, shown).Grow(1).Basis(0).Shrink(1).MinWidth(0).SingleLine().FontSize(12).Label(alignCellLabel(side, index, text, present))
 }
 
 func alignCellLabel(side string, index int, text string, present bool) string {

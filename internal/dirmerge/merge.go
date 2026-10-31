@@ -5,12 +5,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 
 	"gocompare/internal/merge"
 )
+
+const maxFileBytes = 16 << 20
 
 // Decision 是一个相对路径的合并结果。Delete 不携带内容；冲突文本带有合并标记。
 type Decision struct {
@@ -128,7 +131,11 @@ func Write(ctx context.Context, dest string, decisions []Decision) error {
 		if item.Kind == KindDelete {
 			continue
 		}
-		full := filepath.Join(dest, filepath.FromSlash(item.Path))
+		rel := filepath.FromSlash(item.Path)
+		if !filepath.IsLocal(rel) || filepath.Clean(rel) == "." {
+			return fmt.Errorf("invalid decision path: %s", item.Path)
+		}
+		full := filepath.Join(dest, rel)
 		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
 			return err
 		}
@@ -189,9 +196,17 @@ func collect(ctx context.Context, root string) (map[string][]byte, error) {
 		if !item.Type().IsRegular() {
 			return fmt.Errorf("unsupported file type: %s", rel)
 		}
-		data, err := os.ReadFile(path)
+		f, err := os.Open(path)
 		if err != nil {
 			return err
+		}
+		data, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
+		f.Close()
+		if err != nil {
+			return err
+		}
+		if len(data) > maxFileBytes {
+			return fmt.Errorf("file exceeds 16 MiB limit: %s", rel)
 		}
 		out[rel] = data
 		return nil

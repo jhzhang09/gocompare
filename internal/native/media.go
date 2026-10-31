@@ -49,17 +49,65 @@ func (a *workspaceState) clearMedia() {
 
 // mediaView 只显示已加载的标签。没有播放控件，时间推进不会改这些文本。
 func (a *workspaceState) mediaView(c *ui.Context) {
-	ui.Text(c, "不能播放").Padding(8, 20)
+	t := c.Theme()
+	pal := paletteFor(t)
+
+	ui.Row(c).Height(36).Padding(0, 16).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Icon(c, iconMediaTag).Size(13, 13).TextColor(pal.baseAccent)
+		ui.Text(c, "ID3v2 元数据标签静态检查").FontSize(11).Bold()
+		statusPill(c, "不能播放", pal.sameFg, pal.sameBg)
+	})
+
 	if !a.mediaReady {
 		if a.err == "" {
-			ui.Text(c, "选择两个含 ID3v2 标签的文件").Padding(8, 20)
+			ui.Column(c).Grow(1).FillWidth().Center().Padding(24).Children(func() {
+				ui.Column(c).MaxWidth(480).Padding(24, 28).Gap(10).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Center().Children(func() {
+					ui.Row(c).Size(32, 32).Center().Radius(8).Background(pal.baseBg).Children(func() {
+						ui.Icon(c, iconMediaTag).Size(16, 16).TextColor(pal.baseAccent)
+					})
+					ui.Text(c, "选择两个含 ID3v2 标签的文件").FontSize(17).Bold()
+					ui.Text(c, "直接解析音频头部标题、艺术家与专辑字段，不执行流式解码").FontSize(11).TextColor(t.TextMuted)
+				})
+			})
 		}
 		return
 	}
-	ui.Text(c, "左侧标题 "+a.mediaLeft.Title).Padding(4, 20)
-	ui.Text(c, "左侧艺术家 "+a.mediaLeft.Artist).Padding(4, 20)
-	ui.Text(c, "左侧专辑 "+a.mediaLeft.Album).Padding(4, 20)
-	ui.Text(c, "右侧标题 "+a.mediaRight.Title).Padding(4, 20)
-	ui.Text(c, "右侧艺术家 "+a.mediaRight.Artist).Padding(4, 20)
-	ui.Text(c, "右侧专辑 "+a.mediaRight.Album).Padding(4, 20)
+
+	ui.Column(c).Grow(1).FillWidth().Padding(14, 16).Gap(12).Children(func() {
+		ui.Row(c).FillWidth().Gap(12).Children(func() {
+			// 左侧卡片
+			ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(8).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
+				ui.Row(c).Gap(6).Margin(0, 0, 4).Children(func() {
+					sideBadge(c, 0, pal)
+					ui.Text(c, "左侧标签").Bold().FontSize(12)
+				})
+				a.mediaFieldRow(c, pal, "左侧标题 "+a.mediaLeft.Title, a.mediaLeft.Title != a.mediaRight.Title)
+				a.mediaFieldRow(c, pal, "左侧艺术家 "+a.mediaLeft.Artist, a.mediaLeft.Artist != a.mediaRight.Artist)
+				a.mediaFieldRow(c, pal, "左侧专辑 "+a.mediaLeft.Album, a.mediaLeft.Album != a.mediaRight.Album)
+			})
+			// 右侧卡片
+			ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(8).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
+				ui.Row(c).Gap(6).Margin(0, 0, 4).Children(func() {
+					sideBadge(c, 1, pal)
+					ui.Text(c, "右侧标签").Bold().FontSize(12)
+				})
+				a.mediaFieldRow(c, pal, "右侧标题 "+a.mediaRight.Title, a.mediaLeft.Title != a.mediaRight.Title)
+				a.mediaFieldRow(c, pal, "右侧艺术家 "+a.mediaRight.Artist, a.mediaLeft.Artist != a.mediaRight.Artist)
+				a.mediaFieldRow(c, pal, "右侧专辑 "+a.mediaRight.Album, a.mediaLeft.Album != a.mediaRight.Album)
+			})
+		})
+	})
+}
+
+func (a *workspaceState) mediaFieldRow(c *ui.Context, pal uiPalette, text string, diff bool) {
+	bg := pal.subtleSurface
+	if diff {
+		bg = pal.diffBg
+	}
+	ui.Row(c).FillWidth().Padding(6, 10).Gap(6).Radius(5).Background(bg).Children(func() {
+		ui.Text(c, text).Grow(1).FontSize(12)
+		if diff {
+			statusPill(c, "不同", pal.diffFg, pal.cardBg)
+		}
+	})
 }

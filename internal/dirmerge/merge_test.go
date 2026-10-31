@@ -95,4 +95,7 @@ func TestTwoAndThreeWayDirectoryMerge(t *testing.T) {
 	if _, err = os.Stat(filepath.Join(dest, "gone.txt")); !os.IsNotExist(err) {
 		t.Fatal("deleted file was created")
 	}
+	if err = Write(ctx, dest, []Decision{{Path: "../escape.txt", Kind: KindLeft, Data: []byte("no")}}); err == nil {
+		t.Fatal("escaped decision path was accepted")
+	}
 }

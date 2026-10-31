@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 
@@ -128,27 +129,64 @@ func (a *workspaceState) renderPicture() {
 }
 
 func (a *workspaceState) pictureView(c *ui.Context) {
-	ui.Row(c).Padding(8, 20).Gap(8).Children(func() {
-		ui.Button(c, "并排").Disabled(a.busy || a.pictureLeft == nil).OnClick(func() { a.showPicture(pictureSide) })
-		ui.Button(c, "叠加").Disabled(a.busy || a.pictureLeft == nil).OnClick(func() { a.showPicture(pictureOverlay) })
-		ui.Button(c, "差值").Disabled(a.busy || a.pictureLeft == nil).OnClick(func() { a.showPicture(pictureDifference) })
-		ui.Button(c, "容差 2").Disabled(a.busy || a.pictureLeft == nil).OnClick(func() { a.showTolerance(2) })
-		ui.Button(c, "容差 255").Disabled(a.busy || a.pictureLeft == nil).OnClick(func() { a.showTolerance(255) })
-		ui.Button(c, "替换颜色").Disabled(a.busy || a.pictureLeft == nil).OnClick(func() { a.showPicture(pictureReplace) })
-		ui.Button(c, "水平翻转").Disabled(a.busy || a.pictureLeft == nil).OnClick(func() { a.showPicture(pictureFlipH) })
-		ui.Button(c, "垂直翻转").Disabled(a.busy || a.pictureLeft == nil).OnClick(func() { a.showPicture(pictureFlipV) })
+	t := c.Theme()
+	pal := paletteFor(t)
+	disabled := a.busy || a.pictureLeft == nil
+
+	ui.Row(c).Height(38).Padding(0, 14).Gap(5).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		modeBtn := func(label string, active bool, fn func()) {
+			b := ui.Button(c, label).Padding(3, 8).Radius(5).FontSize(11).Disabled(disabled)
+			if active && !disabled {
+				b.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35)).TextColor(pal.baseAccent).Bold()
+			}
+			b.OnClick(fn)
+		}
+		modeBtn("并排", a.pictureMode == pictureSide, func() { a.showPicture(pictureSide) })
+		modeBtn("叠加", a.pictureMode == pictureOverlay, func() { a.showPicture(pictureOverlay) })
+		modeBtn("差值", a.pictureMode == pictureDifference, func() { a.showPicture(pictureDifference) })
+		ui.Divider(c).Height(14)
+		modeBtn("容差 2", a.pictureMode == pictureTolerance && a.pictureTol == 2, func() { a.showTolerance(2) })
+		modeBtn("容差 255", a.pictureMode == pictureTolerance && a.pictureTol == 255, func() { a.showTolerance(255) })
+		ui.Divider(c).Height(14)
+		modeBtn("替换颜色", a.pictureMode == pictureReplace, func() { a.showPicture(pictureReplace) })
+		modeBtn("水平翻转", a.pictureMode == pictureFlipH, func() { a.showPicture(pictureFlipH) })
+		modeBtn("垂直翻转", a.pictureMode == pictureFlipV, func() { a.showPicture(pictureFlipV) })
+
+		ui.Box(c).Grow(1)
+		if a.pictureLeft != nil && a.pictureRight != nil {
+			lb, rb := a.pictureLeft.Bounds(), a.pictureRight.Bounds()
+			statusPill(c, fmt.Sprintf("%d×%d vs %d×%d px", lb.Dx(), lb.Dy(), rb.Dx(), rb.Dy()), pal.sameFg, pal.sameBg)
+		}
+		if a.pictureNote != "" {
+			fg, bg := pal.baseAccent, pal.baseBg
+			if a.pictureNote == "超出容差" {
+				fg, bg = pal.diffFg, pal.diffBg
+			} else if a.pictureNote == "容差内相同" {
+				fg, bg = pal.successFg, pal.successBg
+			}
+			statusPill(c, a.pictureNote, fg, bg)
+		}
 	})
-	if a.pictureNote != "" {
-		ui.Text(c, a.pictureNote).Padding(4, 20)
-	}
+
 	if a.pictureBitmap == nil || a.pictureResult == nil {
 		if a.err == "" {
-			ui.Text(c, "选择两张 PNG、JPEG 或 GIF").Padding(8, 20)
+			ui.Column(c).Grow(1).FillWidth().Center().Padding(24).Children(func() {
+				ui.Column(c).MaxWidth(480).Padding(24, 28).Gap(10).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Center().Children(func() {
+					ui.Row(c).Size(32, 32).Center().Radius(8).Background(pal.baseBg).Children(func() {
+						ui.Icon(c, iconImageDiff).Size(16, 16).TextColor(pal.baseAccent)
+					})
+					ui.Text(c, "选择两张 PNG、JPEG 或 GIF").FontSize(17).Bold()
+					ui.Text(c, "支持并排、半透明叠加、像素差值、容差阈值校验及镜像翻转").FontSize(11).TextColor(t.TextMuted)
+				})
+			})
 		}
 		return
 	}
+
 	b := a.pictureResult.Bounds()
 	w := float32(b.Dx() * pictureCanvasScale)
 	h := float32(b.Dy() * pictureCanvasScale)
-	ui.Image(c, a.pictureBitmap).Size(w, h).MaxWidth(w).MaxHeight(h).AlignSelf(ui.Start).Label("图片画布")
+	ui.Column(c).Grow(1).FillWidth().Padding(12, 16).Children(func() {
+		ui.Image(c, a.pictureBitmap).Size(w, h).MaxWidth(w).MaxHeight(h).AlignSelf(ui.Start).Label("图片画布")
+	})
 }

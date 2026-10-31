@@ -3,35 +3,95 @@ name: mygo-maintenance
 description: Maintain Go applications using github.com/egoist/mygo, including UI changes, crash fixes, and dependency upgrades. Apply MyGo-specific lifetime, identity, threading, and testing practices.
 ---
 
-# MyGo app maintenance
+# MyGo Application Maintenance & Design Specification
 
-Check the app's pinned MyGo version and existing conventions before changing APIs. Locate its source with `go list -m -f '{{.Dir}}' github.com/egoist/mygo`; read `ui/doc.go` and relevant implementation comments. Read `docs/ui/migration.md` only for major-version upgrades, including minor-version bumps while on `0.x` (for example, `0.2.x` to `0.3.x`, or `1.x` to `2.x`). Confirm API availability against the pinned source.
+This skill provides guidelines, architecture rules, and UI design standards for building and maintaining native Go desktop applications powered by [MyGo](https://github.com/egoist/mygo).
 
-The native UI rules below apply where the app uses package `ui`; preserve a web app's frontend and typed Go/TypeScript bindings.
+## Official References & Documentation
 
-## UI lifetime and identity
+When designing new interfaces, debugging framework behavior, or verifying idioms, consult these official references:
 
-- Views receive a stable `*ui.Context` for their window. `Children(func())` shares it and changes its parent scope during the callback. Keep Context out of app state and workers; capture `c.Services()` for persistent clipboard/URL callbacks and background redraws.
-- Constructors return checked `ui.Element` values. Elements and custom parts expire before the next build pass, including another pass in the same frame. Store app data, widget state and `ui.Handle`, never an element or parts. Zero elements are safe and `Valid()` is a quiet check; stale operations panic in development/Tester and become empty results or no-ops in production. Fix the ownership rather than relying on validity guards or recovery.
-- Bind persistent identity with `.Bind(&handle)`. `handle.Focused(c)` and `FocusWithin(c)` read committed focus independently of construction order. `handle.Focus(c)` requests focus and waits while hidden; `CancelFocus(c)` cancels it. Handles support several windows; select one with its Context, and keep widget state separate per window.
-- Use `.FocusBind(&a.pane, files)` when app data should request focus. The field holds desired focus; `ui.FocusedValue(c, &a.pane)` reads actual focus while a hidden target waits. Use a comparable field, unique target values and its zero value for no focus.
-- Use `handle.Bounds(c)` for committed geometry in input callbacks. `c.Resolve(handle)` returns only the current build's element. Do not capture an element in a later input callback to query its bounds.
-- Give controls stable, unique identity before construction with `c.Key(key)`, including stateful widgets. Container `.Key(key)` must precede children and local state. Configure fluent lists before `.Rows`; use `.ItemKey` for stable item identity and `ui.ListRow.Selected()`/`ListFocused()` for row styling.
+- **Official Documentation**: [https://mygo.egoist.dev/docs](https://mygo.egoist.dev/docs)
+- **UI System & Widget Guide**: [https://mygo.egoist.dev/docs/ui](https://mygo.egoist.dev/docs/ui)
+- **Official Example Projects**: [https://github.com/egoist/mygo/tree/main/examples](https://github.com/egoist/mygo/tree/main/examples)
+  - Reference patterns for sidebars, split views, toolbars, file managers, editors, and dialogs.
+- **Source Repository**: [https://github.com/egoist/mygo](https://github.com/egoist/mygo)
+- **Local Pinned Source**: Locate with `go list -m -f '{{.Dir}}' github.com/egoist/mygo`; read `ui/doc.go`, `ui/widgets.go`, `ui/theme.go`, and relevant implementation comments. Confirm API availability against the pinned version before writing code.
 
-## Input and actions
+---
 
-- Bound values update after construction and configuration. `Changed`/`Submitted` notices appear in the following build pass. Bind directly to persistent model fields when possible. A local value recomputed each pass loses the edit before its notice; write derived checkbox or segmented values back in `OnClick`, after that build's bound input updates them.
-- `OnClick`/`OnShortcut` run after construction and bound input; `OnChange`/`OnSubmit` observe the rebuilt view's notices. Prefer deferred actions when changing a collection being built. `Clicked()` and shortcut queries remain supported for local interactions.
-- Declare scoped commands with `handle.OnShortcut(c, mods, key, fn)`, before or after Bind. Only an enabled control present in the current build takes its command. Use `c.OnShortcut` for commands in the current parent scope.
+## UI Architecture & Design Standards
 
-## State, work, and rendering
+### 1. Visual Aesthetics & Theme Integration
+- **Theme-First Styling**: Always query `t := c.Theme()`. Use semantic tokens: `t.Background`, `t.Surface`, `t.SurfaceHover`, `t.Border`, `t.Text`, `t.TextMuted`, `t.Accent`, `t.AccentHover`, `t.AccentPressed`, `t.AccentText`, and `t.Radius`.
+- **Adaptive Light/Dark Modes**: Never hardcode static light-only or dark-only hex colors for surfaces and text. If custom palette extensions are required, implement an adaptive helper (e.g. `paletteFor(t *ui.Theme)`) that returns distinct, high-contrast, harmonious colors for both `t.Dark == false` and `t.Dark == true`.
+- **Vector Icons over Bitmaps**:
+  - Pre-parse SVG assets once at package initialization using `ui.MustParseSVG([]byte(...))` or `ui.ParseSVG`.
+  - Render via `ui.Icon(c, svg)` for single-color icons matching current text color, or `ui.Image(c, svg)` for multi-color illustrations.
+  - Never parse SVGs inside `view(c *ui.Context)` or rendering passes.
+- **Visual Rhythm & Spacing**:
+  - Base spacing on `t.Space(...)` or multiples of 4/8px grid.
+  - Group related actions with `ui.Divider` or segmented containers.
+  - Use subtle borders (`t.Border` with opacity or 1px width) and card container radii (`Radius(6)` to `Radius(10)`) to create clear visual hierarchy without visual clutter.
+  - Employ status pills/badges (e.g. `ui.Row(c).Padding(2, 8).Radius(999)...`) to present metadata, diff counts, and active states cleanly.
 
-- Views may rebuild several times for one event. Trigger external side effects through handled actions or explicit guarded jobs, not unconditional rendering code.
-- Keep slow I/O and expensive computation off the UI thread. Publish results through `Window.Update`; it is asynchronous. `Invalidate` requests redraws without synchronizing model writes. Cancel obsolete jobs or reject stale results after source changes or window closure.
-- Keep drawing callbacks limited to painting; they can run repeatedly. Prefer MyGo widgets/base widgets to preserve keyboard, focus, disabled, and accessibility behavior. Follow the app's theme and sizing conventions.
+### 2. Layout Structure & Responsive Design
+- **Shell Layout**: Standard desktop apps should utilize a high-craft sidebar (`ui.Sidebar` / `ui.Column` with custom item highlights), a top action/navigation bar, a contextual control header, and a responsive workspace area.
+- **Responsive Viewport Support**: Ensure layouts fit both minimum supported sizes (e.g. 800–900px width) and wide displays (1380px+) without button clipping or uncontrolled overflow. Critical action buttons must remain accessible across all supported viewport bounds.
+- **Layout Containers**: Use `ui.Row`, `ui.Column`, and `ui.Box` appropriately:
+  - Use `.Grow(1).Basis(0)` for balanced multi-pane side-by-side columns.
+  - Use `.MinWidth(0)` or `.Shrink(1)` on text containers inside flex rows to avoid blowing out container widths on long paths.
+  - Use `ui.SplitVerticalPercent` or `ui.SplitHorizontalPercent` when user-adjustable resizable panes are required.
 
-## Verification
+---
 
-- Reproduce UI failures with `ui.NewTester`. Exercise extra frames while elements disappear and return, plus relevant focus, typing, and shortcut behavior.
-- Run targeted regression tests, `go tool mygo vet .` for stored build values and goroutine captures, and `CGO_ENABLED=0 go test ./...`. Use race checks when changing shared state, and inspect rendered output or the native app when changing layout/platform behavior, respecting the user's verification preferences.
-- For upgrades, preview with `go tool mygo migrate-ui .`, apply with `-write`, and review persistent identity/services, separately assigned keys and derived bound values manually. Verify affected API/lifecycle assumptions against the new pinned source and rerun relevant UI tests. Report remaining platform-specific verification limits.
+## UI Lifetime & Identity
+
+- **Context Scope**: Views receive a stable `*ui.Context` for their window. `Children(func())` shares it and changes its parent scope during the callback. Keep `*ui.Context` out of persistent app state and background goroutines; capture `c.Services()` for persistent clipboard/URL callbacks and background updates.
+- **Element Ephemerality**: Constructors return checked `ui.Element` values. Elements and custom parts expire before the next build pass, including another pass in the same frame. Store application data, widget state, and `ui.Handle`, never an `Element` or parts.
+- **Stable Identity**:
+  - Assign stable identity before widget construction using `c.Key(key)` for dynamic or conditional elements.
+  - When rendering lists or tables with `ui.List`, configure `.ItemKey(func(i int) any { ... })` to provide stable item keys across filtering and sorting passes.
+- **Handles & Focus**:
+  - Bind persistent identity with `.Bind(&handle)`.
+  - Use `handle.Focused(c)` to check focus state, `handle.Focus(c)` to request focus, and `handle.Bounds(c)` to read committed geometry in input callbacks.
+  - Do not capture an element in a later input callback to query its bounds.
+
+---
+
+## Input & Actions
+
+- **Bound Values & Change Notifications**:
+  - Bound values update after construction and configuration. `Changed` / `Submitted` notices appear in the following build pass. Bind directly to persistent model fields when possible.
+  - Write derived checkbox or segmented values back in `OnClick`, after that build's bound input updates them.
+  - Prefer deferred actions when mutating collections that are actively being built or rendered.
+- **Keyboard Shortcuts**:
+  - Declare window-level shortcuts with `c.OnShortcut(ui.Cmd, key, fn)`.
+  - Declare scoped widget commands with `handle.OnShortcut(c, mods, key, fn)`. Only enabled controls present in the current build receive the command.
+
+---
+
+## State, Concurrency & Rendering Performance
+
+- **Zero Heavy Work in Views**:
+  - Views may rebuild multiple times per second during interactions and animations. Never perform disk I/O, network requests, or heavy computations inside `view(c *ui.Context)` or child layout callbacks.
+- **Background Jobs & Thread Hopping**:
+  - Run asynchronous tasks in goroutines and pass results back to the UI thread via `Window.Update(func())`.
+  - Support job cancellation (`context.WithCancel`) when inputs change rapidly or when switching tabs/modes, preventing stale results from overwriting newer user state.
+- **Purity in Custom Painters**:
+  - Keep canvas and drawing callbacks limited strictly to painting; do not mutate application model state inside painters.
+
+---
+
+## Verification & Testing Standards
+
+- **Headless UI Testing with `ui.NewTester`**:
+  - Verify layout boundaries, button clicks, typing, and keyboard shortcuts using `ui.NewTester(view, width, height)`.
+  - For tests asserting text, labels, or bounds, ensure elements define explicit `.Label("...")` where appropriate.
+- **Cross-Theme Verification**:
+  - Test both light and dark modes (`tt.SetDark(false)` and `tt.SetDark(true)`).
+  - When snapshot testing is enabled, output and inspect rendered images to ensure contrast, alignment, and aesthetic quality.
+- **Static & Concurrency Checks**:
+  - Always run `go tool mygo vet .` to catch stored element lifetimes or improper context captures.
+  - Run `go vet ./...` and `CGO_ENABLED=0 go test ./...`.
+  - Run `go test -race ./...` on any package with asynchronous background jobs or shared state.

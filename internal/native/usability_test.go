@@ -209,3 +209,100 @@ func TestSessionRetainsComparisonRules(t *testing.T) {
 		t.Fatalf("directory rules lost: %s %+v", a.err, a.directoryRows)
 	}
 }
+
+func TestSaveGBKWithBackupAndRepeatedDirectorySync(t *testing.T) {
+	dir := t.TempDir()
+	leftPath := filepath.Join(dir, "left.txt")
+	rightPath := filepath.Join(dir, "right.txt")
+	gbkRaw := []byte{0xd6, 0xd0, 0xce, 0xc4, '\n'}
+	if err := os.WriteFile(leftPath, gbkRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rightPath, gbkRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backupDir := filepath.Join(dir, "backups")
+	a := &workspaceState{paths: [2]string{leftPath, rightPath}, backupDir: backupDir}
+	a.load()
+	if a.err != "" || a.panes[0].file.Encoding != "gbk" {
+		t.Fatalf("load gbk: err=%s enc=%s", a.err, a.panes[0].file.Encoding)
+	}
+	tt := ui.NewTester(a.view, 1380, 880)
+	tt.Frame()
+	// 未修改时按 Cmd+S 不应生成多余备份。
+	tt.Key(ui.Cmd, ui.KeyS)
+	if _, err := os.Stat(backupDir); !os.IsNotExist(err) {
+		t.Fatalf("unmodified Cmd+S created backup dir: %v", err)
+	}
+	a.panes[0].buffer.Set("中文\n")
+	a.save(0)
+	if a.err != "" || a.panes[0].buffer.Modified() {
+		t.Fatalf("gbk save with backup failed: %s", a.err)
+	}
+
+	// 同一 backupDir 下连续执行多次目录同步。
+	leftDir, rightDir := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(leftDir, "one.txt"), []byte("1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a = &workspaceState{kind: 1, paths: [2]string{leftDir, rightDir}, backupDir: filepath.Join(dir, "sync-backups")}
+	a.load()
+	a.syncChoice = "向右更新"
+	a.previewSync()
+	a.executeSync()
+	if a.err != "" {
+		t.Fatalf("first sync failed: %s", a.err)
+	}
+	if err := os.WriteFile(filepath.Join(leftDir, "two.txt"), []byte("2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.previewSync()
+	a.executeSync()
+	if a.err != "" {
+		t.Fatalf("second sync with same backupDir failed: %s", a.err)
+	}
+}
+
+func TestModeSwitchAndFailedMergeClearStaleState(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.txt")
+	right := filepath.Join(dir, "right.txt")
+	os.WriteFile(left, []byte("a\nleft\n"), 0o600)
+	os.WriteFile(right, []byte("a\nright\n"), 0o600)
+
+	a := &workspaceState{kind: 2, paths: [2]string{left, right}}
+	a.load()
+	if a.err != "" || a.mergeResult == nil || a.mergeBuffer == nil {
+		t.Fatalf("merge load: %s", a.err)
+	}
+	// 加载失败应清除旧的合并结果，避免新路径下显示旧缓冲区。
+	a.paths = [2]string{filepath.Join(dir, "missing.txt"), right}
+	a.load()
+	if a.err == "" || a.mergeResult != nil || a.mergeBuffer != nil {
+		t.Fatalf("failed merge kept stale state: err=%s result=%v", a.err, a.mergeResult != nil)
+	}
+
+	// 重新加载合并后切换到文件比较，应清空合并状态。
+	a.paths = [2]string{left, right}
+	a.load()
+	a.selectKind(0)
+	if a.mergeResult != nil || a.mergeBuffer != nil || a.paths != ([2]string{}) {
+		t.Fatalf("selectKind did not clear merge state: result=%v paths=%v", a.mergeResult != nil, a.paths)
+	}
+
+	// 从目录打开单侧文件仅对该次加载允许缺失，之后手动加载缺失路径仍应报错。
+	leftDir, rightDir := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(leftDir, "only.txt"), []byte("only\n"), 0o600)
+	a.kind = 1
+	a.paths = [2]string{leftDir, rightDir}
+	a.load()
+	a.openDirectoryEntry(directoryRow(a, "only.txt"))
+	if a.err != "" || a.allowMissing {
+		t.Fatalf("after openDirectoryEntry: err=%s allowMissing=%v", a.err, a.allowMissing)
+	}
+	a.paths = [2]string{filepath.Join(leftDir, "nonexistent.txt"), filepath.Join(rightDir, "nonexistent.txt")}
+	a.load()
+	if a.err == "" {
+		t.Fatal("manual load after openDirectoryEntry unexpectedly allowed missing file")
+	}
+}
