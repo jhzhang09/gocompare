@@ -2,7 +2,7 @@ package native
 
 import "github.com/egoist/mygo/ui"
 
-// 预解析矢量 SVG 图标（基于 Godiff / Codiff 极简设计风格）
+// 预解析矢量 SVG 图标（极简设计风格）
 var (
 	iconFileDiff   = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>`))
 	iconFolderDiff = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="9" y1="14" x2="15" y2="14"/></svg>`))
@@ -37,7 +37,7 @@ var modeIcons = []*ui.SVG{
 	iconVersionReg,
 }
 
-// uiPalette 定义符合 Godiff 审美的极简高级调色板
+// uiPalette 定义极简高级调色板
 type uiPalette struct {
 	// 侧边栏（与系统环境紧密融合）
 	sidebarBg         ui.Color
@@ -56,7 +56,7 @@ type uiPalette struct {
 	cardBg        ui.Color
 	cardBorder    ui.Color
 
-	// 语义高亮色（Godiff 色彩方案）
+	// 语义高亮色
 	leftAccent  ui.Color
 	leftBg      ui.Color
 	rightAccent ui.Color
@@ -80,7 +80,7 @@ type uiPalette struct {
 func paletteFor(t *ui.Theme) uiPalette {
 	if t.Dark {
 		return uiPalette{
-			// 暗色模式：采用 Godiff 的深灰底与半透明分层，告别单调高饱和死黑
+			// 暗色模式：采用深灰底与半透明分层，告别单调高饱和死黑
 			sidebarBg:         ui.Hex("#18181b"),
 			sidebarBorder:     ui.RGBA(255, 255, 255, 0.08),
 			sidebarItemHover:  ui.RGBA(255, 255, 255, 0.06),
@@ -96,7 +96,7 @@ func paletteFor(t *ui.Theme) uiPalette {
 			cardBg:        ui.Hex("#202024"),
 			cardBorder:    ui.RGBA(255, 255, 255, 0.09),
 
-			leftAccent:  ui.Hex("#5ecc71"), // Godiff addBar
+			leftAccent:  ui.Hex("#5ecc71"),
 			leftBg:      ui.Hex("#1f3325"),
 			rightAccent: ui.Hex("#c084fc"),
 			rightBg:     ui.Hex("#2d1f3d"),
@@ -107,7 +107,7 @@ func paletteFor(t *ui.Theme) uiPalette {
 			sameBg:    ui.RGBA(255, 255, 255, 0.06),
 			diffFg:    ui.Hex("#fbbf24"),
 			diffBg:    ui.Hex("#3d2c12"),
-			dangerFg:  ui.Hex("#ff6762"), // Godiff delBar
+			dangerFg:  ui.Hex("#ff6762"),
 			dangerBg:  ui.Hex("#3e1f23"),
 			successFg: ui.Hex("#5ecc71"),
 			successBg: ui.Hex("#173121"),
@@ -117,7 +117,7 @@ func paletteFor(t *ui.Theme) uiPalette {
 		}
 	}
 	return uiPalette{
-		// 亮色模式：采用 Godiff / Codiff 经典的温润暖白 (#f8f8f6) 与原生灰阶 (#f0f0ee)
+		// 亮色模式：采用温润暖白 (#f8f8f6) 与原生灰阶 (#f0f0ee)
 		sidebarBg:         ui.Hex("#f0f0ee"),
 		sidebarBorder:     ui.RGBA(0, 0, 0, 0.07),
 		sidebarItemHover:  ui.RGBA(0, 0, 0, 0.04),
@@ -133,7 +133,7 @@ func paletteFor(t *ui.Theme) uiPalette {
 		cardBg:        ui.Hex("#ffffff"),
 		cardBorder:    ui.RGBA(0, 0, 0, 0.08),
 
-		leftAccent:  ui.Hex("#0dbe4e"), // Godiff addBar
+		leftAccent:  ui.Hex("#0dbe4e"),
 		leftBg:      ui.Hex("#e6f9ed"),
 		rightAccent: ui.Hex("#8b5cf6"),
 		rightBg:     ui.Hex("#f5f3ff"),
@@ -154,7 +154,7 @@ func paletteFor(t *ui.Theme) uiPalette {
 	}
 }
 
-// statusPill 极简圆角药丸徽章（参考 Godiff 的 chip 样式）
+// statusPill 极简圆角药丸徽章
 func statusPill(c *ui.Context, text string, fg, bg ui.Color) {
 	ui.Row(c).Shrink(0).Padding(2, 7).Radius(12).Background(bg).Border(1, fg.Alpha(0.20)).Children(func() {
 		ui.Text(c, text).FontSize(11).Bold().TextColor(fg).SingleLine()
