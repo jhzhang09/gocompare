@@ -14,7 +14,9 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 	"gocompare/internal/brand"
 	"gocompare/internal/compare"
+	"gocompare/internal/config"
 	"gocompare/internal/document"
+	"gocompare/internal/i18n"
 	"gocompare/internal/media"
 	"gocompare/internal/merge"
 	"gocompare/internal/operations"
@@ -87,6 +89,9 @@ type modeSession struct {
 
 type workspaceState struct {
 	optionsOpen        bool
+	settingsOpen       bool
+	settingsLang       int
+	settingsTheme      int
 	ignoreSpace        bool
 	compareIgnoreSpace bool
 	ignoreBlankLines   bool
@@ -211,6 +216,32 @@ func Run(args []string) error {
 	if custom := os.Getenv("GOCOMPARE_DATA_DIR"); custom != "" {
 		configDir = custom
 	}
+	cfg := config.Load()
+	i18n.SetLanguage(i18n.Language(cfg.Language))
+	switch cfg.Theme {
+	case "light":
+		mygo.Theme.SetSource(mygo.ThemeLight)
+	case "dark":
+		mygo.Theme.SetSource(mygo.ThemeDark)
+	default:
+		mygo.Theme.SetSource(mygo.ThemeSystem)
+	}
+
+	langIdx := 0
+	switch cfg.Language {
+	case "zh-TW":
+		langIdx = 1
+	case "en":
+		langIdx = 2
+	}
+	themeIdx := 2
+	switch cfg.Theme {
+	case "light":
+		themeIdx = 0
+	case "dark":
+		themeIdx = 1
+	}
+
 	mygo.App.SetName("GoCompare")
 	mygo.App.SetVersion(version)
 	var iconErr error
@@ -220,7 +251,14 @@ func Run(args []string) error {
 			mygo.App.Quit()
 			return
 		}
-		a := &workspaceState{message: "选择两个文件开始比较", backupDir: filepath.Join(configDir, "GoCompare", "backups")}
+		a := &workspaceState{
+			optionsOpen:   true,
+			inlineDiff:    true,
+			settingsLang:  langIdx,
+			settingsTheme: themeIdx,
+			message:       i18n.T("status.selectSource"),
+			backupDir:     filepath.Join(configDir, "GoCompare", "backups"),
+		}
 		a.win = mygo.NewWindow(mygo.WindowOptions{Title: "GoCompare", Width: 1380, Height: 880, MinWidth: 900, MinHeight: 600, Content: ui.View(a.view)})
 		a.win.OnClose(func(e *mygo.CloseEvent) {
 			if a.busy {
@@ -703,4 +741,24 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 		a.message = sess.message
 	}
 	return true
+}
+
+func (a *workspaceState) applySettings(langIdx, themeIdx int) {
+	a.settingsLang = langIdx
+	a.settingsTheme = themeIdx
+	langs := []i18n.Language{i18n.ZhCN, i18n.ZhTW, i18n.EnUS}
+	if langIdx >= 0 && langIdx < len(langs) {
+		i18n.SetLanguage(langs[langIdx])
+	}
+	themeSources := []mygo.ThemeSource{mygo.ThemeLight, mygo.ThemeDark, mygo.ThemeSystem}
+	themeStr := []string{"light", "dark", "system"}
+	if themeIdx >= 0 && themeIdx < len(themeSources) {
+		if mygo.App.IsReady() {
+			mygo.Theme.SetSource(themeSources[themeIdx])
+		}
+	}
+	_ = config.Save(config.Settings{
+		Language: string(i18n.CurrentLanguage()),
+		Theme:    themeStr[themeIdx],
+	})
 }
