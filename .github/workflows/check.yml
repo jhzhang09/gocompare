@@ -52,7 +52,7 @@ jobs:
         run: |
           mkdir -p build
           go build -o build/ ./cmd/gocompare ./cmd/gocompare-cli
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: gocompare-${{ matrix.os }}-${{ matrix.arch }}
           path: build/

@@ -47,7 +47,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then tag="$GITHUB_REF_NAME"; else tag="v0.0.0-dev"; fi
           echo "TAG=$tag" >> "$GITHUB_ENV"
       - run: scripts/package-cli.sh "$TAG" assets
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli
           path: assets/*
@@ -107,7 +107,7 @@ jobs:
             Compress-Archive -Path "dist/windows-$arch/GoCompare.exe" -DestinationPath "assets/gocompare-$env:VERSION-windows-$arch-portable.zip"
           }
       - run: ls -l assets
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: app-${{ matrix.name }}
           path: assets/*
@@ -124,14 +124,14 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: assets
           merge-multiple: true
       - name: Checksums
         working-directory: assets
         run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: assets/*
       - name: Create release
