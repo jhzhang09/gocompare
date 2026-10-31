@@ -19,13 +19,15 @@ func (a *workspaceState) stopComparison() {
 
 // refreshComparison 只在输入版本改变时启动任务，不能在绘制回调中触发。
 func (a *workspaceState) refreshComparison() {
-	if a.panes[0] == nil || !a.diff.ExternalComparison {
+	panes := a.activePanes()
+	diff := a.activeDiff()
+	if panes[0] == nil || !diff.ExternalComparison {
 		return
 	}
-	buffers := [2]*editor.Buffer{a.panes[0].buffer, a.panes[1].buffer}
+	buffers := [2]*editor.Buffer{panes[0].buffer, panes[1].buffer}
 	versions := [2]uint64{buffers[0].Version(), buffers[1].Version()}
 	anchors := append([]textcompare.Anchor(nil), a.anchors...)
-	if a.compareRequested && a.compareBuffers == buffers && a.compareVersions == versions && a.compareInline == a.diff.Inline && a.compareIgnoreSpace == a.ignoreSpace && sameAnchors(a.compareAnchors, anchors) {
+	if a.compareRequested && a.compareBuffers == buffers && a.compareVersions == versions && a.compareInline == diff.Inline && a.compareIgnoreSpace == a.ignoreSpace && sameAnchors(a.compareAnchors, anchors) {
 		return
 	}
 	a.stopComparison()
@@ -36,8 +38,8 @@ func (a *workspaceState) refreshComparison() {
 	ignore := a.ignoreSpace
 	a.compareBuffers = buffers
 	a.compareVersions = versions
-	a.compareInline = a.diff.Inline
-	inline := a.diff.Inline
+	a.compareInline = diff.Inline
+	inline := diff.Inline
 	a.compareRunning = true
 	a.compareErr = nil
 	request := editor.NewComparisonRequest(buffers[0], buffers[1])
@@ -63,7 +65,8 @@ func (a *workspaceState) refreshComparison() {
 				a.compareErr = err
 				return
 			}
-			if !a.diff.ApplyComparison(result) {
+			activeDiff := a.activeDiff()
+			if !activeDiff.ApplyComparison(result) {
 				return
 			}
 			a.compareAnchors = anchors

@@ -117,6 +117,9 @@ type workspaceState struct {
 	anchorLeftSet  bool
 	anchorRightSet bool
 
+	scratchPanes [2]*pane
+	scratchDiff  editor.DiffState
+
 	diff    editor.DiffState
 	mode    int
 	wrap    bool
@@ -185,6 +188,10 @@ func Run(args []string) error {
 				a.kind = 1
 			}
 			a.load()
+		} else {
+			a.kind = 6
+			a.ensureScratch()
+			a.message = "纯文本比较 · 可直接在两栏中键入或粘贴文本"
 		}
 	})
 	if err = mygo.App.Run(); err != nil {
@@ -372,14 +379,16 @@ func (a *workspaceState) save(side int) {
 	})
 }
 func (a *workspaceState) apply(side int) {
-	if a.busy || a.compareRunning || a.compareErr != nil || a.panes[0] == nil || !a.diff.ComparisonReady() {
+	diff := a.activeDiff()
+	panes := a.activePanes()
+	if a.busy || a.compareRunning || a.compareErr != nil || panes[0] == nil || !diff.ComparisonReady() {
 		return
 	}
-	hunks := a.diff.Hunks()
-	i, inside := a.diff.CurrentHunk()
+	hunks := diff.Hunks()
+	i, inside := diff.CurrentHunk()
 	if len(hunks) > 0 && (!inside || i < 0) {
 		i = 0
-		a.diff.GoToHunk(0)
+		diff.GoToHunk(0)
 		inside = true
 	}
 	if !inside || i < 0 || i >= len(hunks) {
@@ -388,9 +397,67 @@ func (a *workspaceState) apply(side int) {
 	}
 	// Revert 将左侧块复制到右侧；Accept 将右侧块复制到左侧，仅改变内存缓冲区。
 	if side == 1 {
-		a.diff.Revert(i)
+		diff.Revert(i)
 	} else {
-		a.diff.Accept(i)
+		diff.Accept(i)
 	}
 	a.message = "差异块已应用，保存后写入文件"
+}
+
+func (a *workspaceState) ensureScratch() {
+	if a.scratchPanes[0] != nil {
+		return
+	}
+	left := &document.File{Path: "左侧文本", Text: "", Encoding: "utf-8"}
+	right := &document.File{Path: "右侧文本", Text: "", Encoding: "utf-8"}
+	a.scratchPanes = [2]*pane{newPane(left), newPane(right)}
+	a.scratchPanes[0].edit.Label = "左侧文本编辑器"
+	a.scratchPanes[1].edit.Label = "右侧文本编辑器"
+	a.scratchDiff = editor.DiffState{
+		Old:                a.scratchPanes[0].buffer,
+		New:                a.scratchPanes[1].buffer,
+		ExpandUnchanged:    true,
+		Editable:           true,
+		OldEditable:        true,
+		ExternalComparison: true,
+	}
+}
+
+func (a *workspaceState) activePanes() [2]*pane {
+	if a.kind == 6 {
+		a.ensureScratch()
+		return a.scratchPanes
+	}
+	return a.panes
+}
+
+func (a *workspaceState) activeDiff() *editor.DiffState {
+	if a.kind == 6 {
+		a.ensureScratch()
+		return &a.scratchDiff
+	}
+	return &a.diff
+}
+
+func (a *workspaceState) saveScratchAs(side int) {
+	if a.busy || a.scratchPanes[side] == nil {
+		return
+	}
+	text := a.scratchPanes[side].buffer.String()
+	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
+		Parent: a.win,
+		Title:  []string{"保存左侧文本到文件", "保存右侧文本到文件"}[side],
+	})
+	if err != nil {
+		a.err = err.Error()
+		return
+	}
+	if path == "" {
+		return
+	}
+	if err := os.WriteFile(path, []byte(text), 0644); err != nil {
+		a.err = err.Error()
+		return
+	}
+	a.message = fmt.Sprintf("已保存至 %s", filepath.Base(path))
 }

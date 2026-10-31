@@ -45,19 +45,27 @@ func (a *workspaceState) selectKind(kind int) {
 		a.allowMissing = false
 		a.directoryRoots = [2]string{}
 		a.err = ""
-		a.message = "选择左右来源，然后开始比较"
+		if kind == 6 {
+			a.ensureScratch()
+			a.refreshComparison()
+			a.message = "纯文本比较 · 可直接在两栏中键入或粘贴文本"
+		} else {
+			a.message = "选择左右来源，然后开始比较"
+		}
 	})
 }
 
 func (a *workspaceState) navigateDiff(step int) {
-	if a.panes[0] == nil || a.compareRunning || a.compareErr != nil || !a.diff.ComparisonReady() {
+	panes := a.activePanes()
+	diff := a.activeDiff()
+	if panes[0] == nil || a.compareRunning || a.compareErr != nil || !diff.ComparisonReady() {
 		return
 	}
-	n := len(a.diff.Hunks())
+	n := len(diff.Hunks())
 	if n == 0 {
 		return
 	}
-	i, _ := a.diff.CurrentHunk()
+	i, _ := diff.CurrentHunk()
 	if i < 0 {
 		if step > 0 {
 			i = 0
@@ -67,7 +75,44 @@ func (a *workspaceState) navigateDiff(step int) {
 	} else {
 		i = (i + step + n) % n
 	}
-	a.diff.GoToHunk(i)
+	diff.GoToHunk(i)
+}
+
+func (a *workspaceState) diffPrev() { a.navigateDiff(-1) }
+func (a *workspaceState) diffNext() { a.navigateDiff(1) }
+
+type modeItem struct {
+	kind  int
+	label string
+	icon  *ui.SVG
+}
+
+var modes = []modeItem{
+	{kind: 6, label: "文本比较", icon: iconTextDiff},
+	{kind: 0, label: "文件比较", icon: iconFileDiff},
+	{kind: 1, label: "目录比较", icon: iconFolderDiff},
+	{kind: 2, label: "文本合并", icon: iconGitMerge},
+	{kind: 3, label: "图片比较", icon: iconImageDiff},
+	{kind: 4, label: "媒体标签", icon: iconMediaTag},
+	{kind: 5, label: "版本与注册表", icon: iconVersionReg},
+}
+
+func modeTitle(kind int) string {
+	for _, m := range modes {
+		if m.kind == kind {
+			return m.label
+		}
+	}
+	return "文件比较"
+}
+
+func modeIcon(kind int) *ui.SVG {
+	for _, m := range modes {
+		if m.kind == kind {
+			return m.icon
+		}
+	}
+	return iconFileDiff
 }
 
 func (a *workspaceState) swapInputs() {
@@ -81,7 +126,6 @@ func (a *workspaceState) view(c *ui.Context) {
 	a.refreshComparison()
 	t := c.Theme()
 	pal := paletteFor(t)
-	modeLabels := []string{"文件比较", "目录比较", "文本合并", "图片比较", "媒体标签", "版本与注册表"}
 
 	ui.Row(c).Fill().Background(pal.appBg).Children(func() {
 		// 左侧侧边栏（深度融合明暗主题）
@@ -99,26 +143,26 @@ func (a *workspaceState) view(c *ui.Context) {
 			})
 
 			ui.Text(c, "模式").Padding(2, 8).FontSize(10).Bold().TextColor(pal.sidebarMuted)
-			for i, label := range modeLabels {
-				i, label := i, label
-				active := a.kind == i
+			for _, m := range modes {
+				m := m
+				active := a.kind == m.kind
 				bg := ui.Transparent
 				fg := pal.sidebarMuted
-				btn := ui.Button(c, "").Label(label).FillWidth().Height(34).Padding(0, 8).Gap(7).Radius(6).Justify(ui.Start).BorderWidth(0).Background(bg)
+				btn := ui.Button(c, "").Label(m.label).FillWidth().Height(34).Padding(0, 8).Gap(7).Radius(6).Justify(ui.Start).BorderWidth(0).Background(bg)
 				if active {
 					btn.Background(pal.sidebarItemActive).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06))
 					fg = pal.sidebarText
 				}
 				btn.TextColor(fg)
-				btn.OnClick(func() { a.selectKind(i) })
+				btn.OnClick(func() { a.selectKind(m.kind) })
 				btn.Children(func() {
-					iconSvg := modeIcons[i]
+					iconSvg := m.icon
 					iconCol := pal.sidebarMuted
 					if active {
 						iconCol = pal.baseAccent
 					}
 					ui.Icon(c, iconSvg).Size(14, 14).TextColor(iconCol)
-					txt := ui.Text(c, label).FontSize(12).SingleLine()
+					txt := ui.Text(c, m.label).FontSize(12).SingleLine()
 					if active {
 						txt.Bold().TextColor(pal.sidebarText)
 					}
@@ -146,11 +190,11 @@ func (a *workspaceState) view(c *ui.Context) {
 
 		// 右侧主工作区
 		ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
-			title := modeLabels[a.kind]
+			title := modeTitle(a.kind)
 			// 顶部标题栏（沉浸式对齐设计）
 			ui.Row(c).Height(44).Padding(0, 16).Gap(8).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 				ui.Row(c).Size(24, 24).Center().Radius(6).Background(pal.baseBg).Children(func() {
-					ui.Icon(c, modeIcons[a.kind]).Size(13, 13).TextColor(pal.baseAccent)
+					ui.Icon(c, modeIcon(a.kind)).Size(13, 13).TextColor(pal.baseAccent)
 				})
 				ui.Text(c, title).FontSize(15).Bold().SingleLine()
 				a.renderHeaderBadge(c, pal)
@@ -194,65 +238,67 @@ func (a *workspaceState) view(c *ui.Context) {
 				})
 			})
 
-			// 双侧来源路径胶囊区（极简紧凑）
-			ui.Row(c).Padding(6, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-				for side := 0; side < 2; side++ {
-					side := side
-					ui.Row(c).Grow(1).Basis(0).MinWidth(0).Height(34).Padding(0, 8).Gap(6).Radius(7).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
-						sideBadge(c, side, pal)
-						ui.TextInput(c.Key(side), &a.paths[side]).Grow(1).MinWidth(0).Placeholder("输入路径或浏览选择…").Label([]string{"左侧路径", "右侧路径"}[side]).Disabled(a.busy).OnSubmit(func() { a.guard(a.load) })
-						ui.Button(c, "浏览…").Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy).OnClick(func() { a.browse(side) })
-					})
-				}
-			})
-
-			// 操作命令工具栏（保持 900px 视口无缝容纳）
-			ui.Row(c).Height(38).Padding(0, 14).Gap(6).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-				startBtn := ui.PrimaryButton(c, "").Label("开始比较").Padding(4, 10).Gap(4).Radius(6).Disabled(a.busy)
-				startBtn.OnClick(func() { a.guard(a.load) })
-				startBtn.Children(func() {
-					ui.Icon(c, iconCompare).Size(11, 11)
-					ui.Text(c, "开始比较").FontSize(11).Bold().SingleLine()
+			if a.kind != 6 {
+				// 双侧来源路径胶囊区（极简紧凑）
+				ui.Row(c).Padding(6, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+					for side := 0; side < 2; side++ {
+						side := side
+						ui.Row(c).Grow(1).Basis(0).MinWidth(0).Height(34).Padding(0, 8).Gap(6).Radius(7).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
+							sideBadge(c, side, pal)
+							ui.TextInput(c.Key(side), &a.paths[side]).Grow(1).MinWidth(0).Placeholder("输入路径或浏览选择…").Label([]string{"左侧路径", "右侧路径"}[side]).Disabled(a.busy).OnSubmit(func() { a.guard(a.load) })
+							ui.Button(c, "浏览…").Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy).OnClick(func() { a.browse(side) })
+						})
+					}
 				})
 
-				swapBtn := ui.Button(c, "").Label("交换两侧").Padding(4, 9).Gap(4).Radius(6).Disabled(a.busy)
-				swapBtn.OnClick(a.swapInputs)
-				swapBtn.Children(func() {
-					ui.Icon(c, iconSwap).Size(11, 11)
-					ui.Text(c, "交换两侧").FontSize(11).SingleLine()
+				// 操作命令工具栏（保持 900px 视口无缝容纳）
+				ui.Row(c).Height(38).Padding(0, 14).Gap(6).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+					startBtn := ui.PrimaryButton(c, "").Label("开始比较").Padding(4, 10).Gap(4).Radius(6).Disabled(a.busy)
+					startBtn.OnClick(func() { a.guard(a.load) })
+					startBtn.Children(func() {
+						ui.Icon(c, iconCompare).Size(11, 11)
+						ui.Text(c, "开始比较").FontSize(11).Bold().SingleLine()
+					})
+
+					swapBtn := ui.Button(c, "").Label("交换两侧").Padding(4, 9).Gap(4).Radius(6).Disabled(a.busy)
+					swapBtn.OnClick(a.swapInputs)
+					swapBtn.Children(func() {
+						ui.Icon(c, iconSwap).Size(11, 11)
+						ui.Text(c, "交换两侧").FontSize(11).SingleLine()
+					})
+
+					if a.kind == 0 && a.panes[0] != nil {
+						ui.Divider(c).Height(16).Margin(0, 2)
+						ready := a.diff.ComparisonReady() && !a.busy && !a.compareRunning && a.compareErr == nil
+						prevBtn := ui.Button(c, "").Label("上一差异").Padding(4, 8).Gap(3).Radius(6).Disabled(!ready)
+						prevBtn.OnClick(func() { a.navigateDiff(-1) })
+						prevBtn.Children(func() {
+							ui.Icon(c, iconChevronUp).Size(11, 11)
+							ui.Text(c, "上一差异").FontSize(11).SingleLine()
+						})
+
+						nextBtn := ui.Button(c, "").Label("下一差异").Padding(4, 8).Gap(3).Radius(6).Disabled(!ready)
+						nextBtn.OnClick(func() { a.navigateDiff(1) })
+						nextBtn.Children(func() {
+							ui.Icon(c, iconChevronDown).Size(11, 11)
+							ui.Text(c, "下一差异").FontSize(11).SingleLine()
+						})
+
+						ui.Button(c, "← 应用到左侧").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(0) })
+						ui.Button(c, "应用到右侧 →").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(1) })
+
+						findBtn := ui.Button(c, "").Label("查找").Padding(4, 8).Gap(3).Radius(6)
+						findBtn.OnClick(func() { a.diff.Run(editor.Find) })
+						findBtn.Children(func() {
+							ui.Icon(c, iconSearch).Size(11, 11)
+							ui.Text(c, "查找").FontSize(11).SingleLine()
+						})
+					} else {
+						ui.Box(c).Grow(1)
+						a.renderToolbarMeta(c, pal)
+					}
 				})
-
-				if a.kind == 0 && a.panes[0] != nil {
-					ui.Divider(c).Height(16).Margin(0, 2)
-					ready := a.diff.ComparisonReady() && !a.busy && !a.compareRunning && a.compareErr == nil
-					prevBtn := ui.Button(c, "").Label("上一差异").Padding(4, 8).Gap(3).Radius(6).Disabled(!ready)
-					prevBtn.OnClick(func() { a.navigateDiff(-1) })
-					prevBtn.Children(func() {
-						ui.Icon(c, iconChevronUp).Size(11, 11)
-						ui.Text(c, "上一差异").FontSize(11).SingleLine()
-					})
-
-					nextBtn := ui.Button(c, "").Label("下一差异").Padding(4, 8).Gap(3).Radius(6).Disabled(!ready)
-					nextBtn.OnClick(func() { a.navigateDiff(1) })
-					nextBtn.Children(func() {
-						ui.Icon(c, iconChevronDown).Size(11, 11)
-						ui.Text(c, "下一差异").FontSize(11).SingleLine()
-					})
-
-					ui.Button(c, "← 应用到左侧").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(0) })
-					ui.Button(c, "应用到右侧 →").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(1) })
-
-					findBtn := ui.Button(c, "").Label("查找").Padding(4, 8).Gap(3).Radius(6)
-					findBtn.OnClick(func() { a.diff.Run(editor.Find) })
-					findBtn.Children(func() {
-						ui.Icon(c, iconSearch).Size(11, 11)
-						ui.Text(c, "查找").FontSize(11).SingleLine()
-					})
-				} else {
-					ui.Box(c).Grow(1)
-					a.renderToolbarMeta(c, pal)
-				}
-			})
+			}
 
 			if a.optionsOpen {
 				a.optionsView(c)
@@ -267,6 +313,8 @@ func (a *workspaceState) view(c *ui.Context) {
 			}
 
 			switch {
+			case a.kind == 6:
+				a.scratchView(c)
 			case a.kind == 2:
 				a.mergeView(c)
 			case a.kind == 3:
@@ -372,6 +420,16 @@ func (a *workspaceState) renderToolbarMeta(c *ui.Context, pal uiPalette) {
 
 func (a *workspaceState) renderHeaderBadge(c *ui.Context, pal uiPalette) {
 	switch {
+	case a.kind == 6:
+		diff := a.activeDiff()
+		if diff.ComparisonReady() {
+			n := len(diff.Hunks())
+			if n == 0 {
+				statusPill(c, "内容一致", pal.successFg, pal.successBg)
+			} else {
+				statusPill(c, fmt.Sprintf("%d 处差异", n), pal.diffFg, pal.diffBg)
+			}
+		}
 	case a.kind == 0 && a.panes[0] != nil && a.diff.ComparisonReady():
 		n := len(a.diff.Hunks())
 		if n == 0 {
@@ -407,9 +465,9 @@ func (a *workspaceState) welcomeView(c *ui.Context, pal uiPalette) {
 					head string
 					desc string
 				}{
+					{6, "纯文本粘贴比较", "直接在双栏中粘贴/键入文本对比"},
 					{0, "双栏代码比较", "行内词级对比与实时双向编辑"},
 					{1, "目录结构比对", "递归比对与带备份安全同步"},
-					{2, "文本合并解决", "三列行对齐与一键采纳冲突"},
 				}
 				for _, card := range cards {
 					card := card
@@ -417,7 +475,7 @@ func (a *workspaceState) welcomeView(c *ui.Context, pal uiPalette) {
 					box.OnClick(func() { a.selectKind(card.kind) })
 					box.Children(func() {
 						ui.Row(c).Gap(5).Children(func() {
-							ui.Icon(c, modeIcons[card.kind]).Size(13, 13).TextColor(pal.baseAccent)
+							ui.Icon(c, modeIcon(card.kind)).Size(13, 13).TextColor(pal.baseAccent)
 							ui.Text(c, card.head).FontSize(12).Bold().SingleLine()
 						})
 						ui.Text(c, card.desc).FontSize(10).TextColor(t.TextMuted)
@@ -531,4 +589,204 @@ func (a *workspaceState) textView(c *ui.Context) {
 			})
 		}
 	})
+}
+
+func (a *workspaceState) scratchView(c *ui.Context) {
+	t := c.Theme()
+	pal := paletteFor(t)
+	a.ensureScratch()
+
+	leftBuf := a.scratchPanes[0].buffer
+	rightBuf := a.scratchPanes[1].buffer
+	leftLen := leftBuf.Len()
+	rightLen := rightBuf.Len()
+	leftLines := leftBuf.LineCount()
+	rightLines := rightBuf.LineCount()
+
+	// 顶部快捷工具栏
+	ui.Row(c).Height(38).Padding(0, 14).Gap(6).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		// 互换按钮
+		swapBtn := ui.Button(c, "").Label("互换两侧").Padding(4, 9).Gap(4).Radius(5).Background(pal.subtleSurface).Border(1, pal.cardBorder)
+		swapBtn.OnClick(func() {
+			lt := leftBuf.String()
+			rt := rightBuf.String()
+			leftBuf.Set(rt)
+			rightBuf.Set(lt)
+			a.refreshComparison()
+			a.message = "已互换左右两侧文本"
+		})
+		swapBtn.Children(func() {
+			ui.Icon(c, iconSwap).Size(11, 11).TextColor(pal.sidebarText)
+			ui.Text(c, "互换两侧").FontSize(11).SingleLine()
+		})
+
+		// 清空两侧按钮
+		clearBtn := ui.Button(c, "清空两侧").Padding(4, 8).Radius(5).FontSize(11).Disabled(leftLen == 0 && rightLen == 0)
+		clearBtn.OnClick(func() {
+			leftBuf.Set("")
+			rightBuf.Set("")
+			a.refreshComparison()
+			a.message = "已清空两栏文本"
+		})
+
+		// 载入示例按钮
+		sampleBtn := ui.Button(c, "载入示例").Padding(4, 8).Radius(5).FontSize(11)
+		sampleBtn.OnClick(func() {
+			leftBuf.Set("package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare!\")\n\titems := []string{\"apple\", \"banana\", \"cherry\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"%d: %s\\n\", i, item)\n\t}\n}\n")
+			rightBuf.Set("package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare v2!\")\n\titems := []string{\"apple\", \"blueberry\", \"cherry\", \"date\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"[%d] %s\\n\", i+1, strings.ToUpper(item))\n\t}\n}\n")
+			a.refreshComparison()
+			a.message = "已载入示例对比文本"
+		})
+
+		ui.Box(c).Width(1).Height(16).Background(pal.cardBorder)
+
+		// 差异导航
+		diff := a.activeDiff()
+		ready := diff.ComparisonReady() && !a.busy && !a.compareRunning && a.compareErr == nil
+		hasHunks := ready && len(diff.Hunks()) > 0
+
+		prevBtn := ui.Button(c, "").Label("上一差异").Padding(4, 7).Gap(3).Radius(5).Disabled(!hasHunks)
+		prevBtn.OnClick(a.diffPrev)
+		prevBtn.Children(func() {
+			ui.Icon(c, iconChevronUp).Size(11, 11)
+			ui.Text(c, "上一差异").FontSize(11).SingleLine()
+		})
+
+		nextBtn := ui.Button(c, "").Label("下一差异").Padding(4, 7).Gap(3).Radius(5).Disabled(!hasHunks)
+		nextBtn.OnClick(a.diffNext)
+		nextBtn.Children(func() {
+			ui.Icon(c, iconChevronDown).Size(11, 11)
+			ui.Text(c, "下一差异").FontSize(11).SingleLine()
+		})
+
+		// 忽略空白
+		ignoreBtn := ui.Button(c, "").Label("忽略空白").Padding(4, 8).Radius(5).FontSize(11).Disabled(!ready)
+		if a.ignoreSpace {
+			ignoreBtn.Background(pal.baseBg).Border(1, pal.baseAccent).TextColor(pal.baseAccent)
+		}
+		ignoreBtn.OnClick(func() { a.ignoreSpace = !a.ignoreSpace; a.refreshComparison() })
+		ignoreBtn.Children(func() {
+			ui.Text(c, "忽略空白").FontSize(11).SingleLine()
+		})
+
+		// 行内高亮
+		inlineBtn := ui.Button(c, "").Label("行内高亮").Padding(4, 8).Radius(5).FontSize(11).Disabled(!ready)
+		if diff.Inline != editor.DiffInlineNone {
+			inlineBtn.Background(pal.baseBg).Border(1, pal.baseAccent).TextColor(pal.baseAccent)
+		}
+		inlineBtn.OnClick(func() {
+			if diff.Inline == editor.DiffInlineNone {
+				diff.Inline = editor.DiffInlineWordAlt
+			} else {
+				diff.Inline = editor.DiffInlineNone
+			}
+			a.refreshComparison()
+		})
+		inlineBtn.Children(func() {
+			ui.Text(c, "行内高亮").FontSize(11).SingleLine()
+		})
+
+		// 自动换行
+		wrapBtn := ui.Button(c, "").Label("自动换行").Padding(4, 8).Radius(5).FontSize(11)
+		if a.wrap {
+			wrapBtn.Background(pal.baseBg).Border(1, pal.baseAccent).TextColor(pal.baseAccent)
+		}
+		wrapBtn.OnClick(func() { a.wrap = !a.wrap })
+		wrapBtn.Children(func() {
+			ui.Text(c, "自动换行").FontSize(11).SingleLine()
+		})
+	})
+
+	// 双栏头部（左侧与右侧）
+	ui.Row(c).Gap(1).Background(pal.cardBorder).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		// 左侧头部
+		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Height(38).Padding(0, 12).Gap(8).Background(pal.cardBg).Children(func() {
+			sideBadge(c, 0, pal)
+			ui.Text(c, "左侧文本").Bold().FontSize(12).TextColor(pal.sidebarText).SingleLine()
+			stat := fmt.Sprintf("%d 行 · %d 字符", leftLines, leftLen)
+			ui.Text(c, stat).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			ui.Box(c).Grow(1)
+
+			pasteBtn := ui.Button(c, "").Label("粘贴到左侧").Padding(3, 8).Gap(4).Radius(5).Background(pal.subtleSurface).Border(1, pal.cardBorder)
+			pasteBtn.OnClick(func() {
+				clip := c.Services().ReadClipboard()
+				if clip != "" {
+					leftBuf.Set(clip)
+					a.refreshComparison()
+					a.message = fmt.Sprintf("已粘贴 %d 字符到左侧", len(clip))
+				} else {
+					a.message = "剪贴板为空"
+				}
+			})
+			pasteBtn.Children(func() {
+				ui.Text(c, "📋 粘贴").FontSize(11).SingleLine()
+			})
+
+			copyBtn := ui.Button(c, "复制").Padding(3, 8).Radius(5).FontSize(11).Disabled(leftLen == 0)
+			copyBtn.OnClick(func() {
+				c.Services().WriteClipboard(leftBuf.String())
+				a.message = "已复制左侧文本到剪贴板"
+			})
+
+			clearLeftBtn := ui.Button(c, "清空").Padding(3, 8).Radius(5).FontSize(11).Disabled(leftLen == 0)
+			clearLeftBtn.OnClick(func() {
+				leftBuf.Set("")
+				a.refreshComparison()
+			})
+
+			saveLeftBtn := ui.Button(c, "另存为…").Padding(3, 8).Radius(5).FontSize(11).Disabled(leftLen == 0)
+			saveLeftBtn.OnClick(func() { a.saveScratchAs(0) })
+		})
+
+		// 右侧头部
+		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Height(38).Padding(0, 12).Gap(8).Background(pal.cardBg).Children(func() {
+			sideBadge(c, 1, pal)
+			ui.Text(c, "右侧文本").Bold().FontSize(12).TextColor(pal.sidebarText).SingleLine()
+			stat := fmt.Sprintf("%d 行 · %d 字符", rightLines, rightLen)
+			ui.Text(c, stat).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			ui.Box(c).Grow(1)
+
+			pasteBtn := ui.Button(c, "").Label("粘贴到右侧").Padding(3, 8).Gap(4).Radius(5).Background(pal.subtleSurface).Border(1, pal.cardBorder)
+			pasteBtn.OnClick(func() {
+				clip := c.Services().ReadClipboard()
+				if clip != "" {
+					rightBuf.Set(clip)
+					a.refreshComparison()
+					a.message = fmt.Sprintf("已粘贴 %d 字符到右侧", len(clip))
+				} else {
+					a.message = "剪贴板为空"
+				}
+			})
+			pasteBtn.Children(func() {
+				ui.Text(c, "📋 粘贴").FontSize(11).SingleLine()
+			})
+
+			copyBtn := ui.Button(c, "复制").Padding(3, 8).Radius(5).FontSize(11).Disabled(rightLen == 0)
+			copyBtn.OnClick(func() {
+				c.Services().WriteClipboard(rightBuf.String())
+				a.message = "已复制右侧文本到剪贴板"
+			})
+
+			clearRightBtn := ui.Button(c, "清空").Padding(3, 8).Radius(5).FontSize(11).Disabled(rightLen == 0)
+			clearRightBtn.OnClick(func() {
+				rightBuf.Set("")
+				a.refreshComparison()
+			})
+
+			saveRightBtn := ui.Button(c, "另存为…").Padding(3, 8).Radius(5).FontSize(11).Disabled(rightLen == 0)
+			saveRightBtn.OnClick(func() { a.saveScratchAs(1) })
+		})
+	})
+
+	if leftLen == 0 && rightLen == 0 {
+		ui.Row(c).Height(32).Padding(0, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+			ui.Text(c, "💡 提示：可直接在左右两栏中键入或按 ⌘V 粘贴文本，支持实时差异高亮与双侧编辑").FontSize(11).TextColor(t.TextMuted).SingleLine()
+		})
+	}
+
+	// 核心双栏 DiffView
+	a.scratchDiff.Wrap = a.wrap
+	a.scratchDiff.Editable = !a.busy
+	a.scratchDiff.OldEditable = !a.busy
+	editor.DiffView(c.Key("scratch_comparison"), &a.scratchDiff).Grow(1).FillWidth()
 }
