@@ -1,6 +1,7 @@
 package native
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -197,4 +198,105 @@ func TestScratchSaveAs(t *testing.T) {
 		t.Fatalf("unexpected text: %q", text)
 	}
 	_ = target
+}
+
+func TestScratchIgnoreBlankLines(t *testing.T) {
+	a := &workspaceState{}
+	a.selectKind(6)
+	a.ensureScratch()
+	a.scratchPanes[0].buffer.Set("func foo() {\n\n    bar()\n\n}\n")
+	a.scratchPanes[1].buffer.Set("func foo() {\n    bar()\n}\n")
+	a.refreshComparison()
+
+	tt := ui.NewTester(a.view, 1380, 880)
+	tt.Frame()
+
+	diff := a.activeDiff()
+	if len(diff.Hunks()) == 0 {
+		t.Fatal("expected diff before ignore blank lines")
+	}
+
+	// Click 忽略空行
+	if err := tt.Click("忽略空行"); err != nil {
+		t.Fatalf("failed to click 忽略空行: %v", err)
+	}
+	tt.Frame()
+
+	if !a.ignoreBlankLines {
+		t.Fatal("ignoreBlankLines should be true")
+	}
+	// After stripping blank lines, left and right both have: "func foo() {\n    bar()\n}\n"
+	if a.scratchPanes[0].buffer.String() != "func foo() {\n    bar()\n}\n" {
+		t.Fatalf("unexpected left after strip: %q", a.scratchPanes[0].buffer.String())
+	}
+	if len(diff.Hunks()) != 0 {
+		t.Fatalf("expected 0 hunks after ignoring blank lines, got %d", len(diff.Hunks()))
+	}
+	if !strings.Contains(a.message, "左侧去除 2 行") {
+		t.Fatalf("unexpected message: %q", a.message)
+	}
+
+	// Click 忽略空行 again to restore
+	if err := tt.Click("忽略空行"); err != nil {
+		t.Fatalf("failed to click 忽略空行 again: %v", err)
+	}
+	tt.Frame()
+
+	if a.ignoreBlankLines {
+		t.Fatal("ignoreBlankLines should be false")
+	}
+	if a.scratchPanes[0].buffer.String() != "func foo() {\n\n    bar()\n\n}\n" {
+		t.Fatalf("unexpected left after restore: %q", a.scratchPanes[0].buffer.String())
+	}
+	if len(diff.Hunks()) == 0 {
+		t.Fatal("expected diff to reappear after restoring blank lines")
+	}
+}
+
+func TestFileCompareIgnoreBlankLines(t *testing.T) {
+	dir := t.TempDir()
+	leftPath := filepath.Join(dir, "left.txt")
+	rightPath := filepath.Join(dir, "right.txt")
+
+	leftContent := "line 1\n\n\nline 2\n\nline 3\n"
+	rightContent := "line 1\nline 2\nline 3\n"
+	_ = os.WriteFile(leftPath, []byte(leftContent), 0644)
+	_ = os.WriteFile(rightPath, []byte(rightContent), 0644)
+
+	a := &workspaceState{paths: [2]string{leftPath, rightPath}}
+	a.load()
+
+	tt := ui.NewTester(a.view, 1380, 880)
+	tt.Frame()
+
+	diff := a.activeDiff()
+	if len(diff.Hunks()) == 0 {
+		t.Fatal("expected diff before ignore blank lines")
+	}
+
+	// Click 忽略空行 in file compare toolbar
+	if err := tt.Click("忽略空行"); err != nil {
+		t.Fatalf("failed to click 忽略空行 in file compare: %v", err)
+	}
+	tt.Frame()
+
+	if !a.ignoreBlankLines {
+		t.Fatal("ignoreBlankLines should be true")
+	}
+	if len(diff.Hunks()) != 0 {
+		t.Fatalf("expected 0 hunks in file compare after ignore blank lines, got %d", len(diff.Hunks()))
+	}
+
+	// Toggle back
+	if err := tt.Click("忽略空行"); err != nil {
+		t.Fatalf("failed to toggle 忽略空行: %v", err)
+	}
+	tt.Frame()
+
+	if a.ignoreBlankLines {
+		t.Fatal("ignoreBlankLines should be false")
+	}
+	if len(diff.Hunks()) == 0 {
+		t.Fatal("expected diff to reappear in file compare")
+	}
 }

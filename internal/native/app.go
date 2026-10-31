@@ -37,6 +37,8 @@ type workspaceState struct {
 	optionsOpen        bool
 	ignoreSpace        bool
 	compareIgnoreSpace bool
+	ignoreBlankLines   bool
+	blankLineBackups   [2]string
 	closedDirs         map[string]bool
 	dirSearch          string
 	directoryOptions   compare.ScanOptions
@@ -460,4 +462,61 @@ func (a *workspaceState) saveScratchAs(side int) {
 		return
 	}
 	a.message = fmt.Sprintf("已保存至 %s", filepath.Base(path))
+}
+
+func stripBlankLines(text string) (string, int) {
+	if text == "" {
+		return "", 0
+	}
+	hasTrailingNL := strings.HasSuffix(text, "\n")
+	lines := strings.Split(text, "\n")
+	var kept []string
+	removed := 0
+	for i, line := range lines {
+		if i == len(lines)-1 && line == "" && hasTrailingNL {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			removed++
+			continue
+		}
+		kept = append(kept, line)
+	}
+	result := strings.Join(kept, "\n")
+	if hasTrailingNL && len(kept) > 0 {
+		result += "\n"
+	}
+	return result, removed
+}
+
+func (a *workspaceState) setIgnoreBlankLines(enabled bool) {
+	panes := a.activePanes()
+	if panes[0] == nil || panes[1] == nil {
+		return
+	}
+	leftBuf := panes[0].buffer
+	rightBuf := panes[1].buffer
+
+	a.ignoreBlankLines = enabled
+	if enabled {
+		a.blankLineBackups = [2]string{leftBuf.String(), rightBuf.String()}
+		strippedLeft, remLeft := stripBlankLines(a.blankLineBackups[0])
+		strippedRight, remRight := stripBlankLines(a.blankLineBackups[1])
+		leftBuf.Set(strippedLeft)
+		rightBuf.Set(strippedRight)
+		a.refreshComparison()
+		a.message = fmt.Sprintf("已忽略空行（左侧去除 %d 行，右侧去除 %d 行）", remLeft, remRight)
+	} else {
+		if a.blankLineBackups[0] != "" || a.blankLineBackups[1] != "" {
+			leftBuf.Set(a.blankLineBackups[0])
+			rightBuf.Set(a.blankLineBackups[1])
+			a.blankLineBackups = [2]string{}
+		}
+		a.refreshComparison()
+		a.message = "已恢复包含空行的原始文本"
+	}
+}
+
+func (a *workspaceState) toggleIgnoreBlankLines() {
+	a.setIgnoreBlankLines(!a.ignoreBlankLines)
 }

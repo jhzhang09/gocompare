@@ -28,6 +28,8 @@ func (a *workspaceState) selectKind(kind int) {
 		hadResult := a.panes[0] != nil || a.directoryRows != nil || a.mergeResult != nil || a.pictureResult != nil || a.mediaReady || a.infoReady
 		a.stopComparison()
 		a.compareRequested = false
+		a.ignoreBlankLines = false
+		a.blankLineBackups = [2]string{}
 		if hadResult {
 			a.paths = [2]string{}
 			if kind == 1 && a.panes[0] != nil {
@@ -287,6 +289,24 @@ func (a *workspaceState) view(c *ui.Context) {
 						ui.Button(c, "← 应用到左侧").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(0) })
 						ui.Button(c, "应用到右侧 →").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(1) })
 
+						ignoreSpaceBtn := ui.Button(c, "").Label("忽略空白").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready)
+						if a.ignoreSpace {
+							ignoreSpaceBtn.Background(pal.baseBg).Border(1, pal.baseAccent).TextColor(pal.baseAccent)
+						}
+						ignoreSpaceBtn.OnClick(func() { a.ignoreSpace = !a.ignoreSpace; a.refreshComparison() })
+						ignoreSpaceBtn.Children(func() {
+							ui.Text(c, "忽略空白").FontSize(11).SingleLine()
+						})
+
+						ignoreBlankBtn := ui.Button(c, "").Label("忽略空行").Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready)
+						if a.ignoreBlankLines {
+							ignoreBlankBtn.Background(pal.baseBg).Border(1, pal.baseAccent).TextColor(pal.baseAccent)
+						}
+						ignoreBlankBtn.OnClick(a.toggleIgnoreBlankLines)
+						ignoreBlankBtn.Children(func() {
+							ui.Text(c, "忽略空行").FontSize(11).SingleLine()
+						})
+
 						findBtn := ui.Button(c, "").Label("查找").Padding(4, 8).Gap(3).Radius(6)
 						findBtn.OnClick(func() { a.diff.Run(editor.Find) })
 						findBtn.Children(func() {
@@ -509,6 +529,7 @@ func (a *workspaceState) optionsView(c *ui.Context) {
 				ui.Divider(c).Height(16)
 				ui.Segmented(c, &a.mode, "比较", "编辑左侧", "编辑右侧")
 				ui.Checkbox(c, &a.ignoreSpace, "忽略空白").OnChange(a.recompute)
+				ui.Checkbox(c, &a.ignoreBlankLines, "忽略空行").OnChange(func() { a.setIgnoreBlankLines(a.ignoreBlankLines) })
 				ui.Checkbox(c, &a.wrap, "自动换行")
 				ui.Button(c, "重新计算").Padding(4, 8).Radius(6).FontSize(11).OnClick(a.recompute)
 			}
@@ -667,6 +688,16 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 		ignoreBtn.OnClick(func() { a.ignoreSpace = !a.ignoreSpace; a.refreshComparison() })
 		ignoreBtn.Children(func() {
 			ui.Text(c, "忽略空白").FontSize(11).SingleLine()
+		})
+
+		// 忽略空行
+		ignoreBlankBtn := ui.Button(c, "").Label("忽略空行").Padding(4, 8).Radius(5).FontSize(11).Disabled(!ready)
+		if a.ignoreBlankLines {
+			ignoreBlankBtn.Background(pal.baseBg).Border(1, pal.baseAccent).TextColor(pal.baseAccent)
+		}
+		ignoreBlankBtn.OnClick(a.toggleIgnoreBlankLines)
+		ignoreBlankBtn.Children(func() {
+			ui.Text(c, "忽略空行").FontSize(11).SingleLine()
 		})
 
 		// 行内高亮
