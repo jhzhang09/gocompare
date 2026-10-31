@@ -56,15 +56,17 @@ Compare text, folders, images and binary metadata, merge three-way, and sync dir
 
 ## Installation
 
-### Homebrew (macOS)
+### Homebrew
 
 ```bash
-# Desktop app (GUI)
-brew install --cask --no-quarantine jhzhang09/tap/gocompare
+# Desktop app (macOS) — also adds the `gocompare` command
+brew install --cask jhzhang09/tap/gocompare
 
-# Command line (CLI)
+# Command line (macOS and Linux) — installs `gocompare-cli`
 brew install jhzhang09/tap/gocompare-cli
 ```
+
+The desktop app is not notarized yet, so macOS blocks its first launch; see [macOS: "GoCompare can't be opened"](#macos-gatekeeper) below.
 
 ### Manual download
 
@@ -78,14 +80,17 @@ Download the latest build from the [**Releases**](https://github.com/jhzhang09/g
 
 Every release ships `SHA256SUMS.txt` and a [build provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations) you can check with `gh attestation verify <file> --repo jhzhang09/gocompare`.
 
+<a id="macos-gatekeeper"></a>
 <details>
 <summary><b>macOS: "GoCompare can't be opened"</b></summary>
 
-Release builds are ad-hoc signed but not notarized yet. Right-click **GoCompare.app → Open** the first time, or run:
+Release builds are ad-hoc signed but not notarized yet. Allow the app once by running:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/GoCompare.app
 ```
+
+or try to open it, then choose **System Settings → Privacy & Security → Open Anyway**. (On macOS 15 and later, right-click → Open no longer bypasses this check.)
 </details>
 
 <details>
@@ -129,7 +134,7 @@ gocompare --directories ./left ./right       # compare two folders
 gocompare --version
 ```
 
-On macOS the executable lives at `/Applications/GoCompare.app/Contents/MacOS/GoCompare`.
+With the Homebrew cask the `gocompare` command is on your `PATH`; otherwise the executable lives at `/Applications/GoCompare.app/Contents/MacOS/GoCompare`.
 
 ### Command line
 

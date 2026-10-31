@@ -56,15 +56,17 @@
 
 ## 安装
 
-### Homebrew（macOS）
+### Homebrew
 
 ```bash
-# 桌面应用（GUI）
-brew install --cask --no-quarantine jhzhang09/tap/gocompare
+# 桌面应用（macOS），同时提供 `gocompare` 命令
+brew install --cask jhzhang09/tap/gocompare
 
-# 命令行工具（CLI）
+# 命令行工具（macOS 与 Linux），安装 `gocompare-cli`
 brew install jhzhang09/tap/gocompare-cli
 ```
+
+桌面应用尚未经过公证，macOS 会拦截首次启动，处理方法见下方的 [macOS 提示"无法打开 GoCompare"](#macos-gatekeeper)。
 
 ### 手动下载
 
@@ -78,14 +80,17 @@ brew install jhzhang09/tap/gocompare-cli
 
 每个版本都附带 `SHA256SUMS.txt` 和[构建来源证明](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)，可用 `gh attestation verify <文件> --repo jhzhang09/gocompare` 校验。
 
+<a id="macos-gatekeeper"></a>
 <details>
 <summary><b>macOS 提示"无法打开 GoCompare"</b></summary>
 
-发布版本使用临时签名，尚未经过公证。首次启动时请右键点击 **GoCompare.app → 打开**，或执行：
+发布版本使用临时签名，尚未经过公证。执行一次下面的命令即可放行：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/GoCompare.app
 ```
+
+也可以先尝试打开，再到**系统设置 → 隐私与安全性**中点击**仍要打开**。（macOS 15 及以后版本，"右键 → 打开"已不能绕过这项检查。）
 </details>
 
 <details>
@@ -129,7 +134,7 @@ gocompare --directories ./left ./right       # 比较两个目录
 gocompare --version
 ```
 
-macOS 上的可执行文件位于 `/Applications/GoCompare.app/Contents/MacOS/GoCompare`。
+通过 Homebrew Cask 安装后，`gocompare` 命令已在 `PATH` 中；否则可执行文件位于 `/Applications/GoCompare.app/Contents/MacOS/GoCompare`。
 
 ### 命令行
 

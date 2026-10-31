@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Homebrew tap: `brew install --cask jhzhang09/tap/gocompare` for the desktop app (also links a `gocompare` command) and `brew install jhzhang09/tap/gocompare-cli` for the CLI on macOS and Linux. Stable releases update the tap automatically.
+
+### Fixed
+
+- macOS install instructions no longer use Homebrew's removed `--no-quarantine` option or the right-click → Open bypass that macOS 15 dropped.
+
 ## [0.1.0] - 2026-11-01
 
 First public release.

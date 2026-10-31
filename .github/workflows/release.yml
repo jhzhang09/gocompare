@@ -122,6 +122,9 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+    # 步骤的 if 不能直接引用 secrets；任务级只放"是否配置"的布尔值，令牌只交给需要它的步骤。
+    env:
+      HAS_TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -146,8 +149,9 @@ jobs:
             --notes-file .github/release-notes.md \
             --generate-notes \
             $prerelease
+      # 预发布版本（标签含 -）不推送到 tap，brew 用户只会升级到正式版。
       - name: Update Homebrew tap
-        if: env.TAP_GITHUB_TOKEN != ''
+        if: env.HAS_TAP_TOKEN == 'true' && !contains(github.ref_name, '-')
         env:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: scripts/update-homebrew-tap.sh "$GITHUB_REF_NAME" assets/SHA256SUMS.txt
