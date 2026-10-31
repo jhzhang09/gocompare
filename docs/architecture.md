@@ -10,11 +10,11 @@ flowchart TD
   CLI[cmd/gocompare-cli] --> Compare[internal/compare]
   Native --> Doc[internal/document]
   Native --> Editor[MyGo ui/editor]
-  Git[internal/git] --> Patch[internal/diff]
-  Git --> Proc[internal/proc]
+  CLI --> Extend[internal/extend]
+  Extend --> Proc[internal/proc]
 ```
 
-`cmd` 只处理进程入口；`document` 不依赖 UI，管理文件信息与保存契约；`compare` 不依赖窗口，实现无界面可调用用例；`native` 持有控件、编辑缓冲区及窗口状态。保留的 Git／patch 核心目前未接入新工作区。
+`cmd` 只处理进程入口；`document` 不依赖 UI，管理文件信息与保存契约；`compare` 不依赖窗口，实现无界面可调用用例；`native` 持有控件、编辑缓冲区及窗口状态。`extend` 通过 `proc` 启动外部进程。
 
 ## 当前模型
 
