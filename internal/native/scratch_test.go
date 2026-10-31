@@ -197,13 +197,22 @@ func TestScratchSaveAs(t *testing.T) {
 	a.selectKind(6)
 	a.ensureScratch()
 	a.scratchPanes[0].buffer.Set("content to save\n")
-
-	// Calling saveScratchAs directly with a file path logic
-	text := a.scratchPanes[0].buffer.String()
-	if text != "content to save\n" {
-		t.Fatalf("unexpected text: %q", text)
+	if !a.scratchUnsaved() {
+		t.Fatal("typed scratch text must count as unsaved")
 	}
-	_ = target
+	a.saveScratchAsPath(0, target)
+	if data, err := os.ReadFile(target); err != nil || string(data) != "content to save\n" {
+		t.Fatalf("saved %q %v", data, err)
+	}
+	if a.scratchUnsaved() {
+		t.Fatal("saved scratch text must not prompt on close")
+	}
+	// 目标已存在时不覆盖，保持与文件另存为一致。
+	a.scratchPanes[0].buffer.Set("other\n")
+	a.saveScratchAsPath(0, target)
+	if data, _ := os.ReadFile(target); string(data) != "content to save\n" || a.err == "" {
+		t.Fatalf("existing file overwritten: %q err=%q", data, a.err)
+	}
 }
 
 func TestScratchIgnoreBlankLines(t *testing.T) {
@@ -237,10 +246,14 @@ func TestScratchIgnoreBlankLines(t *testing.T) {
 	if !a.ignoreBlankLines {
 		t.Fatal("ignoreBlankLines should be true")
 	}
-	// After stripping blank lines, left and right both have: "func foo() {\n    bar()\n}\n"
-	if a.scratchPanes[0].buffer.String() != "func foo() {\n    bar()\n}\n" {
-		t.Fatalf("unexpected left after strip: %q", a.scratchPanes[0].buffer.String())
+	// 用户缓冲区保持原样，比较视图显示去除空行后的只读副本。
+	if a.scratchPanes[0].buffer.String() != "func foo() {\n\n    bar()\n\n}\n" {
+		t.Fatalf("user buffer must not be rewritten: %q", a.scratchPanes[0].buffer.String())
 	}
+	if got := a.activePanes()[0].buffer.String(); got != "func foo() {\n    bar()\n}\n" {
+		t.Fatalf("unexpected blank view: %q", got)
+	}
+	diff = a.activeDiff()
 	if len(diff.Hunks()) != 0 {
 		t.Fatalf("expected 0 hunks after ignoring blank lines, got %d", len(diff.Hunks()))
 	}
@@ -260,6 +273,7 @@ func TestScratchIgnoreBlankLines(t *testing.T) {
 	if a.scratchPanes[0].buffer.String() != "func foo() {\n\n    bar()\n\n}\n" {
 		t.Fatalf("unexpected left after restore: %q", a.scratchPanes[0].buffer.String())
 	}
+	diff = a.activeDiff()
 	if len(diff.Hunks()) == 0 {
 		t.Fatal("expected diff to reappear after restoring blank lines")
 	}
@@ -302,8 +316,9 @@ func TestFileCompareIgnoreBlankLines(t *testing.T) {
 		t.Fatal("ignoreBlankLines should be true")
 	}
 	if a.dirty() {
-		t.Fatal("dirty() should be false when ignoreBlankLines is active")
+		t.Fatal("dirty() should be false when nothing was edited")
 	}
+	diff = a.activeDiff()
 	if len(diff.Hunks()) != 0 {
 		t.Fatalf("expected 0 hunks in file compare after ignore blank lines, got %d", len(diff.Hunks()))
 	}
@@ -320,6 +335,7 @@ func TestFileCompareIgnoreBlankLines(t *testing.T) {
 	if a.dirty() {
 		t.Fatal("dirty() should remain false after restoring blank lines")
 	}
+	diff = a.activeDiff()
 	if len(diff.Hunks()) == 0 {
 		t.Fatal("expected diff to reappear in file compare")
 	}
@@ -397,5 +413,60 @@ func TestModeSwitchPreservesState(t *testing.T) {
 	}
 	if a.scratchPanes[0].buffer.String() != "scratch custom left\n" {
 		t.Fatalf("unexpected scratch text: %q", a.scratchPanes[0].buffer.String())
+	}
+}
+
+// 忽略空行只换比较视图：未保存的修改仍受关窗保护，视图只读，关闭后修改原样保留。
+func TestIgnoreBlankLinesKeepsUserEdits(t *testing.T) {
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "l.txt"), filepath.Join(dir, "r.txt")
+	if err := os.WriteFile(left, []byte("a\n\nb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(right, []byte("a\nb\nc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := &workspaceState{paths: [2]string{left, right}}
+	a.load()
+	a.panes[1].buffer.Set("edited\n\nkeep\n")
+	a.setIgnoreBlankLines(true)
+	if !a.dirty() {
+		t.Fatal("unsaved edits must keep the close guard while ignoring blank lines")
+	}
+	if got := a.activePanes()[1].buffer.String(); got != "edited\nkeep\n" {
+		t.Fatalf("unexpected blank view: %q", got)
+	}
+	a.apply(1)
+	if got := a.panes[0].buffer.String(); got != "a\n\nb\n" {
+		t.Fatalf("read-only view must not apply hunks: %q", got)
+	}
+	a.setIgnoreBlankLines(false)
+	if got := a.panes[1].buffer.String(); got != "edited\n\nkeep\n" {
+		t.Fatalf("edits lost after toggling: %q", got)
+	}
+}
+
+// 忽略空行期间重新加载文件，视图必须跟随新文件，不能把旧文件内容写回新面板。
+func TestIgnoreBlankLinesFollowsReload(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, text string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	a := &workspaceState{paths: [2]string{write("l.txt", "OLD-L\n\n"), write("r.txt", "OLD-R\n")}}
+	a.load()
+	a.setIgnoreBlankLines(true)
+	a.paths = [2]string{write("l2.txt", "NEW-L\n\n"), write("r2.txt", "NEW-R\n")}
+	a.load()
+	a.refreshComparison()
+	if got := a.activePanes()[0].buffer.String(); got != "NEW-L\n" {
+		t.Fatalf("blank view did not follow reload: %q", got)
+	}
+	a.setIgnoreBlankLines(false)
+	if got := a.panes[0].buffer.String(); got != "NEW-L\n\n" || a.panes[0].buffer.Modified() {
+		t.Fatalf("reloaded pane corrupted: %q modified=%v", got, a.panes[0].buffer.Modified())
 	}
 }

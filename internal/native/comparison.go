@@ -2,9 +2,9 @@ package native
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/egoist/mygo/ui/editor"
+	"gocompare/internal/i18n"
 	"gocompare/internal/textcompare"
 )
 
@@ -27,6 +27,10 @@ func (a *workspaceState) refreshComparison() {
 	buffers := [2]*editor.Buffer{panes[0].buffer, panes[1].buffer}
 	versions := [2]uint64{buffers[0].Version(), buffers[1].Version()}
 	anchors := append([]textcompare.Anchor(nil), a.anchors...)
+	if a.ignoreBlankLines {
+		// 锚点是原文行号，与去除空行后的行号不对应，只读副本上不使用。
+		anchors = nil
+	}
 	if a.compareRequested && a.compareBuffers == buffers && a.compareVersions == versions && a.compareInline == diff.Inline && a.compareIgnoreSpace == a.ignoreSpace && sameAnchors(a.compareAnchors, anchors) {
 		return
 	}
@@ -73,14 +77,14 @@ func (a *workspaceState) refreshComparison() {
 			a.err = ""
 			n := len(result.Hunks())
 			if ignore {
-				a.message = fmt.Sprintf("按规则 %d 个差异", n)
+				a.message = i18n.TArgs("status.ruleDiffs", n)
 				if n == 0 {
-					a.message = "按规则相同"
+					a.message = i18n.T("status.ruleSame")
 				}
 			} else {
-				a.message = fmt.Sprintf("比较完成 · %d 个差异块", n)
+				a.message = i18n.TArgs("status.compareDone", n)
 				if len(anchors) > 0 {
-					a.message = fmt.Sprintf("已对齐 %d 处 · %d 个差异块", len(anchors), n)
+					a.message = i18n.TArgs("status.aligned", len(anchors), n)
 				}
 			}
 		})
@@ -111,12 +115,16 @@ func sameAnchors(a, b []textcompare.Anchor) bool {
 
 // markAnchorSide 记录当前活动侧的光标行。侧必须与光标所在侧一致。
 func (a *workspaceState) markAnchorSide(side editor.DiffSide) {
+	if a.ignoreBlankLines {
+		a.err = i18n.T("err.anchorBlank")
+		return
+	}
 	if a.panes[0] == nil || !a.diff.ComparisonReady() {
-		a.err = "先完成一次比较"
+		a.err = i18n.T("err.compareFirst")
 		return
 	}
 	if a.diff.ActiveSide() != side {
-		a.err = "先在这一侧放置光标"
+		a.err = i18n.T("err.cursorSide")
 		return
 	}
 	line := a.diff.CursorPos().Line
@@ -126,20 +134,24 @@ func (a *workspaceState) markAnchorSide(side editor.DiffSide) {
 		a.anchorRight, a.anchorRightSet = line, true
 	}
 	a.err = ""
-	left, right := "未标记", "未标记"
+	left, right := i18n.T("anchor.unset"), i18n.T("anchor.unset")
 	if a.anchorLeftSet {
-		left = fmt.Sprintf("第 %d 行", a.anchorLeft+1)
+		left = i18n.TArgs("anchor.line", a.anchorLeft+1)
 	}
 	if a.anchorRightSet {
-		right = fmt.Sprintf("第 %d 行", a.anchorRight+1)
+		right = i18n.TArgs("anchor.line", a.anchorRight+1)
 	}
-	a.message = "已标记左侧" + left + "、右侧" + right
+	a.message = i18n.TArgs("anchor.marked", left, right)
 }
 
 // commitAnchor 把已标记的左右行追加为锚点，并按锚点重算差异。失败时不增加锚点。
 func (a *workspaceState) commitAnchor() {
+	if a.ignoreBlankLines {
+		a.err = i18n.T("err.anchorBlank")
+		return
+	}
 	if a.panes[0] == nil || !a.anchorLeftSet || !a.anchorRightSet {
-		a.err = "先标记左右两行"
+		a.err = i18n.T("err.markBoth")
 		return
 	}
 	next := append(append([]textcompare.Anchor(nil), a.anchors...), textcompare.Anchor{Left: a.anchorLeft, Right: a.anchorRight})
@@ -153,7 +165,7 @@ func (a *workspaceState) commitAnchor() {
 	prevLeft, prevRight := 0, 0
 	for _, p := range next {
 		if p.Left < prevLeft || p.Right < prevRight || p.Left > leftMax || p.Right > rightMax {
-			a.err = "对齐位置必须按顺序且位于文件内"
+			a.err = i18n.T("err.anchorOrder")
 			return
 		}
 		prevLeft, prevRight = p.Left, p.Right

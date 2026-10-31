@@ -1,6 +1,10 @@
 package i18n
 
-import "testing"
+import (
+	"regexp"
+	"strings"
+	"testing"
+)
 
 func TestI18nTranslations(t *testing.T) {
 	// Default ZhCN
@@ -37,4 +41,28 @@ func TestI18nTranslations(t *testing.T) {
 
 	// Restore to ZhCN
 	SetLanguage(ZhCN)
+}
+
+// 每个键都要有三种语言，且各语言的格式化动词顺序一致，否则 TArgs 会在某种语言下错位。
+func TestAllMessagesComplete(t *testing.T) {
+	verbs := regexp.MustCompile(`%[-+#0-9.]*[a-zA-Z%]`)
+	for key, langs := range messages {
+		want := verbs.FindAllString(langs[ZhCN], -1)
+		for _, lang := range []Language{ZhCN, ZhTW, EnUS} {
+			text := langs[lang]
+			if text == "" {
+				t.Errorf("%s missing %s", key, lang)
+				continue
+			}
+			if got := verbs.FindAllString(text, -1); strings.Join(got, ",") != strings.Join(want, ",") {
+				t.Errorf("%s %s verbs %v, want %v", key, lang, got, want)
+			}
+		}
+	}
+}
+
+func TestMatchesAnyLanguage(t *testing.T) {
+	if !Matches("sync.mirrorRight", "镜像到右侧") || !Matches("sync.mirrorRight", "Mirror to right") || Matches("sync.mirrorRight", "向右更新") {
+		t.Fatal("Matches must accept every language of the same key only")
+	}
 }

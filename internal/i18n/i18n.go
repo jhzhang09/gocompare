@@ -387,15 +387,25 @@ var messages = map[string]map[Language]string{
 		ZhTW: "差值",
 		EnUS: "Difference",
 	},
-	"picture.modeTolerance2": {
-		ZhCN: "容差 2",
-		ZhTW: "容差 2",
-		EnUS: "Tolerance 2",
+	"picture.modeTolerance": {
+		ZhCN: "容差",
+		ZhTW: "容差",
+		EnUS: "Tolerance",
 	},
-	"picture.modeTolerance255": {
-		ZhCN: "容差 255",
-		ZhTW: "容差 255",
-		EnUS: "Tolerance 255",
+	"picture.toleranceValue": {
+		ZhCN: "容差 %d",
+		ZhTW: "容差 %d",
+		EnUS: "Tolerance %d",
+	},
+	"picture.toleranceSlider": {
+		ZhCN: "容差滑块",
+		ZhTW: "容差滑桿",
+		EnUS: "Tolerance slider",
+	},
+	"picture.exceedCount": {
+		ZhCN: "超出容差 %d 像素 (%.2f%%)",
+		ZhTW: "超出容差 %d 像素 (%.2f%%)",
+		EnUS: "%d pixels beyond tolerance (%.2f%%)",
 	},
 	"picture.modeReplace": {
 		ZhCN: "替换颜色",
@@ -426,6 +436,11 @@ var messages = map[string]map[Language]string{
 		ZhCN: "200%",
 		ZhTW: "200%",
 		EnUS: "200%",
+	},
+	"picture.zoomGrid": {
+		ZhCN: "像素网格",
+		ZhTW: "像素網格",
+		EnUS: "Pixel Grid",
 	},
 	"picture.identical": {
 		ZhCN: "两图完全一致",
@@ -781,9 +796,9 @@ var messages = map[string]map[Language]string{
 		EnUS: "Tolerance & Replace",
 	},
 	"intro.pictureFeat2Desc": {
-		ZhCN: "可调整 2/255 容差过滤压缩噪点，支持特定色彩替换",
-		ZhTW: "可調整 2/255 容差過濾壓縮噪點，支援特定色彩取代",
-		EnUS: "Adjustable 2/255 tolerance for compression noise and color replacement",
+		ZhCN: "0–255 容差滑块过滤压缩噪点并标红真实差异，可替换背景色",
+		ZhTW: "0–255 容差滑桿過濾壓縮噪點並標紅真實差異，可取代背景色",
+		EnUS: "0–255 tolerance slider filters noise, marks real differences in red, replaces background color",
 	},
 	"intro.pictureFeat3Title": {
 		ZhCN: "缩放适应与翻转",

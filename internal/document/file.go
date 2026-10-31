@@ -166,14 +166,20 @@ func (d *File) Save(ctx context.Context, text string) (*File, error) {
 }
 
 func (d *File) unchanged(ctx context.Context) error {
+	_, err := d.unchangedBytes(ctx)
+	return err
+}
+
+// unchangedBytes 核对磁盘内容仍与基线一致，并返回这份原始字节。
+func (d *File) unchangedBytes(ctx context.Context) ([]byte, error) {
 	_, data, info, err := readRaw(ctx, d.Path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if sha256.Sum256(data) != d.digest || !os.SameFile(info, d.info) || info.Mode() != d.info.Mode() {
-		return ErrChanged
+		return nil, ErrChanged
 	}
-	return nil
+	return data, nil
 }
 
 // EmptyAt 为目录比较的缺失一侧建立空白缓冲区；保存时必须创建新文件。

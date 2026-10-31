@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/egoist/mygo/ui"
+	"gocompare/internal/i18n"
 	"gocompare/internal/media"
 )
 
@@ -36,7 +37,7 @@ func (a *workspaceState) loadMedia() {
 			a.mediaRight = right
 			a.mediaReady = true
 			a.err = ""
-			a.message = "已读取媒体标签"
+			a.message = i18n.T("media.loaded")
 		})
 	})
 }
@@ -54,8 +55,8 @@ func (a *workspaceState) mediaView(c *ui.Context) {
 
 	ui.Row(c).Height(36).Padding(0, 16).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		ui.Icon(c, iconMediaTag).Size(13, 13).TextColor(pal.baseAccent)
-		ui.Text(c, "ID3v2 元数据标签静态检查").FontSize(11).Bold()
-		statusPill(c, "不能播放", pal.sameFg, pal.sameBg)
+		ui.Text(c, i18n.T("media.header")).FontSize(11).Bold()
+		statusPill(c, i18n.T("media.noPlayback"), pal.sameFg, pal.sameBg)
 	})
 
 	if !a.mediaReady {
@@ -71,21 +72,21 @@ func (a *workspaceState) mediaView(c *ui.Context) {
 			ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(8).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
 				ui.Row(c).Gap(6).Margin(0, 0, 4).Children(func() {
 					sideBadge(c, 0, pal)
-					ui.Text(c, "左侧标签").Bold().FontSize(12)
+					ui.Text(c, i18n.T("media.leftTags")).Bold().FontSize(12)
 				})
-				a.mediaFieldRow(c, pal, "左侧标题 "+a.mediaLeft.Title, a.mediaLeft.Title != a.mediaRight.Title)
-				a.mediaFieldRow(c, pal, "左侧艺术家 "+a.mediaLeft.Artist, a.mediaLeft.Artist != a.mediaRight.Artist)
-				a.mediaFieldRow(c, pal, "左侧专辑 "+a.mediaLeft.Album, a.mediaLeft.Album != a.mediaRight.Album)
+				a.mediaFieldRow(c, pal, i18n.TArgs("media.leftTitle", a.mediaLeft.Title), a.mediaLeft.Title != a.mediaRight.Title)
+				a.mediaFieldRow(c, pal, i18n.TArgs("media.leftArtist", a.mediaLeft.Artist), a.mediaLeft.Artist != a.mediaRight.Artist)
+				a.mediaFieldRow(c, pal, i18n.TArgs("media.leftAlbum", a.mediaLeft.Album), a.mediaLeft.Album != a.mediaRight.Album)
 			})
 			// 右侧卡片
 			ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(8).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
 				ui.Row(c).Gap(6).Margin(0, 0, 4).Children(func() {
 					sideBadge(c, 1, pal)
-					ui.Text(c, "右侧标签").Bold().FontSize(12)
+					ui.Text(c, i18n.T("media.rightTags")).Bold().FontSize(12)
 				})
-				a.mediaFieldRow(c, pal, "右侧标题 "+a.mediaRight.Title, a.mediaLeft.Title != a.mediaRight.Title)
-				a.mediaFieldRow(c, pal, "右侧艺术家 "+a.mediaRight.Artist, a.mediaLeft.Artist != a.mediaRight.Artist)
-				a.mediaFieldRow(c, pal, "右侧专辑 "+a.mediaRight.Album, a.mediaLeft.Album != a.mediaRight.Album)
+				a.mediaFieldRow(c, pal, i18n.TArgs("media.rightTitle", a.mediaRight.Title), a.mediaLeft.Title != a.mediaRight.Title)
+				a.mediaFieldRow(c, pal, i18n.TArgs("media.rightArtist", a.mediaRight.Artist), a.mediaLeft.Artist != a.mediaRight.Artist)
+				a.mediaFieldRow(c, pal, i18n.TArgs("media.rightAlbum", a.mediaRight.Album), a.mediaLeft.Album != a.mediaRight.Album)
 			})
 		})
 	})
@@ -99,7 +100,7 @@ func (a *workspaceState) mediaFieldRow(c *ui.Context, pal uiPalette, text string
 	ui.Row(c).FillWidth().Padding(6, 10).Gap(6).Radius(5).Background(bg).Children(func() {
 		ui.Text(c, text).Grow(1).FontSize(12)
 		if diff {
-			statusPill(c, "不同", pal.diffFg, pal.cardBg)
+			statusPill(c, i18n.T("dir.different"), pal.diffFg, pal.cardBg)
 		}
 	})
 }

@@ -3,6 +3,7 @@ package native
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"os"
@@ -20,7 +21,19 @@ import (
 	"gocompare/internal/media"
 	"gocompare/internal/merge"
 	"gocompare/internal/operations"
+	"gocompare/internal/picture"
 	"gocompare/internal/textcompare"
+)
+
+// 工作区模式编号，作为模式会话的键；新增模式只能追加，不能重排。
+const (
+	kindFile = iota
+	kindDirectory
+	kindMerge
+	kindPicture
+	kindMedia
+	kindVersion
+	kindScratch
 )
 
 type pane struct {
@@ -66,14 +79,15 @@ type modeSession struct {
 	mergeEdit   editor.State
 	mergeLeft   *document.File
 
-	pictureLeft   image.Image
-	pictureRight  image.Image
-	pictureResult *image.RGBA
-	pictureBitmap *ui.Bitmap
-	pictureMode   int
-	pictureTol    uint8
-	pictureZoom   int
-	pictureNote   string
+	pictureLeft    image.Image
+	pictureRight   image.Image
+	pictureResult  *image.RGBA
+	pictureBitmap  *ui.Bitmap
+	pictureMode    int
+	pictureTol     uint8
+	pictureZoom    int
+	pictureNote    string
+	pictureSummary picture.Summary
 
 	mediaLeft  media.Tags
 	mediaRight media.Tags
@@ -96,31 +110,35 @@ type workspaceState struct {
 	ignoreSpace        bool
 	compareIgnoreSpace bool
 	ignoreBlankLines   bool
-	blankLineBackups   [2]string
-	inlineDiff         bool
-	modeSessions       map[int]*modeSession
-	closedDirs         map[string]bool
-	dirSearch          string
-	directoryOptions   compare.ScanOptions
-	allowMissing       bool
-	win                *mygo.Window
-	icon               *ui.Bitmap
-	backupDir          string
-	panes              [2]*pane
-	paths              [2]string
-	kind               int
-	directoryRoots     [2]string
-	directoryRows      []compare.Entry
-	directoryList      ui.ListState
-	onlyDifferences    bool
-	dirFilter          string
-	compareMode        bool
-	compareTime        bool
-	followLinks        bool
-	scanSeen           []string
-	scanPath           string
-	syncChoice         string
-	syncPlan           *operations.Plan
+	// 忽略空行时比较视图换成去除空行的只读副本，用户缓冲区和保存基线保持原样。
+	blankPanes       [2]*pane
+	blankSources     [2]*editor.Buffer
+	blankVersions    [2]uint64
+	blankDiff        editor.DiffState
+	inlineDiff       bool
+	modeSessions     map[int]*modeSession
+	closedDirs       map[string]bool
+	dirSearch        string
+	directoryOptions compare.ScanOptions
+	allowMissing     bool
+	win              *mygo.Window
+	icon             *ui.Bitmap
+	backupDir        string
+	panes            [2]*pane
+	paths            [2]string
+	kind             int
+	directoryRoots   [2]string
+	directoryRows    []compare.Entry
+	directoryList    ui.ListState
+	onlyDifferences  bool
+	dirFilter        string
+	compareMode      bool
+	compareTime      bool
+	followLinks      bool
+	scanSeen         []string
+	scanPath         string
+	syncChoice       string
+	syncPlan         *operations.Plan
 
 	confirmSync    bool
 	syncGen        uint64
@@ -149,6 +167,10 @@ type workspaceState struct {
 	pictureResult *image.RGBA
 	pictureBitmap *ui.Bitmap
 	pictureNote   string
+	// pictureSummary 与画布一起在后台算好，绘制时只读取。
+	pictureSummary   picture.Summary
+	pictureTolSlider float64
+	pictureRerender  bool
 
 	mediaGen   uint64
 	mediaLeft  media.Tags
@@ -265,11 +287,13 @@ func Run(args []string) error {
 		a.win.OnClose(func(e *mygo.CloseEvent) {
 			if a.busy {
 				e.PreventDefault()
+				a.message = i18n.T("status.closeBusy")
 				return
 			}
-			if a.dirty() {
+			if a.dirty() || a.scratchUnsaved() {
 				e.PreventDefault()
-				a.guard(func() { a.win.Destroy() })
+				a.pending = func() { a.win.Destroy() }
+				a.confirm = true
 			}
 		})
 		a.win.OnClosed(func() {
@@ -281,13 +305,13 @@ func Run(args []string) error {
 		if len(args) == 2 {
 			a.paths = [2]string{args[0], args[1]}
 			if directory {
-				a.kind = 1
+				a.kind = kindDirectory
 			}
 			a.load()
 		} else {
-			a.kind = 6
+			a.kind = kindScratch
 			a.ensureScratch()
-			a.message = "纯文本比较 · 可直接在两栏中键入或粘贴文本"
+			a.message = i18n.T("status.scratchReady")
 		}
 	})
 	if err = mygo.App.Run(); err != nil {
@@ -323,10 +347,7 @@ func (a *workspaceState) frameworkVersion() string {
 }
 
 func (a *workspaceState) dirty() bool {
-	if a.ignoreBlankLines {
-		return false
-	}
-	if a.kind == 2 && a.mergeBuffer != nil && a.mergeBuffer.Modified() {
+	if a.kind == kindMerge && a.mergeBuffer != nil && a.mergeBuffer.Modified() {
 		return true
 	}
 	for _, p := range a.panes {
@@ -336,6 +357,18 @@ func (a *workspaceState) dirty() bool {
 	}
 	return false
 }
+
+// scratchUnsaved 判断纯文本是否有未另存的内容。纯文本没有文件基线，只在关窗时提示，
+// 切换文件或目录不会影响它。
+func (a *workspaceState) scratchUnsaved() bool {
+	for _, p := range a.scratchPanes {
+		if p != nil && p.buffer.Len() > 0 && p.buffer.Modified() {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *workspaceState) guard(fn func()) {
 	if a.dirty() {
 		a.pending = fn
@@ -371,26 +404,26 @@ func (a *workspaceState) load() {
 	allowMissing := a.allowMissing
 	a.allowMissing = false
 	if strings.TrimSpace(paths[0]) == "" || strings.TrimSpace(paths[1]) == "" {
-		a.err = "请先选择左右两个文件"
+		a.err = i18n.T("err.selectBothFiles")
 		return
 	}
-	if a.kind == 1 {
+	if a.kind == kindDirectory {
 		a.loadDirectory(paths)
 		return
 	}
-	if a.kind == 2 {
+	if a.kind == kindMerge {
 		a.loadMerge()
 		return
 	}
-	if a.kind == 3 {
+	if a.kind == kindPicture {
 		a.loadPictures()
 		return
 	}
-	if a.kind == 4 {
+	if a.kind == kindMedia {
 		a.loadMedia()
 		return
 	}
-	if a.kind == 5 {
+	if a.kind == kindVersion {
 		a.loadVersion()
 		return
 	}
@@ -398,7 +431,7 @@ func (a *workspaceState) load() {
 		l, le := os.Stat(paths[0])
 		r, re := os.Stat(paths[1])
 		if le == nil && re == nil && l.IsDir() && r.IsDir() {
-			a.publish(func() { a.busy = false; a.kind = 1; a.loadDirectory(paths) })
+			a.publish(func() { a.busy = false; a.kind = kindDirectory; a.loadDirectory(paths) })
 			return
 		}
 		left, err := readInput(ctx, paths[0], allowMissing)
@@ -418,9 +451,9 @@ func (a *workspaceState) load() {
 }
 func (a *workspaceState) install(left, right *document.File) {
 	a.panes = [2]*pane{newPane(left), newPane(right)}
-	a.panes[0].edit.Label = "左侧编辑器"
-	a.panes[1].edit.Label = "右侧编辑器"
-	a.kind = 0
+	a.panes[0].edit.Label = i18n.T("a11y.leftEditor")
+	a.panes[1].edit.Label = i18n.T("a11y.rightEditor")
+	a.kind = kindFile
 	a.directoryRows = nil
 	a.paths = [2]string{left.Path, right.Path}
 	a.diff = editor.DiffState{Old: a.panes[0].buffer, New: a.panes[1].buffer, ExpandUnchanged: true, Editable: true, OldEditable: true, ExternalComparison: true}
@@ -430,14 +463,14 @@ func (a *workspaceState) install(left, right *document.File) {
 	a.compareRequested = false
 	a.refreshComparison()
 	a.mode = 0
-	a.message = "已加载 · 左右内容均可直接编辑，保存后写入文件"
+	a.message = i18n.T("status.filesLoaded")
 	a.updateTitle()
 }
 func (a *workspaceState) browse(side int) {
 	if a.busy {
 		return
 	}
-	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: []string{"选择左侧来源", "选择右侧来源"}[side], Directory: a.kind == 1})
+	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: i18n.T([]string{"dialog.pickLeft", "dialog.pickRight"}[side]), Directory: a.kind == kindDirectory})
 	if err != nil {
 		a.err = err.Error()
 		return
@@ -447,7 +480,7 @@ func (a *workspaceState) browse(side int) {
 	}
 }
 func (a *workspaceState) save(side int) {
-	if a.busy || a.panes[side] == nil || a.ignoreBlankLines {
+	if a.busy || a.panes[side] == nil {
 		return
 	}
 	p := a.panes[side]
@@ -473,11 +506,15 @@ func (a *workspaceState) save(side int) {
 			if p.buffer.Version() == version {
 				p.buffer.MarkSaved()
 			}
-			a.message = "已保存 " + filepath.Base(f.Path)
+			a.message = i18n.TArgs("status.saved", filepath.Base(f.Path))
 		})
 	})
 }
 func (a *workspaceState) apply(side int) {
+	if a.ignoreBlankLines {
+		a.message = i18n.T("status.blankReadOnly")
+		return
+	}
 	diff := a.activeDiff()
 	panes := a.activePanes()
 	if a.busy || a.compareRunning || a.compareErr != nil || panes[0] == nil || !diff.ComparisonReady() {
@@ -491,7 +528,7 @@ func (a *workspaceState) apply(side int) {
 		inside = true
 	}
 	if !inside || i < 0 || i >= len(hunks) {
-		a.message = "先在比较视图中选择一个差异块"
+		a.message = i18n.T("status.selectHunk")
 		return
 	}
 	// Revert 将左侧块复制到右侧；Accept 将右侧块复制到左侧，仅改变内存缓冲区。
@@ -500,18 +537,18 @@ func (a *workspaceState) apply(side int) {
 	} else {
 		diff.Accept(i)
 	}
-	a.message = "差异块已应用，保存后写入文件"
+	a.message = i18n.T("status.hunkApplied")
 }
 
 func (a *workspaceState) ensureScratch() {
 	if a.scratchPanes[0] != nil {
 		return
 	}
-	left := &document.File{Path: "左侧文本", Text: "", Encoding: "utf-8"}
-	right := &document.File{Path: "右侧文本", Text: "", Encoding: "utf-8"}
+	left := &document.File{Path: i18n.T("scratch.leftName"), Text: "", Encoding: "utf-8"}
+	right := &document.File{Path: i18n.T("scratch.rightName"), Text: "", Encoding: "utf-8"}
 	a.scratchPanes = [2]*pane{newPane(left), newPane(right)}
-	a.scratchPanes[0].edit.Label = "左侧文本编辑器"
-	a.scratchPanes[1].edit.Label = "右侧文本编辑器"
+	a.scratchPanes[0].edit.Label = i18n.T("a11y.leftScratchEditor")
+	a.scratchPanes[1].edit.Label = i18n.T("a11y.rightScratchEditor")
 	a.scratchDiff = editor.DiffState{
 		Old:                a.scratchPanes[0].buffer,
 		New:                a.scratchPanes[1].buffer,
@@ -522,43 +559,107 @@ func (a *workspaceState) ensureScratch() {
 	}
 }
 
-func (a *workspaceState) activePanes() [2]*pane {
-	if a.kind == 6 {
+// basePanes 返回当前模式下用户可编辑的面板与差异状态。
+func (a *workspaceState) basePanes() ([2]*pane, *editor.DiffState) {
+	if a.kind == kindScratch {
 		a.ensureScratch()
-		return a.scratchPanes
+		return a.scratchPanes, &a.scratchDiff
 	}
-	return a.panes
+	return a.panes, &a.diff
 }
 
-func (a *workspaceState) activeDiff() *editor.DiffState {
-	if a.kind == 6 {
-		a.ensureScratch()
-		return &a.scratchDiff
+// activePanes 返回比较视图正在显示的面板；忽略空行时是只读副本。
+func (a *workspaceState) activePanes() [2]*pane {
+	panes, diff := a.basePanes()
+	if a.ignoreBlankLines && a.ensureBlankView(panes, diff) {
+		return a.blankPanes
 	}
-	return &a.diff
+	return panes
+}
+
+// activeDiff 返回比较视图正在显示的差异状态；忽略空行时是只读副本。
+func (a *workspaceState) activeDiff() *editor.DiffState {
+	panes, diff := a.basePanes()
+	if a.ignoreBlankLines && a.ensureBlankView(panes, diff) {
+		return &a.blankDiff
+	}
+	return diff
+}
+
+// ensureBlankView 按源缓冲区身份和版本重建去除空行的只读副本。
+// 源面板缺失时返回 false。重新加载文件或在单栏编辑后版本变化，副本随之重建，不会残留旧内容。
+func (a *workspaceState) ensureBlankView(src [2]*pane, base *editor.DiffState) bool {
+	if src[0] == nil || src[1] == nil {
+		return false
+	}
+	sources := [2]*editor.Buffer{src[0].buffer, src[1].buffer}
+	versions := [2]uint64{sources[0].Version(), sources[1].Version()}
+	if a.blankPanes[0] != nil && a.blankSources == sources && a.blankVersions == versions {
+		return true
+	}
+	for i, p := range src {
+		text, _ := stripBlankLines(p.buffer.String())
+		view := newPane(&document.File{Path: p.file.Path, Text: text, Encoding: p.file.Encoding})
+		view.edit.Label = p.edit.Label
+		view.edit.ReadOnly = true
+		a.blankPanes[i] = view
+	}
+	a.blankSources, a.blankVersions = sources, versions
+	a.blankDiff = editor.DiffState{Old: a.blankPanes[0].buffer, New: a.blankPanes[1].buffer, ExpandUnchanged: true, ExternalComparison: true, Inline: base.Inline}
+	return true
+}
+
+func (a *workspaceState) clearBlankView() {
+	a.blankPanes = [2]*pane{}
+	a.blankSources = [2]*editor.Buffer{}
+	a.blankVersions = [2]uint64{}
+	a.blankDiff = editor.DiffState{}
 }
 
 func (a *workspaceState) saveScratchAs(side int) {
 	if a.busy || a.scratchPanes[side] == nil {
 		return
 	}
-	text := a.scratchPanes[side].buffer.String()
 	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
 		Parent: a.win,
-		Title:  []string{"保存左侧文本到文件", "保存右侧文本到文件"}[side],
+		Title:  i18n.T([]string{"dialog.saveLeftText", "dialog.saveRightText"}[side]),
 	})
 	if err != nil {
 		a.err = err.Error()
 		return
 	}
-	if path == "" {
+	if path != "" {
+		a.saveScratchAsPath(side, path)
+	}
+}
+
+// saveScratchAsPath 在后台以 UTF-8 新建文件，与文件比较的另存为一致：目标已存在时不覆盖。
+func (a *workspaceState) saveScratchAsPath(side int, path string) {
+	if a.busy || a.scratchPanes[side] == nil {
 		return
 	}
-	if err := os.WriteFile(path, []byte(text), 0644); err != nil {
-		a.err = err.Error()
-		return
-	}
-	a.message = fmt.Sprintf("已保存至 %s", filepath.Base(path))
+	p := a.scratchPanes[side]
+	text := strings.ReplaceAll(p.buffer.String(), "\r\n", "\n")
+	version := p.buffer.Version()
+	file := &document.File{Encoding: "utf-8"}
+	a.job(func(ctx context.Context) {
+		f, err := file.SaveAs(ctx, path, text)
+		a.publish(func() {
+			a.busy = false
+			if err != nil {
+				if errors.Is(err, os.ErrExist) {
+					a.err = i18n.T("err.targetExists")
+				} else {
+					a.err = err.Error()
+				}
+				return
+			}
+			if p.buffer.Version() == version {
+				p.buffer.MarkSaved()
+			}
+			a.message = i18n.TArgs("status.savedTo", filepath.Base(f.Path))
+		})
+	})
 }
 
 func stripBlankLines(text string) (string, int) {
@@ -586,31 +687,21 @@ func stripBlankLines(text string) (string, int) {
 	return result, removed
 }
 
+// setIgnoreBlankLines 只切换比较视图，不改写用户缓冲区。
 func (a *workspaceState) setIgnoreBlankLines(enabled bool) {
-	panes := a.activePanes()
+	a.ignoreBlankLines = enabled
+	a.clearBlankView()
+	panes, _ := a.basePanes()
 	if panes[0] == nil || panes[1] == nil {
 		return
 	}
-	leftBuf := panes[0].buffer
-	rightBuf := panes[1].buffer
-
-	a.ignoreBlankLines = enabled
+	a.refreshComparison()
 	if enabled {
-		a.blankLineBackups = [2]string{leftBuf.String(), rightBuf.String()}
-		strippedLeft, remLeft := stripBlankLines(a.blankLineBackups[0])
-		strippedRight, remRight := stripBlankLines(a.blankLineBackups[1])
-		leftBuf.Set(strippedLeft)
-		rightBuf.Set(strippedRight)
-		a.refreshComparison()
-		a.message = fmt.Sprintf("已忽略空行（左侧去除 %d 行，右侧去除 %d 行）", remLeft, remRight)
+		_, remLeft := stripBlankLines(panes[0].buffer.String())
+		_, remRight := stripBlankLines(panes[1].buffer.String())
+		a.message = i18n.TArgs("status.blankIgnored", remLeft, remRight)
 	} else {
-		if a.blankLineBackups[0] != "" || a.blankLineBackups[1] != "" {
-			leftBuf.Set(a.blankLineBackups[0])
-			rightBuf.Set(a.blankLineBackups[1])
-			a.blankLineBackups = [2]string{}
-		}
-		a.refreshComparison()
-		a.message = "已恢复包含空行的原始文本"
+		a.message = i18n.T("status.blankRestored")
 	}
 }
 
@@ -624,6 +715,8 @@ func (a *workspaceState) setInlineDiff(enabled bool) {
 	if enabled {
 		inline = editor.DiffInlineWordAlt
 	}
+	_, base := a.basePanes()
+	base.Inline = inline
 	a.activeDiff().Inline = inline
 	a.refreshComparison()
 }
@@ -680,6 +773,7 @@ func (a *workspaceState) saveModeSession(kind int) {
 		pictureTol:       a.pictureTol,
 		pictureZoom:      a.pictureZoom,
 		pictureNote:      a.pictureNote,
+		pictureSummary:   a.pictureSummary,
 		mediaLeft:        a.mediaLeft,
 		mediaRight:       a.mediaRight,
 		mediaReady:       a.mediaReady,
@@ -733,6 +827,7 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.pictureTol = sess.pictureTol
 	a.pictureZoom = sess.pictureZoom
 	a.pictureNote = sess.pictureNote
+	a.pictureSummary = sess.pictureSummary
 	a.mediaLeft = sess.mediaLeft
 	a.mediaRight = sess.mediaRight
 	a.mediaReady = sess.mediaReady

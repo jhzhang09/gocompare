@@ -14,6 +14,9 @@ import (
 // pictureCanvasScale 把每个源像素放大成整数倍方块，测试在方块中心取样。
 const pictureCanvasScale = 20
 
+// pictureTinyLimit 以内的图片默认用像素网格显示，否则单个像素几乎看不见。
+const pictureTinyLimit = 32
+
 const (
 	pictureSide = iota
 	pictureOverlay
@@ -23,6 +26,17 @@ const (
 	pictureFlipH
 	pictureFlipV
 )
+
+// 缩放模式：适应窗口只缩小不放大；像素网格按 pictureCanvasScale 放大，用于极小图片。
+const (
+	pictureZoomFit = iota
+	pictureZoom100
+	pictureZoom200
+	pictureZoomGrid
+)
+
+// pictureReplaceColor 是替换颜色模式的高亮色，选用自然图片里少见的品红。
+var pictureReplaceColor = color.RGBA{R: 255, B: 255, A: 255}
 
 // loadPictures 在后台解码两张图。失败时清空画布，不把内容交给文本比较。
 func (a *workspaceState) loadPictures() {
@@ -39,10 +53,11 @@ func (a *workspaceState) loadPictures() {
 			err = ctx.Err()
 		}
 		a.publish(func() {
+			// 同一时刻只有一个后台任务，结束时总要释放 busy，过期结果只是不再采用。
+			a.busy = false
 			if gen != a.pictureGen {
 				return
 			}
-			a.busy = false
 			if err != nil {
 				a.err = err.Error()
 				a.clearPictures()
@@ -52,220 +67,270 @@ func (a *workspaceState) loadPictures() {
 			a.pictureRight = right
 			a.pictureMode = pictureSide
 			a.pictureTol = 2
-			if left.Bounds().Dx() <= 32 && left.Bounds().Dy() <= 32 && right.Bounds().Dx() <= 32 && right.Bounds().Dy() <= 32 {
-				a.pictureZoom = 3 // 20x pixel grid for test images
-			} else {
-				a.pictureZoom = 0 // 适应窗口 (Fit) for real images
+			a.pictureZoom = pictureZoomFit
+			if isTiny(left) && isTiny(right) {
+				a.pictureZoom = pictureZoomGrid
 			}
-			a.renderPicture()
 			a.err = ""
 			a.message = i18n.T("picture.loaded")
+			a.renderPicture()
 		})
 	})
 }
 
+func isTiny(img image.Image) bool {
+	b := img.Bounds()
+	return b.Dx() <= pictureTinyLimit && b.Dy() <= pictureTinyLimit
+}
+
 func (a *workspaceState) clearPictures() {
+	a.pictureGen++
 	a.pictureLeft = nil
 	a.pictureRight = nil
 	a.pictureResult = nil
 	a.pictureBitmap = nil
 	a.pictureNote = ""
+	a.pictureSummary = picture.Summary{}
+	a.pictureRerender = false
 }
 
 func (a *workspaceState) showPicture(mode int) {
-	if a.busy || a.pictureLeft == nil || a.pictureRight == nil {
+	if a.pictureLeft == nil || a.pictureRight == nil {
 		return
 	}
 	a.pictureMode = mode
 	a.renderPicture()
 }
 
-func (a *workspaceState) showTolerance(tol uint8) {
-	if a.busy || a.pictureLeft == nil || a.pictureRight == nil {
+// setPictureTolerance 修改容差。容差影响统计、容差图和替换颜色，所以总是重算。
+func (a *workspaceState) setPictureTolerance(tol uint8) {
+	if a.pictureLeft == nil || a.pictureRight == nil {
 		return
 	}
-	a.pictureMode = pictureTolerance
 	a.pictureTol = tol
 	a.renderPicture()
 }
 
-// renderPicture 只在加载完成或切换模式时计算。视图只显示已有位图。
+func (a *workspaceState) showTolerance(tol uint8) {
+	if a.pictureLeft == nil || a.pictureRight == nil {
+		return
+	}
+	a.pictureMode = pictureTolerance
+	a.setPictureTolerance(tol)
+}
+
+// renderPicture 在后台生成位图和差异统计，避免大图逐像素计算阻塞界面。
+// 计算期间再次请求（例如拖动容差滑块）只记下需要重算，完成后按最新参数补算一次。
 func (a *workspaceState) renderPicture() {
 	left, right := a.pictureLeft, a.pictureRight
 	if left == nil || right == nil {
 		return
 	}
-	var out *image.RGBA
-	switch a.pictureMode {
-	case pictureOverlay:
-		out = picture.Overlay(left, right)
-		a.pictureNote = "叠加"
-	case pictureDifference:
-		out = picture.Difference(left, right)
-		a.pictureNote = "差值"
-	case pictureTolerance:
-		out = picture.Difference(left, right)
-		if picture.Within(left, right, a.pictureTol) {
-			a.pictureNote = "容差内相同"
-		} else {
-			a.pictureNote = "超出容差"
-		}
-	case pictureReplace:
-		b := left.Bounds()
-		from := left.At(b.Min.X, b.Min.Y)
-		replaced := picture.ReplaceColor(left, from, color.RGBA{G: 10, A: 255}, 0)
-		out = picture.SideBySide(replaced, right)
-		a.pictureNote = "替换颜色"
-	case pictureFlipH:
-		out = picture.SideBySide(picture.FlipH(left), right)
-		a.pictureNote = "水平翻转"
-	case pictureFlipV:
-		out = picture.SideBySide(picture.FlipV(left), right)
-		a.pictureNote = "垂直翻转"
-	default:
-		out = picture.SideBySide(left, right)
-		a.pictureNote = "并排"
-	}
-	a.pictureResult = out
-	if a.pictureBitmap == nil {
-		a.pictureBitmap = ui.NewBitmap(out).Pixelated()
+	if a.busy {
+		a.pictureRerender = true
 		return
 	}
-	a.pictureBitmap.Update(out)
+	a.pictureRerender = false
+	mode, tol := a.pictureMode, a.pictureTol
+	a.pictureGen++
+	gen := a.pictureGen
+	a.job(func(ctx context.Context) {
+		out, note, summary := buildPicture(left, right, mode, tol)
+		a.publish(func() {
+			a.busy = false
+			if gen != a.pictureGen {
+				return
+			}
+			a.pictureResult = out
+			a.pictureNote = note
+			a.pictureSummary = summary
+			if a.pictureBitmap == nil {
+				a.pictureBitmap = ui.NewBitmap(out).Pixelated()
+			} else {
+				a.pictureBitmap.Update(out)
+			}
+			if a.pictureRerender {
+				a.renderPicture()
+			}
+		})
+	})
+}
+
+// buildPicture 按模式生成画布，并返回说明文案的 i18n 键和差异统计。
+// 翻转和替换颜色把处理后的左图与右图并排，方便核对镜像或去背景后的内容。
+func buildPicture(left, right image.Image, mode int, tol uint8) (*image.RGBA, string, picture.Summary) {
+	summary := picture.Summarize(left, right, tol)
+	switch mode {
+	case pictureOverlay:
+		return picture.Overlay(left, right), "picture.modeOverlay", summary
+	case pictureDifference:
+		return picture.Difference(left, right), "picture.modeDifference", summary
+	case pictureTolerance:
+		note := "picture.outOfTolerance"
+		if summary.SameSize && summary.Exceeding == 0 {
+			note = "picture.withinTolerance"
+		}
+		return picture.ToleranceMap(left, right, tol), note, summary
+	case pictureReplace:
+		// 以左图左上角像素作为背景色，两侧按同一颜色和容差替换，保证对照是对称的。
+		b := left.Bounds()
+		from := left.At(b.Min.X, b.Min.Y)
+		out := picture.SideBySide(
+			picture.ReplaceColor(left, from, pictureReplaceColor, tol),
+			picture.ReplaceColor(right, from, pictureReplaceColor, tol),
+		)
+		return out, "picture.modeReplace", summary
+	case pictureFlipH:
+		return picture.SideBySide(picture.FlipH(left), right), "picture.modeFlipH", summary
+	case pictureFlipV:
+		return picture.SideBySide(picture.FlipV(left), right), "picture.modeFlipV", summary
+	default:
+		return picture.SideBySide(left, right), "picture.modeSide", summary
+	}
 }
 
 func (a *workspaceState) pictureView(c *ui.Context) {
 	t := c.Theme()
 	pal := paletteFor(t)
-	disabled := a.busy || a.pictureLeft == nil
+	loaded := a.pictureLeft != nil && a.pictureRight != nil
+	disabled := a.busy || !loaded
 
-	ui.Row(c).Height(38).Padding(0, 14).Gap(5).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		modeBtn := func(label string, active bool, fn func()) {
-			b := ui.Button(c, label).Padding(3, 8).Radius(5).FontSize(11).Disabled(disabled)
-			if active && !disabled {
-				b.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35)).TextColor(pal.baseAccent).Bold()
-			}
-			b.OnClick(fn)
+	modeBtn := func(label string, active bool, fn func()) {
+		b := ui.Button(c, label).Padding(3, 8).Radius(5).FontSize(11).Disabled(disabled)
+		if active && !disabled {
+			b.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35)).TextColor(pal.baseAccent).Bold()
 		}
+		b.OnClick(fn)
+	}
+	ui.Row(c).Height(38).Padding(0, 14).Gap(5).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		modeBtn(i18n.T("picture.modeSide"), a.pictureMode == pictureSide, func() { a.showPicture(pictureSide) })
 		modeBtn(i18n.T("picture.modeOverlay"), a.pictureMode == pictureOverlay, func() { a.showPicture(pictureOverlay) })
 		modeBtn(i18n.T("picture.modeDifference"), a.pictureMode == pictureDifference, func() { a.showPicture(pictureDifference) })
-		ui.Divider(c).Height(14)
-		modeBtn(i18n.T("picture.modeTolerance2"), a.pictureMode == pictureTolerance && a.pictureTol == 2, func() { a.showTolerance(2) })
-		modeBtn(i18n.T("picture.modeTolerance255"), a.pictureMode == pictureTolerance && a.pictureTol == 255, func() { a.showTolerance(255) })
+		modeBtn(i18n.T("picture.modeTolerance"), a.pictureMode == pictureTolerance, func() { a.showPicture(pictureTolerance) })
 		ui.Divider(c).Height(14)
 		modeBtn(i18n.T("picture.modeReplace"), a.pictureMode == pictureReplace, func() { a.showPicture(pictureReplace) })
 		modeBtn(i18n.T("picture.modeFlipH"), a.pictureMode == pictureFlipH, func() { a.showPicture(pictureFlipH) })
 		modeBtn(i18n.T("picture.modeFlipV"), a.pictureMode == pictureFlipV, func() { a.showPicture(pictureFlipV) })
-
-		if a.pictureLeft != nil && a.pictureRight != nil && (a.pictureLeft.Bounds().Dx() > 32 || a.pictureLeft.Bounds().Dy() > 32) {
+		if loaded {
 			ui.Divider(c).Height(14)
-			modeBtn(i18n.T("picture.zoomFit"), a.pictureZoom == 0, func() { a.pictureZoom = 0 })
-			modeBtn(i18n.T("picture.zoom100"), a.pictureZoom == 1, func() { a.pictureZoom = 1 })
-			modeBtn(i18n.T("picture.zoom200"), a.pictureZoom == 2, func() { a.pictureZoom = 2 })
-		}
-
-		ui.Box(c).Grow(1)
-		if a.pictureLeft != nil && a.pictureRight != nil {
-			lb, rb := a.pictureLeft.Bounds(), a.pictureRight.Bounds()
-			statusPill(c, fmt.Sprintf("%d×%d vs %d×%d px", lb.Dx(), lb.Dy(), rb.Dx(), rb.Dy()), pal.sameFg, pal.sameBg)
-			diff := picture.FirstDifference(a.pictureLeft, a.pictureRight)
-			if !diff.Found {
-				statusPill(c, i18n.T("picture.identical"), pal.successFg, pal.successBg)
-			} else if !diff.SameSize {
-				statusPill(c, i18n.T("picture.sizeMismatch"), pal.diffFg, pal.diffBg)
-			} else {
-				statusPill(c, i18n.TArgs("picture.diffFound", diff.X, diff.Y), pal.diffFg, pal.diffBg)
-			}
-		}
-		if a.pictureNote != "" {
-			noteText := a.pictureNote
-			switch a.pictureNote {
-			case "并排":
-				noteText = i18n.T("picture.modeSide")
-			case "叠加":
-				noteText = i18n.T("picture.modeOverlay")
-			case "差值":
-				noteText = i18n.T("picture.modeDifference")
-			case "容差内相同":
-				noteText = i18n.T("picture.withinTolerance")
-			case "超出容差":
-				noteText = i18n.T("picture.outOfTolerance")
-			case "替换颜色":
-				noteText = i18n.T("picture.modeReplace")
-			case "水平翻转":
-				noteText = i18n.T("picture.modeFlipH")
-			case "垂直翻转":
-				noteText = i18n.T("picture.modeFlipV")
-			}
-			fg, bg := pal.baseAccent, pal.baseBg
-			if a.pictureNote == "超出容差" {
-				fg, bg = pal.diffFg, pal.diffBg
-			} else if a.pictureNote == "容差内相同" {
-				fg, bg = pal.successFg, pal.successBg
-			}
-			statusPill(c, noteText, fg, bg)
+			modeBtn(i18n.T("picture.zoomFit"), a.pictureZoom == pictureZoomFit, func() { a.pictureZoom = pictureZoomFit })
+			modeBtn(i18n.T("picture.zoom100"), a.pictureZoom == pictureZoom100, func() { a.pictureZoom = pictureZoom100 })
+			modeBtn(i18n.T("picture.zoom200"), a.pictureZoom == pictureZoom200, func() { a.pictureZoom = pictureZoom200 })
+			modeBtn(i18n.T("picture.zoomGrid"), a.pictureZoom == pictureZoomGrid, func() { a.pictureZoom = pictureZoomGrid })
 		}
 	})
 
+	if loaded {
+		a.pictureStatusRow(c, pal, disabled)
+	}
+
 	if a.pictureBitmap == nil || a.pictureResult == nil {
 		if a.err == "" {
-			a.modeEmptyView(c, pal, 3)
+			a.modeEmptyView(c, pal, kindPicture)
 		}
 		return
 	}
+	a.pictureCanvas(c, pal)
+}
 
-	b := a.pictureResult.Bounds()
-	bw := float32(b.Dx())
-	bh := float32(b.Dy())
-
-	var scale float32
-	switch a.pictureZoom {
-	case 1: // 1:1
-		scale = 1.0
-	case 2: // 2:1
-		scale = 2.0
-	case 3: // 20x pixel grid
-		scale = float32(pictureCanvasScale)
-	default: // 0: 适应窗口 (Fit to Window)
-		if bw <= 32 && bh <= 32 {
-			scale = float32(pictureCanvasScale)
-		} else {
-			maxW := float32(1160)
-			maxH := float32(700)
-			scaleW := maxW / bw
-			scaleH := maxH / bh
-			scale = scaleW
-			if scaleH < scale {
-				scale = scaleH
-			}
-			if scale > 1.0 {
-				scale = 1.0
-			}
+// pictureStatusRow 显示容差滑块和缓存的差异统计；统计在后台随画布一起计算，绘制时不扫描像素。
+func (a *workspaceState) pictureStatusRow(c *ui.Context, pal uiPalette, disabled bool) {
+	t := c.Theme()
+	ui.Row(c).Height(34).Padding(0, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Text(c, i18n.TArgs("picture.toleranceValue", a.pictureTol)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+		a.pictureTolSlider = float64(a.pictureTol)
+		ui.Slider(c, &a.pictureTolSlider, 0, 255).Width(180).Disabled(disabled).Label(i18n.T("picture.toleranceSlider")).OnChange(func() {
+			a.setPictureTolerance(uint8(a.pictureTolSlider + 0.5))
+		})
+		ui.Box(c).Grow(1)
+		lb, rb := a.pictureLeft.Bounds(), a.pictureRight.Bounds()
+		statusPill(c, fmt.Sprintf("%d×%d vs %d×%d px", lb.Dx(), lb.Dy(), rb.Dx(), rb.Dy()), pal.sameFg, pal.sameBg)
+		s := a.pictureSummary
+		switch {
+		case s.Total == 0:
+		case !s.Found:
+			statusPill(c, i18n.T("picture.identical"), pal.successFg, pal.successBg)
+		case !s.SameSize:
+			statusPill(c, i18n.T("picture.sizeMismatch"), pal.diffFg, pal.diffBg)
+		default:
+			statusPill(c, i18n.TArgs("picture.diffFound", s.First.X, s.First.Y), pal.diffFg, pal.diffBg)
 		}
-	}
-	w := bw * scale
-	h := bh * scale
+		if s.Total > 0 && s.Found {
+			percent := float64(s.Exceeding) * 100 / float64(s.Total)
+			statusPill(c, i18n.TArgs("picture.exceedCount", s.Exceeding, percent), pal.diffFg, pal.diffBg)
+		}
+		if a.pictureNote != "" {
+			fg, bg := pal.baseAccent, pal.baseBg
+			switch a.pictureNote {
+			case "picture.outOfTolerance":
+				fg, bg = pal.diffFg, pal.diffBg
+			case "picture.withinTolerance":
+				fg, bg = pal.successFg, pal.successBg
+			}
+			statusPill(c, i18n.T(a.pictureNote), fg, bg)
+		}
+	})
+}
 
-	ui.ScrollBoth(c).Grow(1).FillWidth().Children(func() {
-		ui.Column(c).Padding(12, 16).Gap(6).AlignSelf(ui.Start).Children(func() {
-			if a.pictureMode == pictureSide && a.pictureLeft != nil && a.pictureRight != nil && (bw > 32 || bh > 32) {
-				lw := float32(a.pictureLeft.Bounds().Dx()) * scale
-				rw := float32(a.pictureRight.Bounds().Dx()) * scale
-				ui.Row(c).Width(w).Children(func() {
-					ui.Row(c).Width(lw).Gap(4).Children(func() {
-						sideBadge(c, 0, pal)
-						ui.Text(c, i18n.T("picture.leftImage")).FontSize(11).Bold().TextColor(pal.sidebarText)
-						ui.Text(c, fmt.Sprintf("%d×%d px", a.pictureLeft.Bounds().Dx(), a.pictureLeft.Bounds().Dy())).FontSize(10).TextColor(t.TextMuted)
-					})
-					ui.Row(c).Width(rw).Gap(4).Children(func() {
-						sideBadge(c, 1, pal)
-						ui.Text(c, i18n.T("picture.rightImage")).FontSize(11).Bold().TextColor(pal.sidebarText)
-						ui.Text(c, fmt.Sprintf("%d×%d px", a.pictureRight.Bounds().Dx(), a.pictureRight.Bounds().Dy())).FontSize(10).TextColor(t.TextMuted)
-					})
+func (a *workspaceState) pictureCanvas(c *ui.Context, pal uiPalette) {
+	t := c.Theme()
+	b := a.pictureResult.Bounds()
+	bw, bh := float32(b.Dx()), float32(b.Dy())
+	sideBySide := a.pictureMode == pictureSide || a.pictureMode == pictureReplace || a.pictureMode == pictureFlipH || a.pictureMode == pictureFlipV
+	legend := func(width float32, side int, img image.Image) {
+		row := ui.Row(c).Gap(4)
+		if width > 0 {
+			row.Width(width)
+		} else {
+			row.Grow(1).Basis(0)
+		}
+		row.Children(func() {
+			sideBadge(c, side, pal)
+			ui.Text(c, i18n.T([]string{"picture.leftImage", "picture.rightImage"}[side])).FontSize(11).Bold().TextColor(pal.sidebarText)
+			ui.Text(c, fmt.Sprintf("%d×%d px", img.Bounds().Dx(), img.Bounds().Dy())).FontSize(10).TextColor(t.TextMuted)
+		})
+	}
+
+	if a.pictureZoom == pictureZoomFit {
+		// 适应窗口交给框架按可用区域等比缩放：小图放大（像素化显示），大图只缩小不放大。
+		fit := ui.ScaleDown
+		if bw <= 256 && bh <= 256 {
+			fit = ui.Contain
+		}
+		ui.Column(c).Grow(1).FillWidth().Padding(12, 16).Gap(6).Children(func() {
+			if sideBySide {
+				ui.Row(c).FillWidth().Children(func() {
+					legend(0, 0, a.pictureLeft)
+					legend(0, 1, a.pictureRight)
 				})
 			}
-			ui.Image(c, a.pictureBitmap).Size(w, h).MaxWidth(w).MaxHeight(h).AlignSelf(ui.Start).Label("图片画布")
+			ui.Image(c, a.pictureBitmap).Fit(fit).Grow(1).FillWidth().Label(i18n.T("a11y.pictureCanvas"))
+		})
+		return
+	}
+
+	scale := float32(1)
+	switch a.pictureZoom {
+	case pictureZoom200:
+		scale = 2
+	case pictureZoomGrid:
+		scale = pictureCanvasScale
+	}
+	w, h := bw*scale, bh*scale
+	ui.ScrollBoth(c).Grow(1).FillWidth().Children(func() {
+		ui.Column(c).Padding(12, 16).Gap(6).AlignSelf(ui.Start).Children(func() {
+			if sideBySide {
+				lw := float32(a.pictureLeft.Bounds().Dx()) * scale
+				rw := float32(a.pictureRight.Bounds().Dx()) * scale
+				// 像素网格下单侧可能只有几十像素宽，标签不按宽度截断。
+				if a.pictureZoom != pictureZoomGrid || lw >= 120 {
+					ui.Row(c).Width(w).Children(func() {
+						legend(lw, 0, a.pictureLeft)
+						legend(rw, 1, a.pictureRight)
+					})
+				}
+			}
+			ui.Image(c, a.pictureBitmap).Size(w, h).MaxWidth(w).MaxHeight(h).AlignSelf(ui.Start).Label(i18n.T("a11y.pictureCanvas"))
 		})
 	})
 }

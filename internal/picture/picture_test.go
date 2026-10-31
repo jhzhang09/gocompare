@@ -49,3 +49,24 @@ func TestPixelsNotFileHash(t *testing.T) {
 		t.Fatalf("flipv: %v %v", flippedV.RGBAAt(0, 0), flippedV.RGBAAt(0, 1))
 	}
 }
+
+func TestSummarizeAndToleranceMap(t *testing.T) {
+	a := image.NewRGBA(image.Rect(0, 0, 2, 1))
+	b := image.NewRGBA(image.Rect(0, 0, 3, 1))
+	a.SetRGBA(0, 0, color.RGBA{R: 100, A: 255})
+	a.SetRGBA(1, 0, color.RGBA{R: 100, A: 255})
+	b.SetRGBA(0, 0, color.RGBA{R: 101, A: 255})
+	b.SetRGBA(1, 0, color.RGBA{R: 150, A: 255})
+	s := Summarize(a, b, 2)
+	// 第 0 列在容差内但不同，第 1 列超出，第 2 列只在右图存在。
+	if s.SameSize || s.Total != 3 || s.Differing != 3 || s.Exceeding != 2 || !s.Found || s.First != (image.Point{}) {
+		t.Fatalf("summary: %+v", s)
+	}
+	m := ToleranceMap(a, b, 2)
+	if m.RGBAAt(0, 0) != (color.RGBA{R: 11, G: 11, B: 11, A: 255}) || m.RGBAAt(1, 0) != (color.RGBA{R: 255, A: 255}) || m.RGBAAt(2, 0) != (color.RGBA{R: 255, A: 255}) {
+		t.Fatalf("map: %v %v %v", m.RGBAAt(0, 0), m.RGBAAt(1, 0), m.RGBAAt(2, 0))
+	}
+	if s := Summarize(a, a, 0); s.Found || s.Differing != 0 || !s.SameSize {
+		t.Fatalf("identical: %+v", s)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"gocompare/internal/compare"
+	"gocompare/internal/i18n"
 	"gocompare/internal/operations"
 )
 
@@ -70,21 +71,21 @@ func (a *workspaceState) installDirectory(paths [2]string, rows []compare.Entry)
 	a.panes = [2]*pane{}
 	a.syncPlan = nil
 	if a.syncChoice == "" {
-		a.syncChoice = "向右更新"
+		a.syncChoice = i18n.T(syncModes[0].key)
 	}
 	a.directoryRows = rows
 	a.directoryRoots = paths
 	a.paths = paths
-	a.kind = 1
+	a.kind = kindDirectory
 	a.directoryList = ui.ListState{}
 	if a.directoryNote != "" {
 		a.message = a.directoryNote
 		a.directoryNote = ""
 	} else {
-		a.message = fmt.Sprintf("目录比较完成 · %d 个条目", len(rows))
+		a.message = i18n.TArgs("dir.done", len(rows))
 	}
 	if a.win != nil {
-		a.win.SetTitle("目录比较 — GoCompare")
+		a.win.SetTitle(i18n.T("mode.directory") + " — GoCompare")
 	}
 }
 
@@ -102,14 +103,14 @@ func (a *workspaceState) openDirectoryEntry(entry compare.Entry) {
 	if entry.Status == compare.Failed || entry.Status == compare.TypeChanged || (entry.Left != nil && entry.Left.Symlink) || (entry.Right != nil && entry.Right.Symlink) {
 		a.err = entry.Error
 		if a.err == "" {
-			a.err = "该条目不是可比较的普通文件"
+			a.err = i18n.T("err.notRegular")
 		}
 		return
 	}
-	a.saveModeSession(1)
+	a.saveModeSession(kindDirectory)
 	a.paths = [2]string{filepath.Join(a.directoryRoots[0], filepath.FromSlash(entry.Path)), filepath.Join(a.directoryRoots[1], filepath.FromSlash(entry.Path))}
 	a.allowMissing = true
-	a.kind = 0
+	a.kind = kindFile
 	a.load()
 }
 
@@ -156,33 +157,34 @@ func (a *workspaceState) directoryView(c *ui.Context) {
 	// 搜索过滤与同步操作栏
 	ui.Row(c).Height(38).Padding(0, 14).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		ui.Icon(c, iconSearch).Size(13, 13).TextColor(t.TextMuted)
-		ui.TextInput(c.Key("search-files"), &a.dirSearch).Placeholder("过滤目录与文件名…").Label("搜索文件名").Grow(1).MinWidth(130)
-		ui.Checkbox(c, &a.onlyDifferences, "仅显示差异")
-		statusPill(c, fmt.Sprintf("%d 项", len(rows)), pal.baseAccent, pal.baseBg)
+		ui.TextInput(c.Key("search-files"), &a.dirSearch).Placeholder(i18n.T("dir.filterPlaceholder")).Label(i18n.T("dir.searchLabel")).Grow(1).MinWidth(130)
+		ui.Checkbox(c, &a.onlyDifferences, i18n.T("dir.onlyDiff"))
+		statusPill(c, i18n.TArgs("dir.items", len(rows)), pal.baseAccent, pal.baseBg)
 		if changed > 0 {
-			statusPill(c, fmt.Sprintf("差异 %d", changed), pal.diffFg, pal.diffBg)
+			statusPill(c, i18n.TArgs("dir.diffCount", changed), pal.diffFg, pal.diffBg)
 		} else if len(rows) > 0 {
-			statusPill(c, "一致", pal.successFg, pal.successBg)
+			statusPill(c, i18n.T("dir.allSame"), pal.successFg, pal.successBg)
 		}
 
 		ui.Divider(c).Height(16)
-		ui.Select(c, &a.syncChoice, []string{"向右更新", "向左更新", "双向更新", "镜像到右侧", "镜像到左侧"}).Disabled(a.busy)
-		syncBtn := ui.Button(c, "").Label("同步预览").Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
+		a.normalizeSyncChoice()
+		ui.Select(c, &a.syncChoice, syncOptions()).Disabled(a.busy)
+		syncBtn := ui.Button(c, "").Label(i18n.T("sync.preview")).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
 		syncBtn.OnClick(a.previewSync)
 		syncBtn.Children(func() {
 			ui.Icon(c, iconSync).Size(11, 11)
-			ui.Text(c, "同步预览").FontSize(11).SingleLine()
+			ui.Text(c, i18n.T("sync.preview")).FontSize(11).SingleLine()
 		})
 		if a.lastJournal != "" && !a.syncRolledBack {
-			undoBtn := ui.Button(c, "").Label("撤销上次同步").Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
+			undoBtn := ui.Button(c, "").Label(i18n.T("sync.undo")).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
 			undoBtn.OnClick(a.undoSync)
 			undoBtn.Children(func() {
 				ui.Icon(c, iconUndo).Size(11, 11)
-				ui.Text(c, "撤销上次同步").FontSize(11).SingleLine()
+				ui.Text(c, i18n.T("sync.undo")).FontSize(11).SingleLine()
 			})
 		}
 		if a.lastJournal != "" {
-			ui.Button(c, "查看操作记录…").Padding(3, 8).Radius(5).FontSize(11).OnClick(func() {
+			ui.Button(c, i18n.T("sync.journal")).Padding(3, 8).Radius(5).FontSize(11).OnClick(func() {
 				if err := mygo.Shell.OpenPath(a.lastJournal); err != nil {
 					a.err = err.Error()
 				}
@@ -194,21 +196,21 @@ func (a *workspaceState) directoryView(c *ui.Context) {
 	ui.Row(c).Height(30).Padding(0, 14).Gap(10).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		ui.Row(c).Grow(1).Basis(0).Gap(6).Children(func() {
 			sideBadge(c, 0, pal)
-			ui.Text(c, "左侧 · 名称 / 大小").FontSize(11).Bold().TextColor(t.TextMuted)
+			ui.Text(c, i18n.T("dir.leftHeader")).FontSize(11).Bold().TextColor(t.TextMuted)
 		})
 		ui.Row(c).Width(88).Center().Children(func() {
-			ui.Text(c, "比较结果").FontSize(11).Bold().TextColor(t.TextMuted)
+			ui.Text(c, i18n.T("dir.resultHeader")).FontSize(11).Bold().TextColor(t.TextMuted)
 		})
 		ui.Row(c).Grow(1).Basis(0).Gap(6).Children(func() {
 			sideBadge(c, 1, pal)
-			ui.Text(c, "右侧 · 名称 / 大小").FontSize(11).Bold().TextColor(t.TextMuted)
+			ui.Text(c, i18n.T("dir.rightHeader")).FontSize(11).Bold().TextColor(t.TextMuted)
 		})
 	})
 
 	if len(rows) == 0 {
 		ui.Column(c).Grow(1).FillWidth().Center().Gap(6).Children(func() {
-			ui.Text(c, "没有符合条件的条目").FontSize(16).Bold()
-			ui.Text(c, "尝试关闭差异筛选或清空搜索。").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, i18n.T("dir.emptyTitle")).FontSize(16).Bold()
+			ui.Text(c, i18n.T("dir.emptyDesc")).FontSize(12).TextColor(t.TextMuted)
 		})
 		return
 	}
@@ -274,19 +276,64 @@ func metadataLabel(m *compare.Metadata) string {
 		return "—"
 	}
 	if m.Error != "" {
-		return "读取失败"
+		return i18n.T("dir.readFailed")
 	}
 	if m.Symlink {
-		return "符号链接"
+		return i18n.T("dir.symlink")
 	}
 	if m.Directory {
-		return "目录"
+		return i18n.T("dir.directory")
 	}
 	return fmt.Sprintf("%d B", m.Size)
 }
 
 func statusLabel(s compare.Status) string {
-	return map[compare.Status]string{compare.Same: "相同", compare.Different: "不同", compare.LeftOnly: "仅左侧", compare.RightOnly: "仅右侧", compare.TypeChanged: "类型不同", compare.Failed: "读取失败"}[s]
+	key, ok := map[compare.Status]string{compare.Same: "dir.same", compare.Different: "dir.different", compare.LeftOnly: "dir.leftOnly", compare.RightOnly: "dir.rightOnly", compare.TypeChanged: "dir.typeChanged", compare.Failed: "dir.readFailed"}[s]
+	if !ok {
+		return ""
+	}
+	return i18n.T(key)
+}
+
+// syncModes 是同步下拉框的选项顺序。下拉框绑定显示文案，执行时按文案反查模式；
+// 切换语言前保存的文案也能识别，不会把选择悄悄变成默认值。
+var syncModes = []struct {
+	key  string
+	mode operations.Mode
+}{
+	{"sync.updateRight", operations.UpdateRight},
+	{"sync.updateLeft", operations.UpdateLeft},
+	{"sync.updateBoth", operations.UpdateBoth},
+	{"sync.mirrorRight", operations.MirrorRight},
+	{"sync.mirrorLeft", operations.MirrorLeft},
+}
+
+func syncOptions() []string {
+	out := make([]string, len(syncModes))
+	for i, m := range syncModes {
+		out[i] = i18n.T(m.key)
+	}
+	return out
+}
+
+// syncModeOf 返回文案对应的模式；未知文案返回空模式，由 Preview 报错，不默认执行任何方向。
+func syncModeOf(choice string) operations.Mode {
+	for _, m := range syncModes {
+		if i18n.Matches(m.key, choice) {
+			return m.mode
+		}
+	}
+	return ""
+}
+
+// normalizeSyncChoice 把其他语言的已选文案换成当前语言，下拉框才能显示正确选中项。
+func (a *workspaceState) normalizeSyncChoice() {
+	for _, m := range syncModes {
+		if i18n.Matches(m.key, a.syncChoice) {
+			a.syncChoice = i18n.T(m.key)
+			return
+		}
+	}
 }
 
 func (a *workspaceState) previewSync() {
@@ -294,11 +341,11 @@ func (a *workspaceState) previewSync() {
 		return
 	}
 	if a.directoryOptions.Filter != "" || a.directoryOptions.CompareMode || a.directoryOptions.CompareTime || a.directoryOptions.Links == compare.LinkFollow {
-		a.err = "同步暂不支持当前过滤、属性或链接规则。请恢复默认规则并重新比较。"
+		a.err = i18n.T("err.syncRules")
 		return
 	}
 	roots := a.directoryRoots
-	mode := map[string]operations.Mode{"向右更新": operations.UpdateRight, "向左更新": operations.UpdateLeft, "双向更新": operations.UpdateBoth, "镜像到右侧": operations.MirrorRight, "镜像到左侧": operations.MirrorLeft}[a.syncChoice]
+	mode := syncModeOf(a.syncChoice)
 	a.job(func(ctx context.Context) {
 		plan, err := operations.Preview(ctx, roots[0], roots[1], mode)
 		a.publish(func() {
@@ -309,7 +356,7 @@ func (a *workspaceState) previewSync() {
 			}
 			a.syncPlan = &plan
 			a.directoryList = ui.ListState{}
-			a.message = "操作预览 · 文件尚未更改"
+			a.message = i18n.T("sync.previewReady")
 		})
 	})
 }
@@ -319,22 +366,22 @@ func (a *workspaceState) syncPreviewView(c *ui.Context) {
 	pal := paletteFor(t)
 	plan := a.syncPlan
 	ui.Row(c).Height(38).Padding(0, 16).Gap(10).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		ui.Button(c, "返回比较结果").Padding(4, 9).Radius(5).FontSize(11).OnClick(func() { a.syncPlan = nil; a.directoryList = ui.ListState{} })
-		statusPill(c, fmt.Sprintf("%d 个待执行操作", len(plan.Actions)), pal.diffFg, pal.diffBg)
-		ui.Text(c, "目标文件覆盖或删除前将先备份").Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
-		ui.PrimaryButton(c, "执行同步…").Padding(4, 10).Radius(5).FontSize(11).Disabled(a.busy || len(plan.Actions) == 0).OnClick(func() { a.confirmSync = true })
+		ui.Button(c, i18n.T("sync.back")).Padding(4, 9).Radius(5).FontSize(11).OnClick(func() { a.syncPlan = nil; a.directoryList = ui.ListState{} })
+		statusPill(c, i18n.TArgs("sync.pending", len(plan.Actions)), pal.diffFg, pal.diffBg)
+		ui.Text(c, i18n.T("sync.backupNote")).Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
+		ui.PrimaryButton(c, i18n.T("sync.execute")).Padding(4, 10).Radius(5).FontSize(11).Disabled(a.busy || len(plan.Actions) == 0).OnClick(func() { a.confirmSync = true })
 	})
 	if len(plan.Actions) == 0 {
 		ui.Column(c).Grow(1).FillWidth().Center().Gap(6).Children(func() {
 			ui.Icon(c, iconCheck).Size(22, 22).TextColor(pal.successFg)
-			ui.Text(c, "无需操作").FontSize(15).Bold()
+			ui.Text(c, i18n.T("sync.nothing")).FontSize(15).Bold()
 		})
 		return
 	}
 	ui.List(c, &a.directoryList, len(plan.Actions)).Grow(1).FillWidth().ItemKey(func(i int) any { item := plan.Actions[i]; return item.Kind + ":" + item.Path }).Rows(func(row ui.ListRow) {
 		item := plan.Actions[row.Index]
 		rc := row.Context
-		actionText := map[string]string{"copy": "复制", "delete": "删除", "create-directory": "创建目录", "remove-directory": "删除目录"}[item.Kind]
+		actionText := i18n.T(map[string]string{"copy": "sync.copy", "delete": "sync.delete", "create-directory": "sync.mkdir", "remove-directory": "sync.rmdir"}[item.Kind])
 		fg, bg := pal.baseAccent, pal.baseBg
 		if item.Kind == "delete" || item.Kind == "remove-directory" {
 			fg, bg = pal.dangerFg, pal.dangerBg
@@ -369,7 +416,7 @@ func (a *workspaceState) undoSync() {
 				return
 			}
 			a.syncRolledBack = true
-			a.directoryNote = "已按操作记录撤销同步"
+			a.directoryNote = i18n.T("sync.undone")
 			if roots[0] != "" {
 				a.loadDirectory(roots)
 			} else {
@@ -387,7 +434,7 @@ func (a *workspaceState) executeSync() {
 	plan := *a.syncPlan
 	backup := a.backupDir
 	if backup == "" {
-		a.err = "未配置备份目录，拒绝执行同步"
+		a.err = i18n.T("err.noBackupDir")
 		return
 	}
 	a.syncGen++
@@ -400,16 +447,16 @@ func (a *workspaceState) executeSync() {
 			if err != nil {
 				a.syncRolledBack = report.RolledBack
 				if report.RolledBack {
-					a.err = fmt.Sprintf("执行停止：%v；已回滚 %d 项", err, len(report.Undone))
+					a.err = i18n.TArgs("sync.stoppedRolledBack", err, len(report.Undone))
 					a.directoryNote = a.err
 				} else {
-					a.err = fmt.Sprintf("执行停止：%v；仍有 %d 项生效，记录：%s", err, len(report.Completed), report.Journal)
+					a.err = i18n.TArgs("sync.stoppedPartial", err, len(report.Completed), report.Journal)
 				}
 				a.loadDirectory(a.directoryRoots)
 				return
 			}
 			a.syncRolledBack = false
-			a.message = fmt.Sprintf("已完成 %d 项操作；记录：%s", len(report.Completed), report.Journal)
+			a.message = i18n.TArgs("sync.done", len(report.Completed), report.Journal)
 			a.loadDirectory(a.directoryRoots)
 		})
 	})

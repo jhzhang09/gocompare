@@ -2,18 +2,18 @@ package native
 
 import (
 	"context"
-	"fmt"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui/editor"
 	"gocompare/internal/compare"
 	"gocompare/internal/document"
+	"gocompare/internal/i18n"
 	"gocompare/internal/workspace"
 	"path/filepath"
 	"strings"
 )
 
 func (a *workspaceState) canSaveSession() bool {
-	if a.kind == 2 {
+	if a.kind == kindMerge {
 		return strings.TrimSpace(a.paths[0]) != "" && strings.TrimSpace(a.paths[1]) != ""
 	}
 	return a.panes[0] != nil || a.directoryRows != nil
@@ -25,7 +25,7 @@ func (a *workspaceState) saveSession(path string) {
 	}
 	s := workspace.Session{Version: 1, Wrap: a.wrap, IgnoreSpace: a.ignoreSpace}
 	switch {
-	case a.kind == 2 && strings.TrimSpace(a.paths[0]) != "" && strings.TrimSpace(a.paths[1]) != "":
+	case a.kind == kindMerge && strings.TrimSpace(a.paths[0]) != "" && strings.TrimSpace(a.paths[1]) != "":
 		s.Kind = "merge"
 		s.Left, s.Right = a.paths[0], a.paths[1]
 		s.Base, s.Output = a.mergeBase, a.mergeOutput
@@ -51,7 +51,7 @@ func (a *workspaceState) saveSession(path string) {
 				a.err = err.Error()
 				return
 			}
-			a.message = "会话已保存（未保存内容仍需单独保存）"
+			a.message = i18n.T("session.saved")
 		})
 	})
 }
@@ -65,7 +65,7 @@ func (a *workspaceState) openSession(path string) {
 		if err == nil && s.Kind == "merge" {
 			a.publish(func() {
 				a.busy = false
-				a.kind = 2
+				a.kind = kindMerge
 				a.paths = [2]string{s.Left, s.Right}
 				a.mergeBase = s.Base
 				a.mergeOutput = s.Output
@@ -120,7 +120,7 @@ func (a *workspaceState) sessionDialog(save bool) {
 		return
 	}
 	if save {
-		path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: a.win, Title: "保存比较会话", DefaultPath: "comparison.gocompare", Filters: []mygo.FileFilter{{Name: "GoCompare 会话", Extensions: []string{"gocompare"}}}})
+		path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: a.win, Title: i18n.T("session.saveTitle"), DefaultPath: "comparison.gocompare", Filters: []mygo.FileFilter{{Name: i18n.T("session.filterName"), Extensions: []string{"gocompare"}}}})
 		if err != nil {
 			a.err = err.Error()
 		} else if path != "" {
@@ -128,7 +128,7 @@ func (a *workspaceState) sessionDialog(save bool) {
 		}
 		return
 	}
-	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: "打开比较会话", Filters: []mygo.FileFilter{{Name: "GoCompare 会话", Extensions: []string{"gocompare"}}}})
+	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: i18n.T("session.openTitle"), Filters: []mygo.FileFilter{{Name: i18n.T("session.filterName"), Extensions: []string{"gocompare"}}}})
 	if err != nil {
 		a.err = err.Error()
 	} else if len(paths) > 0 {
@@ -139,7 +139,7 @@ func (a *workspaceState) saveAs(side int) {
 	if a.busy || a.panes[side] == nil {
 		return
 	}
-	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: a.win, Title: "另存为（选择新文件名）", DefaultPath: a.panes[side].file.Path})
+	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: a.win, Title: i18n.T("dialog.saveAsTitle"), DefaultPath: a.panes[side].file.Path})
 	if err != nil {
 		a.err = err.Error()
 		return
@@ -163,13 +163,13 @@ func (a *workspaceState) saveAsPath(side int, path string) {
 				return
 			}
 			p.file = f
-			p.edit.Label = []string{"左侧编辑器", "右侧编辑器"}[side]
+			p.edit.Label = i18n.T([]string{"a11y.leftEditor", "a11y.rightEditor"}[side])
 			p.buffer.SetLanguage(editor.LanguageFor(f.Path))
 			a.paths[side] = f.Path
 			if p.buffer.Version() == version {
 				p.buffer.MarkSaved()
 			}
-			a.message = fmt.Sprintf("已另存为 %s", f.Path)
+			a.message = i18n.TArgs("status.savedAs", f.Path)
 			a.updateTitle()
 		})
 	})

@@ -109,3 +109,30 @@ func TestRejectBackupInsideRoot(t *testing.T) {
 		t.Fatal("invalid backup path was created")
 	}
 }
+
+func TestExecuteCopiesWithoutHardLinks(t *testing.T) {
+	old := linkFile
+	linkFile = func(string, string) error { return &os.LinkError{Op: "link", Err: errors.ErrUnsupported} }
+	defer func() { linkFile = old }()
+	ctx := context.Background()
+	left, right := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(left, "a.txt"), []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Preview(ctx, left, right, UpdateRight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Execute(ctx, p, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(right, "a.txt"))
+	if err != nil || string(data) != "new" {
+		t.Fatalf("copy: %q %v", data, err)
+	}
+	src, _ := os.Stat(filepath.Join(left, "a.txt"))
+	dst, _ := os.Stat(filepath.Join(right, "a.txt"))
+	if !src.ModTime().Equal(dst.ModTime()) {
+		t.Fatalf("mtime not preserved: %v vs %v", src.ModTime(), dst.ModTime())
+	}
+}

@@ -48,11 +48,12 @@ func (d *File) SaveAs(ctx context.Context, path, text string) (*File, error) {
 	}
 	name := temp.Name()
 	defer os.Remove(name)
+	// 新文件采用常见的 0644；从已有文件另存时沿用源文件权限。
+	mode := os.FileMode(0o644)
+	if d.info != nil {
+		mode = d.info.Mode().Perm()
+	}
 	if _, err = temp.Write(data); err == nil {
-		mode := os.FileMode(0o600)
-		if d.info != nil {
-			mode = d.info.Mode().Perm()
-		}
 		err = temp.Chmod(mode)
 	}
 	if err == nil {
@@ -68,9 +69,16 @@ func (d *File) SaveAs(ctx context.Context, path, text string) (*File, error) {
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
-	// 同目录硬链接发布保证目标不存在；不支持硬链接的文件系统明确报错。
-	if err = os.Link(name, full); err != nil {
-		return nil, err
+	// 同目录硬链接发布保证目标不存在，且读者只会看到完整内容。
+	if err = linkFile(name, full); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil, err
+		}
+		// exFAT、FAT32 和部分网络共享不支持硬链接，退回排他创建；仍然不会覆盖已有文件，
+		// 但写入期间目标可能短暂处于不完整状态。
+		if err = writeExclusive(full, data, mode); err != nil {
+			return nil, err
+		}
 	}
 	info, err := os.Stat(full)
 	if err != nil {
@@ -155,12 +163,9 @@ func (d *File) SaveAsOverwrite(ctx context.Context, path, text string, destBasel
 	return &File{Path: full, Text: text, Encoding: d.Encoding, BOM: d.BOM, CRLF: d.CRLF, digest: sha256.Sum256(data), info: saved}, nil
 }
 
-// Backup 将原始内容备份到指定目录，返回备份路径。内容变化时拒绝备份旧基线。
+// Backup 将磁盘上的原始字节备份到指定目录，返回备份路径。内容变化时拒绝备份旧基线。
 func (d *File) Backup(ctx context.Context, dir string) (string, error) {
-	if err := d.unchanged(ctx); err != nil {
-		return "", err
-	}
-	data, err := d.encoded(d.Text)
+	data, err := d.unchangedBytes(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -185,3 +190,28 @@ func (d *File) Backup(ctx context.Context, dir string) (string, error) {
 	}
 	return name, nil
 }
+
+// writeExclusive 只在目标不存在时创建并写入；失败时删除本次创建的文件。
+func writeExclusive(path string, data []byte, mode os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	if err != nil {
+		return err
+	}
+	if _, err = f.Write(data); err == nil {
+		err = f.Chmod(mode)
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		os.Remove(path)
+	}
+	return err
+}
+
+// linkFile 可在测试中替换，用来模拟不支持硬链接的文件系统。
+var linkFile = os.Link

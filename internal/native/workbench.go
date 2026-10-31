@@ -2,7 +2,6 @@ package native
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,18 +52,18 @@ func (a *workspaceState) selectKind(kind int) {
 			} else {
 				a.paths = [2]string{}
 			}
-			if kind == 6 {
+			if kind == kindScratch {
 				a.ensureScratch()
 				a.refreshComparison()
-				a.message = "纯文本比较 · 可直接在两栏中键入或粘贴文本"
+				a.message = i18n.T("status.scratchReady")
 			} else {
-				a.message = "选择左右来源，然后开始比较"
+				a.message = i18n.T("status.selectSource")
 			}
 		} else {
-			if kind == 6 {
+			if kind == kindScratch {
 				a.ensureScratch()
 				a.refreshComparison()
-			} else if kind == 0 && a.panes[0] != nil {
+			} else if kind == kindFile && a.panes[0] != nil {
 				a.refreshComparison()
 			}
 		}
@@ -104,13 +103,13 @@ type modeItem struct {
 }
 
 var modes = []modeItem{
-	{kind: 6, msgKey: "mode.scratch", icon: iconTextDiff},
-	{kind: 0, msgKey: "mode.file", icon: iconFileDiff},
-	{kind: 1, msgKey: "mode.directory", icon: iconFolderDiff},
-	{kind: 2, msgKey: "mode.merge", icon: iconGitMerge},
-	{kind: 3, msgKey: "mode.picture", icon: iconImageDiff},
-	{kind: 4, msgKey: "mode.media", icon: iconMediaTag},
-	{kind: 5, msgKey: "mode.version", icon: iconVersionReg},
+	{kind: kindScratch, msgKey: "mode.scratch", icon: iconTextDiff},
+	{kind: kindFile, msgKey: "mode.file", icon: iconFileDiff},
+	{kind: kindDirectory, msgKey: "mode.directory", icon: iconFolderDiff},
+	{kind: kindMerge, msgKey: "mode.merge", icon: iconGitMerge},
+	{kind: kindPicture, msgKey: "mode.picture", icon: iconImageDiff},
+	{kind: kindMedia, msgKey: "mode.media", icon: iconMediaTag},
+	{kind: kindVersion, msgKey: "mode.version", icon: iconVersionReg},
 }
 
 func modeTitle(kind int) string {
@@ -149,7 +148,7 @@ func (a *workspaceState) view(c *ui.Context) {
 			ui.Row(c).Padding(4, 6).Gap(8).Margin(0, 0, 12).Children(func() {
 				if icon := a.appIcon(); icon != nil {
 					ui.Box(c).Size(26, 26).Center().Radius(6).Background(pal.cardBg).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08)).Children(func() {
-						ui.Image(c, icon).Size(20, 20).Label("应用图标")
+						ui.Image(c, icon).Size(20, 20).Label(i18n.T("a11y.appIcon"))
 					})
 				}
 				ui.Column(c).Gap(1).Children(func() {
@@ -224,15 +223,15 @@ func (a *workspaceState) view(c *ui.Context) {
 				a.renderHeaderBadge(c, pal)
 				ui.Box(c).Grow(1)
 
-				if a.kind == 0 && a.panes[0] != nil && a.directoryRoots[0] != "" {
+				if a.kind == kindFile && a.panes[0] != nil && a.directoryRoots[0] != "" {
 					backBtn := ui.Button(c, "").Label(i18n.T("action.backToFolder")).Padding(4, 9).Gap(4).Radius(6).Disabled(a.busy)
 					backBtn.OnClick(func() {
 						a.guard(func() {
 							if a.restoreModeSession(1) {
-								a.kind = 1
+								a.kind = kindDirectory
 							} else {
 								a.paths = a.directoryRoots
-								a.kind = 1
+								a.kind = kindDirectory
 								a.load()
 							}
 						})
@@ -242,7 +241,7 @@ func (a *workspaceState) view(c *ui.Context) {
 						ui.Text(c, i18n.T("action.backToFolder")).FontSize(11).SingleLine()
 					})
 				}
-				if a.kind == 2 {
+				if a.kind == kindMerge {
 					winBtn := ui.Button(c, "").Label(i18n.T("action.openMerge")).Padding(4, 9).Gap(4).Radius(6)
 					winBtn.OnClick(a.openMergeWindow)
 					winBtn.Children(func() {
@@ -272,7 +271,7 @@ func (a *workspaceState) view(c *ui.Context) {
 				})
 			})
 
-			if a.kind != 6 {
+			if a.kind != kindScratch {
 				// 双侧来源路径胶囊区（极简紧凑）
 				ui.Row(c).Padding(6, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 					for side := 0; side < 2; side++ {
@@ -288,7 +287,7 @@ func (a *workspaceState) view(c *ui.Context) {
 			}
 
 			// 操作命令工具栏（文本比较与各模式完全对齐）
-			if a.kind == 6 {
+			if a.kind == kindScratch {
 				a.scratchToolbar(c, pal)
 			} else {
 				a.actionToolbar(c, pal)
@@ -308,19 +307,19 @@ func (a *workspaceState) view(c *ui.Context) {
 			}
 
 			switch {
-			case a.kind == 6:
+			case a.kind == kindScratch:
 				a.scratchView(c)
-			case a.kind == 2:
+			case a.kind == kindMerge:
 				a.mergeView(c)
-			case a.kind == 3:
+			case a.kind == kindPicture:
 				a.pictureView(c)
-			case a.kind == 4:
+			case a.kind == kindMedia:
 				a.mediaView(c)
-			case a.kind == 5:
+			case a.kind == kindVersion:
 				a.versionView(c)
-			case a.kind == 1 && a.directoryRows != nil:
+			case a.kind == kindDirectory && a.directoryRows != nil:
 				a.directoryView(c)
-			case a.kind == 0 && a.panes[0] != nil:
+			case a.kind == kindFile && a.panes[0] != nil:
 				a.textView(c)
 			default:
 				a.modeEmptyView(c, pal, a.kind)
@@ -372,17 +371,14 @@ func (a *workspaceState) view(c *ui.Context) {
 		}
 	}
 	c.OnShortcut(ui.Cmd, ui.KeyS, func() {
-		if a.ignoreBlankLines {
-			return
-		}
-		if a.kind == 2 && a.mergeBuffer != nil && a.mergeBuffer.Modified() {
+		if a.kind == kindMerge && a.mergeBuffer != nil && a.mergeBuffer.Modified() {
 			a.saveMerge()
 			return
 		}
-		if a.kind != 0 || a.panes[0] == nil {
+		if a.kind != kindFile || a.panes[0] == nil {
 			return
 		}
-		side := int(a.diff.ActiveSide())
+		side := int(a.activeDiff().ActiveSide())
 		if a.mode > 0 {
 			side = a.mode - 1
 		}
@@ -394,10 +390,10 @@ func (a *workspaceState) view(c *ui.Context) {
 
 func (a *workspaceState) renderToolbarMeta(c *ui.Context, pal uiPalette) {
 	switch a.kind {
-	case 1:
+	case kindDirectory:
 		statusPill(c, i18n.T("meta.dir"), pal.sameFg, pal.sameBg)
 		if strings.TrimSpace(a.dirFilter) != "" {
-			statusPill(c, "过滤 "+a.dirFilter, pal.baseAccent, pal.baseBg)
+			statusPill(c, i18n.TArgs("dir.filterPill", a.dirFilter), pal.baseAccent, pal.baseBg)
 		}
 		if a.compareMode {
 			statusPill(c, i18n.T("meta.permission"), pal.baseAccent, pal.baseBg)
@@ -405,24 +401,24 @@ func (a *workspaceState) renderToolbarMeta(c *ui.Context, pal uiPalette) {
 		if a.compareTime {
 			statusPill(c, i18n.T("meta.time"), pal.baseAccent, pal.baseBg)
 		}
-	case 2:
+	case kindMerge:
 		if strings.TrimSpace(a.mergeBase) != "" {
 			statusPill(c, i18n.T("meta.merge3"), pal.baseAccent, pal.baseBg)
 		} else {
 			statusPill(c, i18n.T("meta.merge2"), pal.sameFg, pal.sameBg)
 		}
-	case 3:
+	case kindPicture:
 		statusPill(c, i18n.T("meta.picture"), pal.sameFg, pal.sameBg)
-	case 4:
+	case kindMedia:
 		statusPill(c, i18n.T("meta.media"), pal.sameFg, pal.sameBg)
-	case 5:
+	case kindVersion:
 		statusPill(c, i18n.T("meta.version"), pal.sameFg, pal.sameBg)
 	}
 }
 
 func (a *workspaceState) renderHeaderBadge(c *ui.Context, pal uiPalette) {
 	switch {
-	case a.kind == 6:
+	case a.kind == kindScratch:
 		diff := a.activeDiff()
 		if diff.ComparisonReady() {
 			n := len(diff.Hunks())
@@ -432,16 +428,16 @@ func (a *workspaceState) renderHeaderBadge(c *ui.Context, pal uiPalette) {
 				statusPill(c, i18n.TArgs("badge.diffCount", n), pal.diffFg, pal.diffBg)
 			}
 		}
-	case a.kind == 0 && a.panes[0] != nil && a.diff.ComparisonReady():
-		n := len(a.diff.Hunks())
+	case a.kind == kindFile && a.panes[0] != nil && a.activeDiff().ComparisonReady():
+		n := len(a.activeDiff().Hunks())
 		if n == 0 {
 			statusPill(c, i18n.T("badge.same"), pal.successFg, pal.successBg)
 		} else {
 			statusPill(c, i18n.TArgs("badge.diffCount", n), pal.diffFg, pal.diffBg)
 		}
-	case a.kind == 1 && a.directoryRows != nil:
+	case a.kind == kindDirectory && a.directoryRows != nil:
 		statusPill(c, i18n.TArgs("badge.itemCount", len(a.directoryRows)), pal.baseAccent, pal.baseBg)
-	case a.kind == 2 && a.mergeResult != nil:
+	case a.kind == kindMerge && a.mergeResult != nil:
 		n := a.mergeResult.ConflictCount()
 		if n == 0 {
 			statusPill(c, i18n.T("badge.noConflict"), pal.successFg, pal.successBg)
@@ -459,19 +455,19 @@ func (a *workspaceState) canReset() bool {
 		return true
 	}
 	switch a.kind {
-	case 0:
+	case kindFile:
 		return a.panes[0] != nil || a.panes[1] != nil
-	case 1:
+	case kindDirectory:
 		return a.directoryRows != nil || strings.TrimSpace(a.dirFilter) != ""
-	case 2:
+	case kindMerge:
 		return a.mergeResult != nil || strings.TrimSpace(a.mergeBase) != "" || strings.TrimSpace(a.mergeOutput) != ""
-	case 3:
+	case kindPicture:
 		return a.pictureLeft != nil || a.pictureRight != nil
-	case 4:
+	case kindMedia:
 		return a.mediaReady
-	case 5:
+	case kindVersion:
 		return a.infoReady
-	case 6:
+	case kindScratch:
 		return a.scratchPanes[0] != nil && (a.scratchPanes[0].buffer.Len() > 0 || a.scratchPanes[1].buffer.Len() > 0)
 	}
 	return false
@@ -487,41 +483,38 @@ func (a *workspaceState) resetCurrentMode() {
 	a.confirm = false
 
 	switch a.kind {
-	case 0:
+	case kindFile:
 		a.stopComparison()
 		a.panes = [2]*pane{nil, nil}
 		a.diff = editor.DiffState{}
 		a.anchors = nil
 		a.anchorLeftSet = false
 		a.anchorRightSet = false
-	case 1:
+	case kindDirectory:
 		a.directoryRows = nil
 		a.directoryRoots = [2]string{"", ""}
 		a.syncPlan = nil
 		a.syncChoice = ""
 		a.dirFilter = ""
 		a.directoryNote = ""
-	case 2:
+	case kindMerge:
 		a.clearMerge()
 		a.mergeBase = ""
 		a.mergeOutput = ""
-	case 3:
+	case kindPicture:
 		a.clearPictures()
 		a.pictureMode = pictureSide
 		a.pictureTol = 2
-		a.pictureZoom = 0
-	case 4:
+		a.pictureZoom = pictureZoomFit
+	case kindMedia:
 		a.clearMedia()
-	case 5:
+	case kindVersion:
 		a.clearVersion()
-	case 6:
-		if a.scratchPanes[0] != nil {
-			a.scratchPanes[0].buffer.Set("")
-		}
-		if a.scratchPanes[1] != nil {
-			a.scratchPanes[1].buffer.Set("")
-		}
-		a.scratchDiff = editor.DiffState{}
+	case kindScratch:
+		// 重建面板和差异状态；只清空差异状态会让比较视图失去缓冲区，无法继续输入。
+		a.stopComparison()
+		a.scratchPanes = [2]*pane{}
+		a.ensureScratch()
 		a.refreshComparison()
 	}
 	if a.modeSessions != nil {
@@ -534,35 +527,35 @@ func (a *workspaceState) modeEmptyView(c *ui.Context, pal uiPalette, kind int) {
 	t := c.Theme()
 	icon := modeIcon(kind)
 	var (
-		tagKey   string
-		titleKey string
-		descKey  string
+		tagKey         string
+		titleKey       string
+		descKey        string
 		f1TKey, f1DKey string
 		f2TKey, f2DKey string
 		f3TKey, f3DKey string
 	)
 	switch kind {
-	case 1:
+	case kindDirectory:
 		tagKey, titleKey, descKey = "intro.dirTag", "intro.dirTitle", "intro.dirDesc"
 		f1TKey, f1DKey = "intro.dirFeat1Title", "intro.dirFeat1Desc"
 		f2TKey, f2DKey = "intro.dirFeat2Title", "intro.dirFeat2Desc"
 		f3TKey, f3DKey = "intro.dirFeat3Title", "intro.dirFeat3Desc"
-	case 2:
+	case kindMerge:
 		tagKey, titleKey, descKey = "intro.mergeTag", "intro.mergeTitle", "intro.mergeDesc"
 		f1TKey, f1DKey = "intro.mergeFeat1Title", "intro.mergeFeat1Desc"
 		f2TKey, f2DKey = "intro.mergeFeat2Title", "intro.mergeFeat2Desc"
 		f3TKey, f3DKey = "intro.mergeFeat3Title", "intro.mergeFeat3Desc"
-	case 3:
+	case kindPicture:
 		tagKey, titleKey, descKey = "intro.pictureTag", "intro.pictureTitle", "intro.pictureDesc"
 		f1TKey, f1DKey = "intro.pictureFeat1Title", "intro.pictureFeat1Desc"
 		f2TKey, f2DKey = "intro.pictureFeat2Title", "intro.pictureFeat2Desc"
 		f3TKey, f3DKey = "intro.pictureFeat3Title", "intro.pictureFeat3Desc"
-	case 4:
+	case kindMedia:
 		tagKey, titleKey, descKey = "intro.mediaTag", "intro.mediaTitle", "intro.mediaDesc"
 		f1TKey, f1DKey = "intro.mediaFeat1Title", "intro.mediaFeat1Desc"
 		f2TKey, f2DKey = "intro.mediaFeat2Title", "intro.mediaFeat2Desc"
 		f3TKey, f3DKey = "intro.mediaFeat3Title", "intro.mediaFeat3Desc"
-	case 5:
+	case kindVersion:
 		tagKey, titleKey, descKey = "intro.versionTag", "intro.versionTitle", "intro.versionDesc"
 		f1TKey, f1DKey = "intro.versionFeat1Title", "intro.versionFeat1Desc"
 		f2TKey, f2DKey = "intro.versionFeat2Title", "intro.versionFeat2Desc"
@@ -598,11 +591,11 @@ func (a *workspaceState) modeEmptyView(c *ui.Context, pal uiPalette, kind int) {
 				}
 			})
 
-			if kind == 0 {
+			if kind == kindFile {
 				ui.Row(c).Margin(6, 0, 0).Gap(8).Center().Children(func() {
 					ui.Text(c, i18n.T("intro.fileScratchHint")).FontSize(11).TextColor(t.TextMuted)
 					scratchBtn := ui.Button(c, i18n.T("intro.toScratch")).Padding(3, 10).Radius(6).FontSize(11).Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.2)).TextColor(pal.baseAccent)
-					scratchBtn.OnClick(func() { a.selectKind(6) })
+					scratchBtn.OnClick(func() { a.selectKind(kindScratch) })
 				})
 			}
 		})
@@ -632,9 +625,9 @@ func (a *workspaceState) actionToolbar(c *ui.Context, pal uiPalette) {
 			ui.Text(c, i18n.T("action.reset")).FontSize(11).SingleLine()
 		})
 
-		if a.kind == 0 && a.panes[0] != nil {
+		if a.kind == kindFile && a.panes[0] != nil {
 			ui.Divider(c).Height(16).Margin(0, 2)
-			ready := a.diff.ComparisonReady() && !a.busy && !a.compareRunning && a.compareErr == nil
+			ready := a.activeDiff().ComparisonReady() && !a.busy && !a.compareRunning && a.compareErr == nil
 			prevBtn := ui.Button(c, "").Label(i18n.T("action.prevDiff")).Padding(4, 8).Gap(3).Radius(6).Disabled(!ready)
 			prevBtn.OnClick(func() { a.navigateDiff(-1) })
 			prevBtn.Children(func() {
@@ -649,11 +642,11 @@ func (a *workspaceState) actionToolbar(c *ui.Context, pal uiPalette) {
 				ui.Text(c, i18n.T("action.nextDiff")).FontSize(11).SingleLine()
 			})
 
-			ui.Button(c, i18n.T("action.applyLeft")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(0) })
-			ui.Button(c, i18n.T("action.applyRight")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(1) })
+			ui.Button(c, i18n.T("action.applyLeft")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(0) })
+			ui.Button(c, i18n.T("action.applyRight")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(1) })
 
 			findBtn := ui.Button(c, "").Label(i18n.T("action.find")).Padding(4, 8).Gap(3).Radius(6)
-			findBtn.OnClick(func() { a.diff.Run(editor.Find) })
+			findBtn.OnClick(func() { a.activeDiff().Run(editor.Find) })
 			findBtn.Children(func() {
 				ui.Icon(c, iconSearch).Size(11, 11)
 				ui.Text(c, i18n.T("action.find")).FontSize(11).SingleLine()
@@ -730,11 +723,11 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 			ui.Text(c, i18n.T("action.nextDiff")).FontSize(11).SingleLine()
 		})
 
-		ui.Button(c, i18n.T("action.applyLeft")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(0) })
-		ui.Button(c, i18n.T("action.applyRight")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready).OnClick(func() { a.apply(1) })
+		ui.Button(c, i18n.T("action.applyLeft")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(0) })
+		ui.Button(c, i18n.T("action.applyRight")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(1) })
 
 		findBtn := ui.Button(c, "").Label(i18n.T("action.find")).Padding(4, 8).Gap(3).Radius(6)
-		findBtn.OnClick(func() { a.scratchDiff.Run(editor.Find) })
+		findBtn.OnClick(func() { a.activeDiff().Run(editor.Find) })
 		findBtn.Children(func() {
 			ui.Icon(c, iconSearch).Size(11, 11)
 			ui.Text(c, i18n.T("action.find")).FontSize(11).SingleLine()
@@ -754,16 +747,16 @@ func (a *workspaceState) optionsView(c *ui.Context) {
 				ui.Text(c, i18n.T("action.openMerge")).FontSize(11).SingleLine()
 			})
 
-			if a.kind == 1 {
+			if a.kind == kindDirectory {
 				ui.Divider(c).Height(16)
 				ui.TextInput(c.Key("dir-filter"), &a.dirFilter).Label(i18n.T("option.dirFilter")).Placeholder(i18n.T("option.dirFilterPlaceholder")).Grow(1).MinWidth(160).Disabled(a.busy)
 				ui.Checkbox(c, &a.compareMode, i18n.T("option.compareMode")).Disabled(a.busy)
 				ui.Checkbox(c, &a.compareTime, i18n.T("option.compareTime")).Disabled(a.busy)
 				ui.Checkbox(c, &a.followLinks, i18n.T("option.followLinks")).Disabled(a.busy)
 			}
-			if (a.kind == 0 && a.panes[0] != nil) || a.kind == 6 {
+			if (a.kind == kindFile && a.panes[0] != nil) || a.kind == kindScratch {
 				ui.Divider(c).Height(16)
-				if a.kind == 0 {
+				if a.kind == kindFile {
 					ui.Segmented(c, &a.mode, i18n.T("option.modeCompare"), i18n.T("option.modeEditLeft"), i18n.T("option.modeEditRight"))
 				}
 				ui.Checkbox(c, &a.ignoreSpace, i18n.T("option.ignoreSpace")).OnChange(a.refreshComparison)
@@ -773,7 +766,7 @@ func (a *workspaceState) optionsView(c *ui.Context) {
 				ui.Button(c, i18n.T("action.recompute")).Padding(4, 8).Radius(6).FontSize(11).OnClick(a.recompute)
 			}
 		})
-		if a.kind == 0 && a.panes[0] != nil {
+		if a.kind == kindFile && a.panes[0] != nil {
 			ui.Row(c).Gap(6).Children(func() {
 				ui.Icon(c, iconAnchor).Size(12, 12).TextColor(pal.baseAccent)
 				ui.Text(c, i18n.T("option.anchors")).FontSize(11).Bold().TextColor(t.TextMuted)
@@ -841,9 +834,9 @@ func (a *workspaceState) textView(c *ui.Context) {
 			side, p := side, p
 			name := filepath.Base(p.file.Path)
 			if p.file.Missing() {
-				name += "（不存在）"
+				name += i18n.T("pane.missing")
 			}
-			isDirty := p.buffer.Modified() && !a.ignoreBlankLines
+			isDirty := p.buffer.Modified()
 			if isDirty {
 				name += " •"
 			}
@@ -856,7 +849,8 @@ func (a *workspaceState) textView(c *ui.Context) {
 				ui.Text(c, name).Bold().FontSize(12).Grow(1).MinWidth(0).SingleLine().Tooltip(p.file.Path)
 				if isDirty {
 					statusPill(c, i18n.T("pane.unsaved"), pal.diffFg, pal.diffBg)
-				} else if a.ignoreBlankLines {
+				}
+				if a.ignoreBlankLines {
 					statusPill(c, i18n.T("pane.blankIgnored"), pal.baseAccent, pal.baseBg)
 				}
 				saveLabel := []string{i18n.T("pane.saveLeft"), i18n.T("pane.saveRight")}[side]
@@ -871,10 +865,7 @@ func (a *workspaceState) textView(c *ui.Context) {
 		}
 	})
 	if a.mode == 0 {
-		a.diff.Wrap = a.wrap
-		a.diff.Editable = !a.busy
-		a.diff.OldEditable = !a.busy
-		editor.DiffView(c.Key("comparison"), &a.diff).Grow(1).FillWidth()
+		a.comparisonView(c, "comparison")
 	} else {
 		p := a.panes[a.mode-1]
 		p.edit.SoftWrap = a.wrap
@@ -889,7 +880,7 @@ func (a *workspaceState) textView(c *ui.Context) {
 			}
 			ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(6).Children(func() {
 				ui.Icon(c, iconFile).Size(11, 11).TextColor(t.TextMuted)
-				ui.Text(c, fmt.Sprintf("%s / %s · %d 行", strings.ToUpper(p.file.Encoding), ending, p.buffer.LineCount())).Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
+				ui.Text(c, i18n.TArgs("pane.fileInfo", strings.ToUpper(p.file.Encoding), ending, p.buffer.LineCount())).Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
 				if lang := p.buffer.Language(); lang != nil && lang.Name != "" {
 					statusPill(c, lang.Name, pal.sameFg, pal.sameBg)
 				}
@@ -916,7 +907,7 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Height(38).Padding(0, 12).Gap(8).Background(pal.cardBg).Children(func() {
 			sideBadge(c, 0, pal)
 			ui.Text(c, i18n.T("pane.leftText")).Bold().FontSize(12).TextColor(pal.sidebarText).SingleLine()
-			stat := fmt.Sprintf("%d 行 · %d 字符", leftLines, leftLen)
+			stat := i18n.TArgs("scratch.stat", leftLines, leftLen)
 			ui.Text(c, stat).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			ui.Box(c).Grow(1)
 
@@ -926,9 +917,9 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 				if clip != "" {
 					leftBuf.Set(clip)
 					a.refreshComparison()
-					a.message = fmt.Sprintf("已粘贴 %d 字符到左侧", len(clip))
+					a.message = i18n.TArgs("scratch.pastedLeft", len(clip))
 				} else {
-					a.message = "剪贴板为空"
+					a.message = i18n.T("scratch.clipboardEmpty")
 				}
 			})
 			pasteBtn.Children(func() {
@@ -938,7 +929,7 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 			copyBtn := ui.Button(c, i18n.T("pane.copy")).Padding(3, 8).Radius(5).FontSize(11).Disabled(leftLen == 0)
 			copyBtn.OnClick(func() {
 				c.Services().WriteClipboard(leftBuf.String())
-				a.message = "已复制左侧文本到剪贴板"
+				a.message = i18n.T("scratch.copiedLeft")
 			})
 
 			clearLeftBtn := ui.Button(c, i18n.T("pane.clear")).Padding(3, 8).Radius(5).FontSize(11).Disabled(leftLen == 0)
@@ -955,7 +946,7 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Height(38).Padding(0, 12).Gap(8).Background(pal.cardBg).Children(func() {
 			sideBadge(c, 1, pal)
 			ui.Text(c, i18n.T("pane.rightText")).Bold().FontSize(12).TextColor(pal.sidebarText).SingleLine()
-			stat := fmt.Sprintf("%d 行 · %d 字符", rightLines, rightLen)
+			stat := i18n.TArgs("scratch.stat", rightLines, rightLen)
 			ui.Text(c, stat).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			ui.Box(c).Grow(1)
 
@@ -965,9 +956,9 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 				if clip != "" {
 					rightBuf.Set(clip)
 					a.refreshComparison()
-					a.message = fmt.Sprintf("已粘贴 %d 字符到右侧", len(clip))
+					a.message = i18n.TArgs("scratch.pastedRight", len(clip))
 				} else {
-					a.message = "剪贴板为空"
+					a.message = i18n.T("scratch.clipboardEmpty")
 				}
 			})
 			pasteBtn.Children(func() {
@@ -977,7 +968,7 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 			copyBtn := ui.Button(c, i18n.T("pane.copy")).Padding(3, 8).Radius(5).FontSize(11).Disabled(rightLen == 0)
 			copyBtn.OnClick(func() {
 				c.Services().WriteClipboard(rightBuf.String())
-				a.message = "已复制右侧文本到剪贴板"
+				a.message = i18n.T("scratch.copiedRight")
 			})
 
 			clearRightBtn := ui.Button(c, i18n.T("pane.clear")).Padding(3, 8).Radius(5).FontSize(11).Disabled(rightLen == 0)
@@ -998,8 +989,18 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 	}
 
 	// 核心双栏 DiffView
-	a.scratchDiff.Wrap = a.wrap
-	a.scratchDiff.Editable = !a.busy
-	a.scratchDiff.OldEditable = !a.busy
-	editor.DiffView(c.Key("scratch_comparison"), &a.scratchDiff).Grow(1).FillWidth()
+	a.comparisonView(c, "scratch_comparison")
+}
+
+// comparisonView 绘制当前比较视图；忽略空行时使用独立键和只读副本，避免与可编辑视图共享控件状态。
+func (a *workspaceState) comparisonView(c *ui.Context, key string) {
+	diff := a.activeDiff()
+	editable := !a.busy && !a.ignoreBlankLines
+	if a.ignoreBlankLines {
+		key += "_blank"
+	}
+	diff.Wrap = a.wrap
+	diff.Editable = editable
+	diff.OldEditable = editable
+	editor.DiffView(c.Key(key), diff).Grow(1).FillWidth()
 }

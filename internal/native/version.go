@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"gocompare/internal/i18n"
 	"gocompare/internal/pever"
 	"gocompare/internal/regfile"
 )
@@ -57,7 +58,7 @@ func (a *workspaceState) loadVersion() {
 			a.infoDiffs = result.diffs
 			a.infoReady = true
 			a.err = ""
-			a.message = "已读取版本或注册表"
+			a.message = i18n.T("version.loaded")
 		})
 	})
 }
@@ -77,8 +78,8 @@ func (a *workspaceState) versionView(c *ui.Context) {
 
 	ui.Row(c).Height(36).Padding(0, 16).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		ui.Icon(c, iconVersionReg).Size(13, 13).TextColor(pal.baseAccent)
-		ui.Text(c, "PE 版本与注册表导出对比").FontSize(11).Bold()
-		statusPill(c, "不读取实时注册表", pal.sameFg, pal.sameBg)
+		ui.Text(c, i18n.T("version.header")).FontSize(11).Bold()
+		statusPill(c, i18n.T("version.noLive"), pal.sameFg, pal.sameBg)
 	})
 
 	if !a.infoReady {
@@ -91,10 +92,10 @@ func (a *workspaceState) versionView(c *ui.Context) {
 	ui.Column(c).Grow(1).FillWidth().Padding(14, 16).Gap(12).Children(func() {
 		if a.infoKind == "pe" {
 			same := a.infoLeft == a.infoRight
-			note := "版本不同"
+			note := i18n.T("version.different")
 			fg, bg := pal.diffFg, pal.diffBg
 			if same {
-				note = "版本相同"
+				note = i18n.T("version.same")
 				fg, bg = pal.successFg, pal.successBg
 			}
 			ui.Row(c).Padding(8, 12).Gap(8).Radius(6).Background(bg).Children(func() {
@@ -104,11 +105,11 @@ func (a *workspaceState) versionView(c *ui.Context) {
 			ui.Row(c).FillWidth().Gap(12).Children(func() {
 				ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(6).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
 					sideBadge(c, 0, pal)
-					ui.Text(c, "左侧版本 "+a.infoLeft).FontSize(14).Bold()
+					ui.Text(c, i18n.TArgs("version.left", a.infoLeft)).FontSize(14).Bold()
 				})
 				ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(6).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
 					sideBadge(c, 1, pal)
-					ui.Text(c, "右侧版本 "+a.infoRight).FontSize(14).Bold()
+					ui.Text(c, i18n.TArgs("version.right", a.infoRight)).FontSize(14).Bold()
 				})
 			})
 			return
@@ -117,7 +118,7 @@ func (a *workspaceState) versionView(c *ui.Context) {
 		if len(a.infoDiffs) == 0 {
 			ui.Row(c).Padding(10, 14).Gap(8).Radius(6).Background(pal.successBg).Children(func() {
 				ui.Icon(c, iconCheck).Size(14, 14).TextColor(pal.successFg)
-				ui.Text(c, "注册表相同").Bold().FontSize(13).TextColor(pal.successFg)
+				ui.Text(c, i18n.T("version.regSame")).Bold().FontSize(13).TextColor(pal.successFg)
 			})
 			return
 		}
@@ -126,7 +127,7 @@ func (a *workspaceState) versionView(c *ui.Context) {
 			for _, line := range a.infoDiffs {
 				ui.Row(c).FillWidth().Padding(6, 10).Gap(6).Radius(5).Background(pal.diffBg).Children(func() {
 					ui.Icon(c, iconAlert).Size(13, 13).TextColor(pal.diffFg)
-					ui.Text(c, "差异 "+line).Grow(1).FontSize(12).TextColor(pal.diffFg)
+					ui.Text(c, i18n.TArgs("version.diffLine", line)).Grow(1).FontSize(12).TextColor(pal.diffFg)
 				})
 			}
 		})
@@ -137,7 +138,7 @@ func compareVersionBytes(left, right []byte) (versionResult, error) {
 	leftReg, rightReg := looksLikeRegistry(left), looksLikeRegistry(right)
 	if leftReg || rightReg {
 		if !leftReg || !rightReg {
-			return versionResult{}, errors.New("两侧须同为 .reg 或同为 PE")
+			return versionResult{}, errors.New(i18n.T("version.mixed"))
 		}
 		lv, err := regfile.Parse(string(left))
 		if err != nil {

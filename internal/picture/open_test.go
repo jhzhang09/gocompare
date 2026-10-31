@@ -2,6 +2,8 @@ package picture
 
 import (
 	"bytes"
+	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/gif"
@@ -9,6 +11,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -133,4 +136,25 @@ func rgbaAt(t *testing.T, img image.Image, x, y int) color.RGBA {
 		t.Fatalf("pixel type %T", img.At(x, y))
 	}
 	return c
+}
+
+// 只有文件头声明超大尺寸的 PNG 必须在解码像素前被拒绝。
+func TestOpenRejectsOversizedHeader(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteString("\x89PNG\r\n\x1a\n")
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:], 100000)
+	binary.BigEndian.PutUint32(ihdr[4:], 100000)
+	ihdr[8], ihdr[9] = 8, 6 // 8 位 RGBA
+	chunk := append([]byte("IHDR"), ihdr...)
+	binary.Write(&buf, binary.BigEndian, uint32(len(ihdr)))
+	buf.Write(chunk)
+	binary.Write(&buf, binary.BigEndian, crc32.ChecksumIEEE(chunk))
+	path := filepath.Join(t.TempDir(), "bomb.png")
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "pixel limit") {
+		t.Fatalf("oversized header accepted: %v", err)
+	}
 }

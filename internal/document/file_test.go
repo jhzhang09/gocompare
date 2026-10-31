@@ -160,3 +160,24 @@ func TestBackupPreservesDetectedNonUTF8Encoding(t *testing.T) {
 		t.Fatalf("backup bytes mismatch: %x want %x (err=%v)", got, gbkRaw, err)
 	}
 }
+
+func TestSaveAsFallsBackWithoutHardLinks(t *testing.T) {
+	old := linkFile
+	linkFile = func(string, string) error { return &os.LinkError{Op: "link", Err: errors.ErrUnsupported} }
+	defer func() { linkFile = old }()
+	dir := t.TempDir()
+	src, err := EmptyAt(filepath.Join(dir, "src.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dir, "out.txt")
+	if _, err = src.SaveAs(context.Background(), target, "hello\n"); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(target); string(data) != "hello\n" {
+		t.Fatalf("unexpected content %q", data)
+	}
+	if _, err = src.SaveAs(context.Background(), target, "again\n"); !errors.Is(err, os.ErrExist) {
+		t.Fatalf("fallback must not overwrite, got %v", err)
+	}
+}

@@ -214,3 +214,18 @@ func TestResetButtonInAllModes(t *testing.T) {
 		t.Fatalf("expected picture empty view after reset")
 	}
 }
+
+func TestScratchResetKeepsEditableComparison(t *testing.T) {
+	a := &workspaceState{}
+	a.selectKind(kindScratch)
+	a.ensureScratch()
+	a.scratchPanes[0].buffer.Set("x\n")
+	a.resetCurrentMode()
+	d := a.activeDiff()
+	if d.Old == nil || d.New == nil || !d.ExternalComparison || d.Old != a.scratchPanes[0].buffer {
+		t.Fatal("scratch comparison lost its buffers after reset")
+	}
+	if a.scratchPanes[0].buffer.Len() != 0 || a.scratchUnsaved() {
+		t.Fatal("reset must leave empty, clean scratch panes")
+	}
+}

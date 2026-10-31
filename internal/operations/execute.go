@@ -368,7 +368,7 @@ func runExecute(ctx context.Context, p Plan, backupRoot string, pauseBefore int,
 				if a.TargetVersion.Exists {
 					err = os.Rename(name, target)
 				} else {
-					err = os.Link(name, target)
+					err = publishNew(ctx, name, target, a.SourceVersion)
 				}
 			}
 			os.Remove(name)
@@ -394,6 +394,25 @@ func runExecute(ctx context.Context, p Plan, backupRoot string, pauseBefore int,
 	}
 	return report, nil
 }
+
+// publishNew 把临时副本发布到不存在的目标，绝不覆盖。优先用硬链接；
+// exFAT、FAT32 和部分网络共享不支持时，退回排他创建并再次复制，写入期间目标可能短暂不完整。
+func publishNew(ctx context.Context, temp, target string, source Version) error {
+	err := linkFile(temp, target)
+	if err == nil || errors.Is(err, os.ErrExist) {
+		return err
+	}
+	if err = copyExclusive(ctx, temp, target, os.FileMode(source.Mode)); err != nil {
+		return err
+	}
+	// 与硬链接路径保持一致：权限同样经过 umask，时间戳沿用源文件。
+	stamp := time.Unix(0, source.Modified)
+	if err = os.Chtimes(target, stamp, stamp); err != nil {
+		os.Remove(target)
+	}
+	return err
+}
+
 func copyExclusive(ctx context.Context, source, target string, mode os.FileMode) error {
 	in, err := os.Open(source)
 	if err != nil {
@@ -469,3 +488,6 @@ func resolveCreationPath(path string) (string, error) {
 		current = parent
 	}
 }
+
+// linkFile 可在测试中替换，用来模拟不支持硬链接的文件系统。
+var linkFile = os.Link

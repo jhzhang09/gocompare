@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"gocompare/internal/i18n"
 	"golang.org/x/image/bmp"
 )
 
@@ -92,25 +93,25 @@ func TestWorkspacePictureJPEG(t *testing.T) {
 	assertPicture(t, tt, a, "差值", map[image.Point]color.RGBA{
 		{4, 4}: gray(160), {12, 4}: {A: 255}, {4, 12}: {A: 255},
 	})
-	if err = tt.Click("容差 2"); err != nil {
-		t.Fatal(err)
-	}
-	assertPicture(t, tt, a, "超出容差", map[image.Point]color.RGBA{{4, 4}: gray(160)})
+	// 超出容差的像素标红，容差内的像素是左图亮度的 40%。
+	a.showTolerance(2)
+	tt.Frame()
+	assertPicture(t, tt, a, "超出容差", map[image.Point]color.RGBA{{4, 4}: {R: 255, A: 255}, {12, 4}: gray(88)})
 	if !tt.HasText("超出容差") {
 		t.Fatalf("tolerance note: %v", tt.Texts())
 	}
-	if err = tt.Click("容差 255"); err != nil {
-		t.Fatal(err)
-	}
-	assertPicture(t, tt, a, "容差内相同", map[image.Point]color.RGBA{{4, 4}: gray(160)})
+	a.showTolerance(255)
+	tt.Frame()
+	assertPicture(t, tt, a, "容差内相同", map[image.Point]color.RGBA{{4, 4}: gray(16)})
 	if !tt.HasText("容差内相同") {
 		t.Fatalf("tolerance note: %v", tt.Texts())
 	}
+	a.setPictureTolerance(2)
 	if err = tt.Click("替换颜色"); err != nil {
 		t.Fatal(err)
 	}
 	assertPicture(t, tt, a, "替换颜色", map[image.Point]color.RGBA{
-		{4, 4}: {G: 10, A: 255}, {12, 4}: tr, {16, 4}: rightTL,
+		{4, 4}: pictureReplaceColor, {12, 4}: tr, {16, 4}: rightTL,
 	})
 	if err = tt.Click("水平翻转"); err != nil {
 		t.Fatal(err)
@@ -229,31 +230,32 @@ func runGridComparison(t *testing.T, leftPath, rightPath string, leftPx [2][2]co
 		{0, 1}: {A: 255},
 		{1, 1}: {A: 255},
 	})
-	if err = tt.Click("容差 2"); err != nil {
+	if err = tt.Click("容差"); err != nil {
 		t.Fatal(err)
 	}
 	assertPicture(t, tt, a, "超出容差", map[image.Point]color.RGBA{
-		{0, 0}: {R: 180, G: 20, B: 160, A: 255},
-		{1, 1}: {A: 255},
+		{0, 0}: {R: 255, A: 255},
+		{1, 1}: gray(1),
 	})
-	if !tt.HasText("超出容差") {
-		t.Fatalf("tolerance note: %v", tt.Texts())
+	if !tt.HasText("超出容差") || a.pictureSummary.Exceeding != 1 || a.pictureSummary.Total != 4 {
+		t.Fatalf("tolerance note: %v summary %+v", tt.Texts(), a.pictureSummary)
 	}
-	if err = tt.Click("容差 255"); err != nil {
-		t.Fatal(err)
-	}
+	a.showTolerance(255)
+	tt.Frame()
 	assertPicture(t, tt, a, "容差内相同", map[image.Point]color.RGBA{
-		{0, 0}: {R: 180, G: 20, B: 160, A: 255},
-		{1, 1}: {A: 255},
+		{0, 0}: gray(27),
+		{1, 1}: gray(1),
 	})
 	if !tt.HasText("容差内相同") {
 		t.Fatalf("tolerance note: %v", tt.Texts())
 	}
+	// 替换颜色使用当前容差，并且两侧按同一背景色处理。
+	a.setPictureTolerance(2)
 	if err = tt.Click("替换颜色"); err != nil {
 		t.Fatal(err)
 	}
 	assertPicture(t, tt, a, "替换颜色", map[image.Point]color.RGBA{
-		{0, 0}: {G: 10, A: 255},
+		{0, 0}: pictureReplaceColor,
 		{1, 0}: leftPx[0][1],
 		{0, 1}: leftPx[1][0],
 		{2, 0}: rightPx[0][0],
@@ -363,7 +365,7 @@ func TestWorkspacePictureRejectsBMP(t *testing.T) {
 
 func assertPicture(t *testing.T, tt *ui.Tester, a *workspaceState, note string, want map[image.Point]color.RGBA) {
 	t.Helper()
-	if a.pictureResult == nil || a.pictureNote != note {
+	if a.pictureResult == nil || i18n.T(a.pictureNote) != note {
 		t.Fatalf("note %q result %v err %s", a.pictureNote, a.pictureResult != nil, a.err)
 	}
 	for p, color := range want {
@@ -504,5 +506,24 @@ func writeBMP(t *testing.T, path string, img image.Image) {
 	defer f.Close()
 	if err = bmp.Encode(f, img); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 后台渲染期间调整容差只记下补算，任务结束后按最新容差重算，不会丢掉最后一次拖动。
+func TestPictureToleranceCoalescesWhileBusy(t *testing.T) {
+	left := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	right := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	left.SetRGBA(0, 0, color.RGBA{R: 100, A: 255})
+	right.SetRGBA(0, 0, color.RGBA{R: 110, A: 255})
+	a := &workspaceState{kind: kindPicture, pictureLeft: left, pictureRight: right, pictureMode: pictureTolerance}
+	a.busy = true
+	a.setPictureTolerance(20)
+	if !a.pictureRerender || a.pictureResult != nil {
+		t.Fatalf("busy render must be deferred: rerender=%v", a.pictureRerender)
+	}
+	a.busy = false
+	a.renderPicture()
+	if a.pictureRerender || a.pictureNote != "picture.withinTolerance" || a.pictureSummary.Exceeding != 0 {
+		t.Fatalf("note %q summary %+v", a.pictureNote, a.pictureSummary)
 	}
 }
