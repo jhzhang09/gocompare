@@ -1,0 +1,42 @@
+{
+  "module": "github.com/egoist/mygo",
+  "version": "v0.7.3",
+  "files": {
+    "vendor/github.com/egoist/mygo/internal/diff/diff.go": {
+      "original": "02c9897b3d9e7d389d5befcc6b22efcace8e4748e6ddcbaa1bed827a86a6c265",
+      "patched": "a918963ca406d95400e926d7edc75436ad197a92168e6e203df4b5c746ac59bf"
+    },
+    "vendor/github.com/egoist/mygo/internal/diff/histogram.go": {
+      "original": "371edd666286ae1462b784afce313ebda1a320b89198cab27570aa6c179be103",
+      "patched": "5217edd819946faf5005760001d188d5b2c8ed79351f74e489a7613cf4543397"
+    },
+    "vendor/github.com/egoist/mygo/internal/diff/myers.go": {
+      "original": "4eeb71e35e82a815b9ace58dc3fb97060e425c05039d137bf8965fb08fd8f4b9",
+      "patched": "859b736b22e3a87e937f8793360e94e17649dd3a5db42fdf137360103f210798"
+    },
+    "vendor/github.com/egoist/mygo/internal/diff/compact.go": {
+      "original": "9064592e30252349b853b4505cf25e80a2fa104603a9c58b6fa61f15d17ac734",
+      "patched": "76f3ad3073903068b56e794e5ff557719286d3d35f90cdd46e4527b91ef3b1ff"
+    },
+    "vendor/github.com/egoist/mygo/internal/diff/context.go": {
+      "original": null,
+      "patched": "bfc32fef02249656785b6bc74788729c0fda1e64f26d71560e6d2e95d8a7c361"
+    },
+    "vendor/github.com/egoist/mygo/ui/editor/diffview.go": {
+      "original": "1fc80daecf27a50830d42a6bba2d26ff6e5955ea620c6d7828e3e8ece5888696",
+      "patched": "13af828d08bbf19d0fa370514c6b03e362252b237289ab0bcbb09b3062ef300f"
+    },
+    "vendor/github.com/egoist/mygo/ui/editor/diffmodel.go": {
+      "original": "5555beebcba7959c6e27f9b65d89fdb46f5cf1830a4dab1b9570239685ed6b36",
+      "patched": "3893adaaa5f0ba081dd93b3dc4139be0d24344403724a23c18315e5969e301f9"
+    },
+    "vendor/github.com/egoist/mygo/ui/editor/comparison.go": {
+      "original": null,
+      "patched": "95407d11c89a834d3d11fe55bc2d4aeb484d930e062fffc1a5c420aa05fb15f5"
+    },
+    "vendor/github.com/egoist/mygo/ui/editor/patch.go": {
+      "original": "9347a30e475eedd415a42bbc3df58e52e4a3376c6a84f9f907a3f9c4b959eadb",
+      "patched": "cb232566c8ff9763a9b7acc16ba5e21f24b4e4c94716bf08915a670e7a274851"
+    }
+  }
+}

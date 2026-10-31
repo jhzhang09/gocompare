@@ -1,0 +1,47 @@
+name: GoCompare checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+      - run: go test ./...
+        env:
+          CGO_ENABLED: '0'
+      - run: git apply --reverse --check patches/mygo-v0.7.3-native.patch
+      - run: go vet ./...
+      - run: go tool mygo vet .
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [darwin, linux, windows]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+      - name: Compile both entry points
+        shell: bash
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p build
+          go build -o build/ ./cmd/gocompare ./cmd/gocompare-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gocompare-${{ matrix.os }}-${{ matrix.arch }}
+          path: build/

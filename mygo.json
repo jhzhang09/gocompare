@@ -1,0 +1,8 @@
+{
+  "name": "GoCompare",
+  "slug": "gocompare",
+  "identifier": "dev.gocompare.desktop",
+  "version": "0.1.0",
+  "main": "./cmd/gocompare",
+  "out": "build"
+}
