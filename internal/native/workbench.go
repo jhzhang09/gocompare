@@ -603,7 +603,7 @@ func (a *workspaceState) modeEmptyView(c *ui.Context, pal uiPalette, kind int) {
 }
 
 func (a *workspaceState) actionToolbar(c *ui.Context, pal uiPalette) {
-	ui.Row(c).Height(38).Padding(0, 14).Gap(6).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	ui.Row(c).Wrap().MinHeight(38).Padding(5, 14).Gap(6).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		startBtn := ui.PrimaryButton(c, "").Label(i18n.T("action.compare")).Padding(4, 10).Gap(4).Radius(6).Disabled(a.busy)
 		startBtn.OnClick(func() { a.guard(a.load) })
 		startBtn.Children(func() {
@@ -665,7 +665,7 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 	leftLen := leftBuf.Len()
 	rightLen := rightBuf.Len()
 
-	ui.Row(c).Height(38).Padding(0, 14).Gap(6).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	ui.Row(c).Wrap().MinHeight(38).Padding(5, 14).Gap(6).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		resetBtn := ui.Button(c, "").Label(i18n.T("action.reset")).Padding(4, 8).Gap(3).Radius(6).Disabled(a.busy || !a.canReset())
 		resetBtn.OnClick(a.resetCurrentMode)
 		resetBtn.Children(func() {

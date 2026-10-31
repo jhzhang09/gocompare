@@ -22,7 +22,8 @@ func TestScanProgressFilterAndAttributes(t *testing.T) {
 		}
 	}
 	write(left, "nested/a.txt", "same", 0o600)
-	write(right, "nested/a.txt", "same", 0o640)
+	// 用只读制造权限差异：Windows 没有 POSIX 权限位，只有只读属性能体现在 Mode() 里。
+	write(right, "nested/a.txt", "same", 0o400)
 	write(left, "nested/b.bin", "x", 0o600)
 	write(right, "nested/b.bin", "y", 0o600)
 	past := time.Unix(1_700_000_000, 0)

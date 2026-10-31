@@ -31,7 +31,8 @@ func TestWorkspaceDirectoryRules(t *testing.T) {
 	if err := os.Chmod(leftA, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(rightA, 0o640); err != nil {
+	// 用只读制造权限差异：Windows 没有 POSIX 权限位，只有只读属性能体现在 Mode() 里。
+	if err := os.Chmod(rightA, 0o400); err != nil {
 		t.Fatal(err)
 	}
 	leftInfo, err := os.Stat(leftA)

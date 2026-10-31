@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,6 +15,9 @@ import (
 )
 
 func TestExecuteCancelStopsTheProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("扩展夹具是 POSIX shell 脚本，Windows 上需要另写批处理夹具")
+	}
 	dir := t.TempDir()
 	ready := filepath.Join(dir, "ready")
 	tool := filepath.Join(dir, "sleep.sh")
@@ -65,6 +69,9 @@ func TestExecuteCancelStopsTheProcess(t *testing.T) {
 }
 
 func TestExecuteRejectsPartialCompressAndEmbeddedPlaceholder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("扩展夹具是 POSIX shell 脚本，Windows 上需要另写批处理夹具")
+	}
 	dir := t.TempDir()
 	tool := filepath.Join(dir, "bad.sh")
 	script := "#!/bin/sh\nprintf partial > \"$2\"\nprintf 'failpack\\n' >&2\nexit 4\n"

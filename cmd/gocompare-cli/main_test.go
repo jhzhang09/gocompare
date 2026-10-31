@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 	"unicode/utf16"
@@ -77,7 +78,8 @@ func TestDirectoryRulesCLI(t *testing.T) {
 	if err := os.Chmod(leftA, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(rightA, 0o640); err != nil {
+	// 用只读制造权限差异：Windows 没有 POSIX 权限位，只有只读属性能体现在 Mode() 里。
+	if err := os.Chmod(rightA, 0o400); err != nil {
 		t.Fatal(err)
 	}
 	leftInfo, err := os.Stat(leftA)
@@ -373,6 +375,9 @@ func TestMediaCLIReadsTags(t *testing.T) {
 }
 
 func TestExtendCLI(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("扩展夹具是 POSIX shell 脚本，Windows 上需要另写批处理夹具")
+	}
 	dir := t.TempDir()
 	compareTool := writeTool(t, filepath.Join(dir, "compare.sh"), "#!/bin/sh\nleft=$(cat \"$1\")\nright=$(cat \"$2\")\nif [ \"$left\" = \"$right\" ]; then\n  printf 'same %s\\n' \"$left\"\n  exit 0\nfi\nprintf 'different %s %s\\n' \"$left\" \"$right\"\nexit 1\n")
 	convertTool := writeTool(t, filepath.Join(dir, "convert.sh"), "#!/bin/sh\nprintf 'text:%s\\n' \"$(cat \"$1\")\"\nexit 0\n")
