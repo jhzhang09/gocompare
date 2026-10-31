@@ -19,7 +19,7 @@ jobs:
       # Windows runner 默认把 LF 转成 CRLF，vendor 文件会与 MyGo 补丁对不上。
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Check formatting
@@ -40,7 +40,7 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Compile both entry points
