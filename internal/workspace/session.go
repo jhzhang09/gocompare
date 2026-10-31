@@ -13,13 +13,18 @@ import (
 
 // Session 保存比较输入和显示选项；不隐式保存编辑缓冲区。
 type Session struct {
-	Kind    string `json:"kind,omitempty"`
-	Version int    `json:"version"`
-	Left    string `json:"left"`
-	Right   string `json:"right"`
-	Base    string `json:"base,omitempty"`
-	Output  string `json:"output,omitempty"`
-	Wrap    bool   `json:"wrap"`
+	Kind            string `json:"kind,omitempty"`
+	Version         int    `json:"version"`
+	Left            string `json:"left"`
+	Right           string `json:"right"`
+	Base            string `json:"base,omitempty"`
+	Output          string `json:"output,omitempty"`
+	Wrap            bool   `json:"wrap"`
+	IgnoreSpace     bool   `json:"ignoreSpace,omitempty"`
+	DirectoryFilter string `json:"directoryFilter,omitempty"`
+	CompareMode     bool   `json:"compareMode,omitempty"`
+	CompareTime     bool   `json:"compareTime,omitempty"`
+	FollowLinks     bool   `json:"followLinks,omitempty"`
 }
 
 func (s Session) validate() error {

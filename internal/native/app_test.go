@@ -91,6 +91,7 @@ func TestWorkspaceScreenshots(t *testing.T) {
 
 func TestEditingWithKeyboardAndUndo(t *testing.T) {
 	a := testWorkspace(t)
+	a.optionsOpen = true
 	tt := ui.NewTester(a.view, 1380, 880)
 	tt.Frame()
 	for side, label := range []string{"编辑左侧", "编辑右侧"} {
@@ -99,7 +100,7 @@ func TestEditingWithKeyboardAndUndo(t *testing.T) {
 		}
 		p := a.panes[side]
 		before := p.buffer.String()
-		if err := tt.Click(filepath.Base(p.file.Path)); err != nil {
+		if err := tt.Click([]string{"左侧编辑器", "右侧编辑器"}[side]); err != nil {
 			t.Fatal(err)
 		}
 		tt.Key(ui.Cmd, ui.KeyA)
@@ -130,8 +131,9 @@ func TestSimultaneousEditing(t *testing.T) {
 	tt.Frame()
 	for side := 0; side < 2; side++ {
 		// 比较区从工具栏下方开始；两侧始终保留原始左右顺序。
-		x := float32(180 + side*690)
-		tt.ClickAt(x, 270)
+		if err := tt.Click([]string{"Old text", "New text"}[side]); err != nil {
+			t.Fatal(err)
+		}
 		before := a.panes[side].buffer.String()
 		other := a.panes[1-side].buffer.String()
 		tt.Key(ui.Cmd, ui.KeyA)
@@ -199,7 +201,9 @@ func TestDiffEditPolicy(t *testing.T) {
 	tt.Frame()
 	for side := 0; side < 2; side++ {
 		before := a.panes[side].buffer.String()
-		tt.ClickAt(float32(180+side*690), 270)
+		if err := tt.Click([]string{"Old text", "New text"}[side]); err != nil {
+			t.Fatal(err)
+		}
 		tt.Key(ui.Cmd, ui.KeyA)
 		tt.Type("blocked")
 		if a.panes[side].buffer.String() != before {
@@ -270,7 +274,7 @@ func TestSessionAndSaveAs(t *testing.T) {
 	if a.err != "" || a.paths[0] != target || a.panes[0].buffer.Modified() {
 		t.Fatalf("save as: %s", a.err)
 	}
-	if a.panes[0].edit.Label != "new.go" {
+	if a.panes[0].edit.Label != "左侧编辑器" {
 		t.Fatal("editor identity not updated")
 	}
 	a.openSession(session)
@@ -371,6 +375,7 @@ func TestSyncPreviewAndExecution(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(right, "new.txt")); !os.IsNotExist(err) {
 		t.Fatal("preview modified destination")
 	}
+	a.optionsOpen = true
 	tt := ui.NewTester(a.view, 1380, 880)
 	tt.Frame()
 	if err := tt.Click("执行同步…"); err != nil {
@@ -581,6 +586,7 @@ func TestIndependentMergeWindow(t *testing.T) {
 	beforeLeft, _ := os.ReadFile(left)
 	beforeRight, _ := os.ReadFile(right)
 	beforeBase, _ := os.ReadFile(base)
+	parent.optionsOpen = true
 	tt := ui.NewTester(parent.view, 1380, 880)
 	tt.Frame()
 	if !tt.HasText("忽略空白") || tt.HasText("基准第2行 b") || tt.HasText("独立合并窗口") {
@@ -636,6 +642,7 @@ func TestIndependentMergeWindow(t *testing.T) {
 	}
 
 	two := &workspaceState{paths: [2]string{left, right}}
+	two.optionsOpen = true
 	wt := ui.NewTester(two.view, 1100, 700)
 	wt.Frame()
 	if err := wt.Click("打开合并窗口"); err != nil {
@@ -653,6 +660,7 @@ func TestIndependentMergeWindow(t *testing.T) {
 
 func TestIndependentMergeWindowRejects(t *testing.T) {
 	empty := &workspaceState{}
+	empty.optionsOpen = true
 	tt := ui.NewTester(empty.view, 1000, 600)
 	tt.Frame()
 	if err := tt.Click("打开合并窗口"); err != nil {
@@ -672,6 +680,7 @@ func TestIndependentMergeWindowRejects(t *testing.T) {
 		t.Fatal(err)
 	}
 	binary := &workspaceState{paths: [2]string{left, right}}
+	binary.optionsOpen = true
 	bt := ui.NewTester(binary.view, 1000, 600)
 	bt.Frame()
 	if err := bt.Click("打开合并窗口"); err != nil {
@@ -700,6 +709,7 @@ func TestIgnoreSpaceRuleLeavesFiles(t *testing.T) {
 	}
 	beforeLeft, _ := os.ReadFile(left)
 	beforeRight, _ := os.ReadFile(right)
+	a.optionsOpen = true
 	tt := ui.NewTester(a.view, 1380, 880)
 	tt.Frame()
 	if err := tt.Click("忽略空白"); err != nil {
@@ -736,6 +746,7 @@ func TestAnchorAlignsInTheView(t *testing.T) {
 	}
 	beforeLeft, _ := os.ReadFile(left)
 	beforeRight, _ := os.ReadFile(right)
+	a.optionsOpen = true
 	tt := ui.NewTester(a.view, 1600, 880)
 	tt.Frame()
 	if !hunkCovers(a.diff.Hunks(), 0) {
@@ -786,7 +797,7 @@ func TestAnchorAlignsInTheView(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !strings.Contains(a.err, "anchor out of order") || hunkCovers(a.diff.Hunks(), 0) || !tt.HasText("错误") {
+	if !strings.Contains(a.err, "对齐位置必须按顺序") || hunkCovers(a.diff.Hunks(), 0) || !tt.HasText("错误") {
 		t.Fatalf("out of order: err %q hunks %+v", a.err, a.diff.Hunks())
 	}
 	if err := tt.Click("解除对齐"); err != nil {

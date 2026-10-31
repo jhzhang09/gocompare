@@ -49,7 +49,11 @@ func (d *File) SaveAs(ctx context.Context, path, text string) (*File, error) {
 	name := temp.Name()
 	defer os.Remove(name)
 	if _, err = temp.Write(data); err == nil {
-		err = temp.Chmod(d.info.Mode().Perm())
+		mode := os.FileMode(0o600)
+		if d.info != nil {
+			mode = d.info.Mode().Perm()
+		}
+		err = temp.Chmod(mode)
 	}
 	if err == nil {
 		err = temp.Sync()

@@ -113,6 +113,18 @@ func readRaw(ctx context.Context, path string) (string, []byte, os.FileInfo, err
 // Save 通过同目录临时文件替换原文件并保留其权限；外部变化时拒绝覆盖。
 // 返回新的基线，不修改调用者持有的 File。
 func (d *File) Save(ctx context.Context, text string) (*File, error) {
+	if d.Missing() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if _, err := d.encoded(text); err != nil {
+			return nil, err
+		}
+		if err := os.MkdirAll(filepath.Dir(d.Path), 0o755); err != nil {
+			return nil, err
+		}
+		return d.SaveAs(ctx, d.Path, text)
+	}
 	data, err := d.encoded(text)
 	if err != nil {
 		return nil, err
@@ -163,3 +175,13 @@ func (d *File) unchanged(ctx context.Context) error {
 	}
 	return nil
 }
+
+// EmptyAt 为目录比较的缺失一侧建立空白缓冲区；保存时必须创建新文件。
+func EmptyAt(path string) (*File, error) {
+	full, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	return &File{Path: full, Encoding: "utf-8"}, nil
+}
+func (d *File) Missing() bool { return d.info == nil }

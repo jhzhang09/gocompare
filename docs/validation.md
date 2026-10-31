@@ -150,3 +150,9 @@ F16 改为完成。比较的是文件，不读取实时注册表。`TestPEAndReg
 F16 仍是完成。原先把键和值直接拼接，填充 0 会被当成版本结束符。`TestPEFileVersionAlignedString` 的资源是标准 String：6 字节头、UTF-16 `FileVersion`、32 位填充 0、值 `1.2.3.4`。`wValueLength` 按字计算。`FileVersion` 返回 `1.2.3.4`，不是 `empty FileVersion`。键值直接拼接的 `TestPEFileVersion` 仍返回 `1.2.3.4`。`TestPEAndRegistryCLI` 通过已交付的 `run` 比较这个对齐文件和未对齐的 `1.2.3.4`，标准输出是 `left 1.2.3.4` 与 `right 1.2.3.4`，退出码 0。`TestWorkspacePEVersions` 的右侧换成同样对齐的 `9.8.7.6`，界面有「右侧版本 9.8.7.6」和「版本不同」。CLI 与工作区都调用 `pever.FileVersion`。
 
 本轮 `go-test.log` 先是 `CGO_ENABLED=0 go test ./... -count=1`（`exit:0`），再追加 `-v`（`vexit:0`）。追加段有 124 条顶层 `--- PASS`，含 `TestPEFileVersionAlignedString`，没有 `--- FAIL`。`TestProtocols/ftp` 至 `TestProtocols/svn` 通过。两次 CLI 的 `cmp` 为 0，日志含 `<<<<<<< left`、`1 conflicts`、`preview left target absent`、`restore removed target`、`rolled_back":true` 和 `offset 0`。`ui-tester.log` 的 `ui-exit:0`，含 `TestWorkspacePEVersions`。`vet.log` 中 `go vet ./...`、`go tool mygo vet .` 和 `go test -race`（含 `pever`、`native` 与 `gocompare-cli`）均为 0。原生进程已启动，这不是三平台验收，也不是签名公证，也不是实时注册表。F01、F03 的真实输入法、F05 的 ACL、F15 的播放器、F17、F18、F28、F30 没有改成完成。本轮没有交叉编译。
+
+## 文件／目录工作区可用性修复
+
+本批全量 146 个 Go 测试通过，native／document／compare／workspace race 检查通过；go vet、mygo vet 和补丁检查通过。浅深主题截图已检查，主操作与按侧保存通过 900／1380 像素边界断言。macOS 原生文件与目录回归均验证背景计算实际完成及规则切换、编辑、撤销、保存和返回目录。
+
+详见 usability-review.md。本批没有提交或推送 Git，当前仓库仍无首个提交。测试通过不代表所有扩展模块具有产品级可用性。

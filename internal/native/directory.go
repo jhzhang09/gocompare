@@ -8,6 +8,8 @@ import (
 	"gocompare/internal/compare"
 	"gocompare/internal/operations"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 func (a *workspaceState) loadDirectory(paths [2]string) {
@@ -15,12 +17,14 @@ func (a *workspaceState) loadDirectory(paths [2]string) {
 	a.scanPath = ""
 	filter, mode, mtime, follow := a.dirFilter, a.compareMode, a.compareTime, a.followLinks
 	a.job(func(ctx context.Context) {
+		lastProgress := time.Time{}
 		links := compare.LinkRecord
 		if follow {
 			links = compare.LinkFollow
 		}
 		rows, err := compare.CompareDirectories(ctx, paths[0], paths[1], compare.ScanOptions{
 			Filter:      filter,
+			KeepParents: true,
 			Links:       links,
 			CompareMode: mode,
 			CompareTime: mtime,
@@ -28,10 +32,16 @@ func (a *workspaceState) loadDirectory(paths [2]string) {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				// 只在界面线程记下顺序。后台扫描不直接改工作区切片。
+				if a.win != nil && time.Since(lastProgress) < 50*time.Millisecond {
+					return nil
+				}
+				lastProgress = time.Now()
+				// 进度限流，避免扫描大目录淹没 UI 队列。
 				a.publish(func() {
 					a.scanPath = rel
-					a.scanSeen = append(a.scanSeen, rel)
+					if a.win == nil {
+						a.scanSeen = append(a.scanSeen, rel)
+					}
 				})
 				return nil
 			},
@@ -43,10 +53,16 @@ func (a *workspaceState) loadDirectory(paths [2]string) {
 				return
 			}
 			a.installDirectory(paths, rows)
+			a.directoryOptions = compare.ScanOptions{Filter: filter, CompareMode: mode, CompareTime: mtime, Links: links}
 		})
 	})
 }
 func (a *workspaceState) installDirectory(paths [2]string, rows []compare.Entry) {
+	if paths != a.directoryRoots {
+		a.closedDirs = nil
+		a.dirSearch = ""
+	}
+	a.directoryOptions = compare.ScanOptions{}
 	a.stopComparison()
 	a.compareRequested = false
 	a.panes = [2]*pane{}
@@ -70,12 +86,51 @@ func (a *workspaceState) installDirectory(paths [2]string, rows []compare.Entry)
 	}
 }
 func (a *workspaceState) openDirectoryEntry(entry compare.Entry) {
-	if a.busy || entry.Left == nil || entry.Right == nil || entry.Left.Directory || entry.Right.Directory || entry.Left.Symlink || entry.Right.Symlink || entry.Status == compare.Failed {
+	if a.busy {
+		return
+	}
+	if (entry.Left != nil && entry.Left.Directory) || (entry.Right != nil && entry.Right.Directory) {
+		if a.closedDirs == nil {
+			a.closedDirs = map[string]bool{}
+		}
+		a.closedDirs[entry.Path] = !a.closedDirs[entry.Path]
+		return
+	}
+	if entry.Status == compare.Failed || entry.Status == compare.TypeChanged || (entry.Left != nil && entry.Left.Symlink) || (entry.Right != nil && entry.Right.Symlink) {
+		a.err = entry.Error
+		if a.err == "" {
+			a.err = "该条目不是可比较的普通文件"
+		}
 		return
 	}
 	a.paths = [2]string{filepath.Join(a.directoryRoots[0], filepath.FromSlash(entry.Path)), filepath.Join(a.directoryRoots[1], filepath.FromSlash(entry.Path))}
+	a.allowMissing = true
 	a.kind = 0
 	a.load()
+}
+func (a *workspaceState) visibleDirectoryRows() []compare.Entry {
+	rows := make([]compare.Entry, 0, len(a.directoryRows))
+	for _, r := range a.directoryRows {
+		if a.onlyDifferences && r.Status == compare.Same {
+			continue
+		}
+		if a.dirSearch != "" && !strings.Contains(strings.ToLower(r.Path), strings.ToLower(a.dirSearch)) {
+			continue
+		}
+		hidden := false
+		if a.dirSearch == "" {
+			for parent := filepath.ToSlash(filepath.Dir(r.Path)); parent != "."; parent = filepath.ToSlash(filepath.Dir(parent)) {
+				if a.closedDirs[parent] {
+					hidden = true
+					break
+				}
+			}
+		}
+		if !hidden {
+			rows = append(rows, r)
+		}
+	}
+	return rows
 }
 func (a *workspaceState) directoryView(c *ui.Context) {
 	if a.syncPlan != nil {
@@ -83,51 +138,78 @@ func (a *workspaceState) directoryView(c *ui.Context) {
 		return
 	}
 	t := c.Theme()
-	rows := make([]compare.Entry, 0, len(a.directoryRows))
-	for _, r := range a.directoryRows {
-		if !a.onlyDifferences || r.Status != compare.Same {
-			rows = append(rows, r)
-		}
-	}
-	ui.Row(c).Padding(8, 20).Children(func() {
+	rows := a.visibleDirectoryRows()
+	ui.Row(c).Padding(10, 18).Gap(10).Children(func() {
+		ui.TextInput(c.Key("search-files"), &a.dirSearch).Placeholder("搜索文件名…").Label("搜索文件名").Grow(1)
 		ui.Checkbox(c, &a.onlyDifferences, "仅显示差异")
-		ui.Select(c, &a.syncChoice, []string{"向右更新", "向左更新", "双向更新", "镜像到右侧", "镜像到左侧"}).Disabled(a.busy)
-		ui.Button(c, "同步预览").Disabled(a.busy).OnClick(a.previewSync)
-		if a.lastJournal != "" && !a.syncRolledBack {
-			ui.Button(c, "撤销上次同步").Disabled(a.busy).OnClick(a.undoSync)
-		}
-		if a.lastJournal != "" {
-			ui.Button(c, "查看操作记录…").OnClick(func() {
-				if err := mygo.Shell.OpenPath(a.lastJournal); err != nil {
-					a.err = err.Error()
-				}
-			})
-		}
-		ui.Box(c).Grow(1)
-		if a.scanPath != "" {
-			ui.Text(c, "最近扫描 "+a.scanPath).TextColor(t.TextMuted)
-		}
-		ui.Text(c, fmt.Sprintf("%d 个条目", len(rows))).TextColor(t.TextMuted)
+		ui.Text(c, fmt.Sprintf("%d 项", len(rows))).TextColor(t.TextMuted)
+	})
+	if a.optionsOpen {
+		ui.Row(c).Padding(5, 18).Gap(8).Children(func() {
+			ui.Select(c, &a.syncChoice, []string{"向右更新", "向左更新", "双向更新", "镜像到右侧", "镜像到左侧"}).Disabled(a.busy)
+			ui.Button(c, "同步预览").Disabled(a.busy).OnClick(a.previewSync)
+			if a.lastJournal != "" && !a.syncRolledBack {
+				ui.Button(c, "撤销上次同步").Disabled(a.busy).OnClick(a.undoSync)
+			}
+			if a.lastJournal != "" {
+				ui.Button(c, "查看操作记录…").OnClick(func() {
+					if err := mygo.Shell.OpenPath(a.lastJournal); err != nil {
+						a.err = err.Error()
+					}
+				})
+			}
+		})
+	}
+	ui.Row(c).Padding(8, 18).Gap(12).Background(t.Surface).Children(func() {
+		ui.Text(c, "左侧 · 名称 / 大小").Grow(1).Basis(0).Bold()
+		ui.Text(c, "比较结果").Width(82).Bold()
+		ui.Text(c, "右侧 · 名称 / 大小").Grow(1).Basis(0).Bold()
 	})
 	if len(rows) == 0 {
-		ui.Column(c).Grow(1).FillWidth().Center().Children(func() { ui.Text(c, "没有符合条件的条目").TextColor(t.TextMuted) })
+		ui.Column(c).Grow(1).FillWidth().Center().Gap(8).Children(func() {
+			ui.Text(c, "没有符合条件的条目").FontSize(18).Bold()
+			ui.Text(c, "尝试关闭差异筛选或清空搜索。").TextColor(t.TextMuted)
+		})
 		return
 	}
-	ui.Row(c).Padding(8, 20).Gap(12).Children(func() {
-		ui.Text(c, "相对路径").Grow(1).Bold()
-		ui.Text(c, "左侧").Width(100).Bold()
-		ui.Text(c, "状态").Width(100).Bold()
-		ui.Text(c, "右侧").Width(100).Bold()
-	})
 	ui.List(c, &a.directoryList, len(rows)).Grow(1).FillWidth().ItemKey(func(i int) any { return rows[i].Path }).Rows(func(row ui.ListRow) {
 		entry := rows[row.Index]
 		c := row.Context
-		ui.Row(c).Padding(3, 20).Gap(12).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-			enabled := entry.Left != nil && entry.Right != nil && !entry.Left.Directory && !entry.Right.Directory && !entry.Left.Symlink && !entry.Right.Symlink && entry.Status != compare.Failed
-			ui.Button(c, entry.Path).Grow(1).Disabled(a.busy || !enabled).Tooltip(entry.Error).OnClick(func() { a.openDirectoryEntry(entry) })
-			ui.Text(c, metadataLabel(entry.Left)).Width(100).FontSize(12)
-			ui.Text(c, statusLabel(entry.Status)).Width(100).FontSize(12)
-			ui.Text(c, metadataLabel(entry.Right)).Width(100).FontSize(12)
+		color := t.TextMuted
+		switch entry.Status {
+		case compare.Different:
+			color = ui.Hex("#b67818")
+		case compare.LeftOnly:
+			color = ui.Hex("#27846b")
+		case compare.RightOnly:
+			color = ui.Hex("#8263b8")
+		case compare.Failed, compare.TypeChanged:
+			color = ui.Hex("#c05245")
+		}
+		ui.Row(c).Height(36).Padding(0, 18).Gap(12).BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.4)).Children(func() {
+			for side, m := range []*compare.Metadata{entry.Left, entry.Right} {
+				if side == 1 {
+					ui.Text(c, statusLabel(entry.Status)).Width(82).FontSize(11).TextColor(color)
+				}
+				ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(8).Children(func() {
+					if m == nil {
+						ui.Text(c, "—").Grow(1).TextColor(t.TextMuted)
+						return
+					}
+					prefix := ""
+					if m.Directory {
+						prefix = "▾ "
+						if a.closedDirs[entry.Path] {
+							prefix = "▸ "
+						}
+					} else {
+						prefix = "· "
+					}
+					ui.Text(c, prefix).Width(14).Margin(0, 0, 0, float32(strings.Count(entry.Path, "/")*12)).TextColor(color)
+					ui.Button(c, filepath.Base(entry.Path)).Label(entry.Path).Grow(1).MinWidth(0).Justify(ui.Start).BorderWidth(0).Background(ui.Transparent).Tooltip(entry.Path + "\n" + entry.Error).Disabled(a.busy).OnClick(func() { a.openDirectoryEntry(entry) })
+					ui.Text(c, metadataLabel(m)).Width(66).FontSize(11).TextColor(t.TextMuted)
+				})
+			}
 		})
 	})
 }
@@ -152,6 +234,10 @@ func statusLabel(s compare.Status) string {
 
 func (a *workspaceState) previewSync() {
 	if a.busy {
+		return
+	}
+	if a.directoryOptions.Filter != "" || a.directoryOptions.CompareMode || a.directoryOptions.CompareTime || a.directoryOptions.Links == compare.LinkFollow {
+		a.err = "同步暂不支持当前过滤、属性或链接规则。请恢复默认规则并重新比较。"
 		return
 	}
 	roots := a.directoryRoots

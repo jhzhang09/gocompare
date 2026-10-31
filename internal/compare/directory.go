@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // Status 区分相同、不同、单侧存在和错误；读取失败不能标为相同。
@@ -34,6 +35,8 @@ const (
 // ScanOptions 控制过滤、链接、属性规则和渐进回调。
 // Progress 在发现每个相对路径时调用，父目录早于其子项；返回的错误会停止扫描。
 type ScanOptions struct {
+	// KeepParents 为树形视图保留未匹配的父目录；默认保持过滤结果只含匹配项。
+	KeepParents bool
 	Filter      string
 	Links       LinkPolicy
 	CompareMode bool
@@ -222,7 +225,11 @@ func scan(ctx context.Context, root string, opt ScanOptions) (map[string]*Metada
 			}
 			include := true
 			if opt.Filter != "" {
-				include, err = path.Match(opt.Filter, childRel)
+				matchPath := childRel
+				if !strings.Contains(opt.Filter, "/") {
+					matchPath = name
+				}
+				include, err = path.Match(opt.Filter, matchPath)
 				if err != nil {
 					return err
 				}
@@ -238,7 +245,7 @@ func scan(ctx context.Context, root string, opt ScanOptions) (map[string]*Metada
 				m.Mode = uint32(info.Mode().Perm())
 				m.Modified = info.ModTime().UnixNano()
 			}
-			if include {
+			if include || (opt.KeepParents && m.Directory) {
 				result[childRel] = m
 			}
 			if m.Error != "" {

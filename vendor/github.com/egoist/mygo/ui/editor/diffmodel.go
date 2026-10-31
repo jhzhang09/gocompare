@@ -538,6 +538,10 @@ func hunkEdit(h diff.Hunk, old, nw rope.Text) Edit {
 	if h.A1 > h.A0 {
 		text = old.Slice(old.LineStart(h.A0), old.LineEnd(h.A1-1))
 	}
+	// 空缓冲区在编辑器中有一个占位行，不能为它附加额外换行。
+	if nw.Len() == 0 {
+		return Edit{Start: 0, End: 0, Text: text}
+	}
 	n := nw.LineCount()
 	switch {
 	case h.B1 > h.B0 && h.A1 > h.A0:

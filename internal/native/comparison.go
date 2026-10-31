@@ -25,57 +25,40 @@ func (a *workspaceState) refreshComparison() {
 	buffers := [2]*editor.Buffer{a.panes[0].buffer, a.panes[1].buffer}
 	versions := [2]uint64{buffers[0].Version(), buffers[1].Version()}
 	anchors := append([]textcompare.Anchor(nil), a.anchors...)
-	if a.compareRequested && a.compareBuffers == buffers && a.compareVersions == versions && a.compareInline == a.diff.Inline && sameAnchors(a.compareAnchors, anchors) {
+	if a.compareRequested && a.compareBuffers == buffers && a.compareVersions == versions && a.compareInline == a.diff.Inline && a.compareIgnoreSpace == a.ignoreSpace && sameAnchors(a.compareAnchors, anchors) {
 		return
 	}
 	a.stopComparison()
 	generation := a.compareGeneration
 	a.compareRequested = true
+	a.compareAnchors = anchors
+	a.compareIgnoreSpace = a.ignoreSpace
+	ignore := a.ignoreSpace
 	a.compareBuffers = buffers
 	a.compareVersions = versions
 	a.compareInline = a.diff.Inline
 	inline := a.diff.Inline
 	a.compareRunning = true
 	a.compareErr = nil
-	leftText, rightText := buffers[0].String(), buffers[1].String()
 	request := editor.NewComparisonRequest(buffers[0], buffers[1])
 	ctx, cancel := context.WithCancel(context.Background())
 	a.compareCancel = cancel
 	run := func() {
 		defer cancel()
-		var aligned []editor.DiffHunk
-		var alignedErr error
-		if len(anchors) > 0 {
-			result, err := textcompare.Compare(leftText, rightText, textcompare.Rules{}, textcompare.Myers, anchors)
-			alignedErr = err
-			if err == nil {
-				aligned = make([]editor.DiffHunk, len(result.Hunks))
-				for i, h := range result.Hunks {
-					aligned[i] = editor.DiffHunk{OldStart: h.LeftStart, OldEnd: h.LeftEnd, NewStart: h.RightStart, NewEnd: h.RightEnd}
-				}
-			}
+		points := make([][2]int, len(anchors))
+		for i, p := range anchors {
+			points[i] = [2]int{p.Left, p.Right}
 		}
-		result, err := request.Compute(ctx, inline)
+		result, err := request.ComputeRules(ctx, ignore, points, inline)
+		if err == nil {
+			err = ctx.Err()
+		}
 		a.publish(func() {
 			if generation != a.compareGeneration {
 				return
 			}
 			a.compareRunning = false
 			a.compareCancel = nil
-			if len(anchors) > 0 {
-				if alignedErr != nil {
-					a.compareErr = alignedErr
-					a.err = alignedErr.Error()
-					return
-				}
-				if !a.diff.ApplyHunks(aligned) {
-					return
-				}
-				a.compareAnchors = anchors
-				a.err = ""
-				a.message = fmt.Sprintf("已对齐 %d 处 · %d 个差异块", len(anchors), len(aligned))
-				return
-			}
 			if err != nil {
 				a.compareErr = err
 				return
@@ -83,10 +66,23 @@ func (a *workspaceState) refreshComparison() {
 			if !a.diff.ApplyComparison(result) {
 				return
 			}
-			a.compareAnchors = nil
-			a.message = fmt.Sprintf("比较完成 · %d 个差异块", len(result.Hunks()))
+			a.compareAnchors = anchors
+			a.err = ""
+			n := len(result.Hunks())
+			if ignore {
+				a.message = fmt.Sprintf("按规则 %d 个差异", n)
+				if n == 0 {
+					a.message = "按规则相同"
+				}
+			} else {
+				a.message = fmt.Sprintf("比较完成 · %d 个差异块", n)
+				if len(anchors) > 0 {
+					a.message = fmt.Sprintf("已对齐 %d 处 · %d 个差异块", len(anchors), n)
+				}
+			}
 		})
 	}
+
 	// 无窗口测试同步调用相同结果协议，异步调度另有专门回归测试。
 	if a.compareLaunch != nil {
 		a.compareLaunch(run)
@@ -144,10 +140,22 @@ func (a *workspaceState) commitAnchor() {
 		return
 	}
 	next := append(append([]textcompare.Anchor(nil), a.anchors...), textcompare.Anchor{Left: a.anchorLeft, Right: a.anchorRight})
-	if _, err := textcompare.Compare(a.panes[0].buffer.String(), a.panes[1].buffer.String(), textcompare.Rules{}, textcompare.Myers, next); err != nil {
-		a.err = err.Error()
-		return
+	leftMax, rightMax := a.panes[0].buffer.LineCount(), a.panes[1].buffer.LineCount()
+	if a.panes[0].buffer.Snapshot().Len() == 0 {
+		leftMax = 0
 	}
+	if a.panes[1].buffer.Snapshot().Len() == 0 {
+		rightMax = 0
+	}
+	prevLeft, prevRight := 0, 0
+	for _, p := range next {
+		if p.Left < prevLeft || p.Right < prevRight || p.Left > leftMax || p.Right > rightMax {
+			a.err = "对齐位置必须按顺序且位于文件内"
+			return
+		}
+		prevLeft, prevRight = p.Left, p.Right
+	}
+
 	a.anchors = next
 	a.err = ""
 	a.recompute()

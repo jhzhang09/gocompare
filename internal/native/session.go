@@ -23,7 +23,7 @@ func (a *workspaceState) saveSession(path string) {
 	if a.busy {
 		return
 	}
-	s := workspace.Session{Version: 1, Wrap: a.wrap}
+	s := workspace.Session{Version: 1, Wrap: a.wrap, IgnoreSpace: a.ignoreSpace}
 	switch {
 	case a.kind == 2 && strings.TrimSpace(a.paths[0]) != "" && strings.TrimSpace(a.paths[1]) != "":
 		s.Kind = "merge"
@@ -31,6 +31,10 @@ func (a *workspaceState) saveSession(path string) {
 		s.Base, s.Output = a.mergeBase, a.mergeOutput
 	case a.directoryRows != nil:
 		s.Kind = "directory"
+		s.DirectoryFilter = a.directoryOptions.Filter
+		s.CompareMode = a.directoryOptions.CompareMode
+		s.CompareTime = a.directoryOptions.CompareTime
+		s.FollowLinks = a.directoryOptions.Links == compare.LinkFollow
 		s.Left = a.directoryRoots[0]
 		s.Right = a.directoryRoots[1]
 	case a.panes[0] != nil:
@@ -72,7 +76,12 @@ func (a *workspaceState) openSession(path string) {
 		}
 		if err == nil && s.Kind == "directory" {
 			var rows []compare.Entry
-			rows, err = compare.Directories(ctx, s.Left, s.Right)
+			links := compare.LinkRecord
+			if s.FollowLinks {
+				links = compare.LinkFollow
+			}
+			options := compare.ScanOptions{Filter: s.DirectoryFilter, CompareMode: s.CompareMode, CompareTime: s.CompareTime, Links: links, KeepParents: true}
+			rows, err = compare.CompareDirectories(ctx, s.Left, s.Right, options)
 			a.publish(func() {
 				a.busy = false
 				if err != nil {
@@ -80,14 +89,19 @@ func (a *workspaceState) openSession(path string) {
 					return
 				}
 				a.installDirectory([2]string{s.Left, s.Right}, rows)
+				a.directoryOptions = options
+				a.dirFilter = s.DirectoryFilter
+				a.compareMode = s.CompareMode
+				a.compareTime = s.CompareTime
+				a.followLinks = s.FollowLinks
 			})
 			return
 		}
 		if err == nil {
-			left, err = document.Read(ctx, s.Left)
+			left, err = document.ReadDetected(ctx, s.Left)
 		}
 		if err == nil {
-			right, err = document.Read(ctx, s.Right)
+			right, err = document.ReadDetected(ctx, s.Right)
 		}
 		a.publish(func() {
 			a.busy = false
@@ -95,6 +109,7 @@ func (a *workspaceState) openSession(path string) {
 				a.err = err.Error()
 				return
 			}
+			a.ignoreSpace = s.IgnoreSpace
 			a.install(left, right)
 			a.wrap = s.Wrap
 		})
@@ -148,7 +163,7 @@ func (a *workspaceState) saveAsPath(side int, path string) {
 				return
 			}
 			p.file = f
-			p.edit.Label = filepath.Base(f.Path)
+			p.edit.Label = []string{"左侧编辑器", "右侧编辑器"}[side]
 			p.buffer.SetLanguage(editor.LanguageFor(f.Path))
 			a.paths[side] = f.Path
 			if p.buffer.Version() == version {

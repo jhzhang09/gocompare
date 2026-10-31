@@ -33,7 +33,7 @@ func TestWorkspaceShowsBrandAndFramework(t *testing.T) {
 	if aState.err != "" || aState.frameworkVersion() != version {
 		t.Fatalf("version err=%s %s", aState.err, aState.frameworkVersion())
 	}
-	if !tt.HasText("GoCompare") || !tt.HasText("MyGo "+version) {
+	if !tt.HasText("GoCompare") || tt.HasText("MyGo "+version) {
 		t.Fatalf("texts %v", tt.Texts())
 	}
 	if _, ok := tt.Find("应用图标"); !ok {

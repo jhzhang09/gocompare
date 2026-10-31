@@ -81,6 +81,19 @@ def main():
                         if time.monotonic() > deadline:
                             raise RuntimeError("comparison did not load")
                         time.sleep(0.05)
+                    def wait_comparison(prefix):
+                        deadline = time.monotonic() + 10
+                        while True:
+                            current=nodes()
+                            if prefix=="比较完成":
+                                ready=any(n.get("label")=="下一差异" and "disabled" not in n.get("states",[]) for n in current)
+                            else:
+                                ready=any(str(n.get("label", "")).startswith(prefix) for n in current)
+                            if ready:break
+                            if time.monotonic() > deadline:
+                                raise RuntimeError("background comparison did not complete: " + prefix)
+                            time.sleep(0.05)
+                    wait_comparison("比较完成")
                     for side, label in enumerate(["Old text", "New text"]):
                         node = field(label)
                         assert "readOnly" not in node["states"], node
@@ -97,6 +110,17 @@ def main():
                             if time.monotonic() > deadline:
                                 raise RuntimeError("focused side was not saved")
                             time.sleep(0.05)
+                    wait_comparison("比较完成")
+                    options = next(n for n in nodes() if n.get("label") == "比较选项")
+                    call("act", id=options["id"], action="press")
+                    deadline=time.monotonic()+10
+                    while not any(n.get("label")=="忽略空白" for n in nodes()):
+                        if time.monotonic()>deadline:raise RuntimeError("options did not open")
+                        time.sleep(0.05)
+                    rule = next(n for n in nodes() if n.get("label") == "忽略空白")
+                    call("act", id=rule["id"], action="press")
+                    wait_comparison("按规则")
+                    call("act", id=options["id"], action="press")
                     if args.directories:
                         node = next(node for node in nodes() if node.get("label") == "返回目录")
                         call("act", id=node["id"], action="press")

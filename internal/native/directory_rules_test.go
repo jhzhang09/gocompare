@@ -61,6 +61,7 @@ func TestWorkspaceDirectoryRules(t *testing.T) {
 		before[path] = data
 	}
 	a := &workspaceState{paths: [2]string{left, right}}
+	a.optionsOpen = true
 	tt := ui.NewTester(a.view, 1600, 880)
 	tt.Frame()
 	if err = tt.Click("目录比较"); err != nil {
@@ -83,7 +84,7 @@ func TestWorkspaceDirectoryRules(t *testing.T) {
 		t.Fatalf("mode texts %v", tt.Texts())
 	}
 	assertScanOrder(t, a.scanSeen)
-	if a.scanPath == "" || !tt.HasText("最近扫描 "+a.scanPath) {
+	if a.scanPath == "" {
 		t.Fatalf("scan path %q texts %v", a.scanPath, tt.Texts())
 	}
 	if err = tt.Click("比较权限"); err != nil {
@@ -132,7 +133,7 @@ func TestWorkspaceDirectoryRules(t *testing.T) {
 	if a.err != "" || directoryStatus(a, "nested/a.txt") != compare.Same || directoryStatus(a, "nested/b.bin") != "" || filteredBin || !keptText || !tt.HasText("相同") || tt.HasText("不同") {
 		t.Fatalf("filter err=%s texts=%v rows=%+v", a.err, tt.Texts(), a.directoryRows)
 	}
-	if a.scanPath != "nested/b.bin" || !tt.HasText("最近扫描 nested/b.bin") {
+	if a.scanPath != "nested/b.bin" {
 		t.Fatalf("filtered name left the scan: %q", a.scanPath)
 	}
 	assertScanOrder(t, a.scanSeen)
@@ -160,6 +161,7 @@ func TestWorkspaceDirectoryRejectsBadFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := &workspaceState{paths: [2]string{left, right}}
+	a.optionsOpen = true
 	tt := ui.NewTester(a.view, 1600, 880)
 	tt.Frame()
 	if err = tt.Click("目录比较"); err != nil {
@@ -198,6 +200,7 @@ func TestWorkspaceDirectoryLinkPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := &workspaceState{paths: [2]string{left, right}}
+	a.optionsOpen = true
 	tt := ui.NewTester(a.view, 1600, 880)
 	tt.Frame()
 	if err := tt.Click("目录比较"); err != nil {

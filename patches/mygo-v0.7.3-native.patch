@@ -1,14 +1,14 @@
 --- a/vendor/github.com/egoist/mygo/internal/diff/diff.go
 +++ b/vendor/github.com/egoist/mygo/internal/diff/diff.go
-@@ -8,6 +8,8 @@
+@@ -7,6 +7,8 @@
+ // lines and indentation make them read as whole blocks, with git's indent
  // heuristic.
  package diff
- 
-+import "context"
 +
++import "context"
+ 
  // Hunk is a change: the elements A0 to A1 of the old sequence replaced by
  // B0 to B1 of the new one. A0 == A1 is an insertion before A0, B0 == B1 a
- // deletion.
 @@ -56,6 +58,8 @@
  
  // differ marks the elements of a and b that the hunks change.
@@ -569,23 +569,26 @@
  	}
  	if len(short) == len(long) || len(short) == 0 || len(short)*(len(long)-len(short)+1) > 4096 {
 -		return 0
-+		return 0, ctx.Err()
- 	}
+-	}
 -	score := func(off int) float64 {
 -		s := 0.0
++		return 0, ctx.Err()
++	}
 +	score := func(off int) (float64, error) {
 +		sum := 0.0
  		for i, x := range short {
 -			s += similarity(x, long[i+off])
+-		}
+-		return s
+-	}
+-	best, bestScore := 0, score(0)
 +			if err := ctx.Err(); err != nil {
 +				return 0, err
 +			}
 +			sum += similarity(x, long[i+off])
- 		}
--		return s
++		}
 +		return sum, nil
- 	}
--	best, bestScore := 0, score(0)
++	}
 +	best := 0
 +	bestScore, err := score(0)
 +	if err != nil {
@@ -594,19 +597,32 @@
  	for off := 1; off <= len(long)-len(short); off++ {
 -		if s := score(off); s > bestScore+0.5*float64(len(short)) {
 -			best, bestScore = off, s
+-		}
+-	}
+-	return best
 +		value, err := score(off)
 +		if err != nil {
 +			return 0, err
- 		}
++		}
 +		if value > bestScore+0.5*float64(len(short)) {
 +			best, bestScore = off, value
 +		}
- 	}
--	return best
++	}
 +	return best, nil
  }
  
  func similarity(a, b string) float64 {
+@@ -490,6 +537,10 @@
+ 	text := ""
+ 	if h.A1 > h.A0 {
+ 		text = old.Slice(old.LineStart(h.A0), old.LineEnd(h.A1-1))
++	}
++	// 空缓冲区在编辑器中有一个占位行，不能为它附加额外换行。
++	if nw.Len() == 0 {
++		return Edit{Start: 0, End: 0, Text: text}
+ 	}
+ 	n := nw.LineCount()
+ 	switch {
 --- /dev/null
 +++ b/vendor/github.com/egoist/mygo/ui/editor/comparison.go
 @@ -0,0 +1,122 @@
@@ -746,3 +762,73 @@
  	m.set(d.Old, d.New)
  	m.oldText, m.oldVer = d.Old.snapshot()
  	m.newText, m.newVer = d.New.snapshot()
+--- /dev/null
++++ b/vendor/github.com/egoist/mygo/ui/editor/comparison_rules.go
+@@ -0,0 +1,67 @@
++package editor
++
++import (
++	"context"
++	"errors"
++	"github.com/egoist/mygo/internal/diff"
++	"strings"
++	"unicode"
++)
++
++// ComputeRules 在原始快照的行坐标中应用空白规则及单调锚点。
++// 结果保留缓冲区身份与版本；不把规范化内容写入缓冲区。
++func (r ComparisonRequest) ComputeRules(ctx context.Context, ignoreSpace bool, anchors [][2]int, mode DiffInline) (Comparison, error) {
++	if r.old == nil || r.new == nil {
++		return Comparison{}, errors.New("invalid comparison request")
++	}
++	if mode > DiffInlineNone {
++		return Comparison{}, errors.New("invalid inline mode")
++	}
++	if err := ctx.Err(); err != nil {
++		return Comparison{}, err
++	}
++	old, new := r.before.t, r.after.t
++	a, b := ropeLines(old, 0, old.LineCount()), ropeLines(new, 0, new.LineCount())
++	if ignoreSpace {
++		for _, lines := range [][]string{a, b} {
++			for i, s := range lines {
++				if err := ctx.Err(); err != nil {
++					return Comparison{}, err
++				}
++				lines[i] = strings.Map(func(c rune) rune {
++					if unicode.IsSpace(c) {
++						return -1
++					}
++					return c
++				}, s)
++			}
++		}
++	}
++	points := append(append([][2]int(nil), anchors...), [2]int{len(a), len(b)})
++	left, right := 0, 0
++	var hunks []diff.Hunk
++	for _, point := range points {
++		if point[0] < left || point[1] < right || point[0] > len(a) || point[1] > len(b) {
++			return Comparison{}, errors.New("anchor out of order or out of range")
++		}
++		part, err := diff.LinesContext(ctx, a[left:point[0]], b[right:point[1]])
++		if err != nil {
++			return Comparison{}, err
++		}
++		for _, h := range part {
++			h.A0 += left
++			h.A1 += left
++			h.B0 += right
++			h.B1 += right
++			hunks = append(hunks, h)
++		}
++		left, right = point[0], point[1]
++	}
++	model := diffModel{oldText: old, newText: new, hunks: hunks}
++	for i := range hunks {
++		if _, err := model.wordsOfContext(ctx, i, mode); err != nil {
++			return Comparison{}, err
++		}
++	}
++	return Comparison{request: r, hunks: hunks, inline: mode, words: model.words}, nil
++}
