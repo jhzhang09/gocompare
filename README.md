@@ -1,174 +1,192 @@
+<div align="center">
+
+<img src="resources/icon.png" width="96" alt="GoCompare icon">
+
 # GoCompare
 
-<p align="center">
-  <strong>一款基于 MyGo Native UI 构建的现代化、高性能跨平台文件与目录对比合并工具。</strong>
-</p>
+**A native, cross-platform file and folder comparison tool written in Go.**
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Go-1.27+-00ADD8?style=flat-square&logo=go" alt="Go Version" />
-  <img src="https://img.shields.io/badge/GUI-MyGo%20v0.7.3-000000?style=flat-square" alt="MyGo GUI" />
-  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-brightgreen?style=flat-square" alt="Platform" />
-  <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License" />
-</p>
+Compare text, folders, images and binary metadata, merge three-way, and sync directories safely — in a fast native window or from the command line.
 
----
+[![Checks](https://github.com/jhzhang09/gocompare/actions/workflows/check.yml/badge.svg)](https://github.com/jhzhang09/gocompare/actions/workflows/check.yml)
+[![Release](https://img.shields.io/github/v/release/jhzhang09/gocompare?include_prereleases&sort=semver)](https://github.com/jhzhang09/gocompare/releases)
+[![Go](https://img.shields.io/github/go-mod/go-version/jhzhang09/gocompare)](go.mod)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
 
-GoCompare 专为追求极致启动速度、原生系统质感与可靠数据安全性的开发者打造。应用采用 Go 语言与 [MyGo](https://github.com/egoist/mygo) 框架原生渲染，**不包含任何 Electron、WebView、HTML 或 Node.js 运行时**，内存占用极低，毫秒级即时冷启动。
+**English** · [简体中文](README.zh-CN.md)
 
-提供现代化的 GUI 交互工作台以及功能完备的独立 CLI 工具，满足日常代码审查、多方冲突合并、目录镜像同步与 CI/CD 自动化流水线需求。
+</div>
 
----
+![Text compare](docs/images/text-compare.png)
 
-## ✨ 核心特性
+## Why GoCompare
 
-- ⚡️ **纯原生极速体验**：纯 Go 编写，直接调用系统原生图形管线绘制，无浏览器内核开销，资源占用极小，启动如飞。
-- 📋 **纯文本即时粘贴对比**：无需提前创建或选择本地文件，开箱即提供双栏文本工作台，直接粘贴系统剪贴板（支持一键粘贴按钮与 ⌘V）或键入文本，实时高亮差异，支持一键互换两侧、清空、复制及另存为文件。
-- 📝 **双向即时文本对比与编辑**：
-  - 左右分栏对齐展示，支持行内字符级高亮、**忽略空白与忽略空行**、平滑同步滚动。
-  - **同屏双侧实时编辑**，支持撤销、重做、多字符集查找替换与快捷键保存。
-  - 智能编码识别（UTF-8、UTF-16 BOM、GBK 等），智能保真换行符（CRLF/LF）与文件末尾空行。
-- 🔀 **三方文本合并**：
-  - 基准列（Base）、左侧列（Left）、右侧列（Right）直观三栏对齐。
-  - 单击即可采纳单侧或双侧内容，冲突实时可视化，一键决策并生成目标合并结果。
-- 📁 **目录对比与事务级同步**：
-  - 递归式树状目录比对，支持层级折叠、名称实时过滤与差异状态筛选。
-  - 提供安全的目录更新、双向同步与单向镜像规划。
-  - **安全至上**：支持只读干燥预览（Dry-run）、操作前安全备份、事务日志与中断回滚，杜绝误操作导致的数据丢失。
-- 🖼️ **多格式专用对比**：
-  - **图像比对**：支持 PNG、JPEG、GIF；提供并排对比、透明叠加、像素差值高亮与容差调节。
-  - **十六进制比对**：二进制文件逐字节分析与偏移定位。
-  - **元数据对比**：MP3/ID3v2 媒体标签、PE 文件版本信息与 Windows `.reg` 文本差异对比。
-- 🎨 **现代高级审美**：
-  - 采用现代化微质感设计语言，深度适配系统原生浅色/暗色双主题。
-  - 统一的双胶囊路径栏、面包屑窗格头、12px 圆角状态药丸标签与内联矢量图标。
-- 💻 **全功能 CLI 工具**：提供独立的 `gocompare-cli` 控制台程序，完美融入终端脚本与自动化流水线。
+- **Native, not a web view.** Built with [MyGo](https://github.com/egoist/mygo): pure Go, no Electron, WebView, Node.js or cgo. One small binary per platform, cross-compiled from any machine.
+- **Safe by default.** Saves never overwrite a file that changed on disk, folder sync always previews first, backs up before overwriting or deleting, and rolls back on failure.
+- **GUI and CLI share one core.** Everything you can do in the window you can script, with stable exit codes for CI and Git.
 
----
+> [!NOTE]
+> GoCompare is in early development (pre-1.0). Core comparison, merge and sync paths are well tested, but some features are still partial — see the [feature matrix](docs/feature-parity.md). Feedback and bug reports are very welcome.
 
-## 🚀 快速上手
+## Features
 
-### 运行环境要求
-- **Go**: 1.27.3 或更高版本
-- **MyGo**: v0.7.3
-- **操作系统**: macOS 12+ / Linux (需安装 GTK 3) / Windows 10+
+| Mode | What it does |
+|---|---|
+| **Text compare** | Paste or type into two panes and see differences instantly, with word-level highlights. Swap, copy, clear and save either side. |
+| **File compare** | Side-by-side diff with **both sides editable**, undo/redo, find & replace, manual alignment anchors, ignore whitespace / blank lines. Detects UTF-8, UTF-16 (BOM) and GBK and preserves encoding, BOM and line endings on save. |
+| **Folder compare** | Recursive tree with collapse, filter and "only differences". Optionally compares permissions and modification times and follows symlinks safely. |
+| **Folder sync** | Update left/right/both or mirror. Always previews a plan; executes with backups, a journal, automatic rollback on failure and one-click undo. |
+| **Three-way merge** | Base / left / right aligned columns, take left / right / both / base per conflict, edit the output freely. Also works as a Git `mergetool`. |
+| **Picture compare** | PNG, JPEG, GIF: side by side, overlay, pixel difference, a 0–255 tolerance map that marks real changes in red, background color replacement and per-side flipping. |
+| **Media tags** | Compares ID3v2.3 / v2.4 title, artist and album without decoding audio. |
+| **Version & registry** | Compares PE `FileVersion` resources and Windows `.reg` exports (UTF-16 or UTF-8) without touching the live registry. |
+| **Sessions & i18n** | Save and reopen comparison sessions. UI in English, 简体中文 and 繁體中文; light, dark or system theme. |
 
-### 从源码运行
+<table>
+  <tr>
+    <td><img src="docs/images/folder-compare.png" alt="Folder compare"></td>
+    <td><img src="docs/images/picture-compare.png" alt="Picture compare with tolerance map"></td>
+  </tr>
+  <tr>
+    <td align="center">Folder compare</td>
+    <td align="center">Picture compare (tolerance map)</td>
+  </tr>
+</table>
 
-```sh
-# 启动 GUI 主工作台
-go run ./cmd/gocompare
+## Installation
 
-# 使用 GUI 对比两个文件
-go run ./cmd/gocompare left.txt right.txt
+Download the latest build from the [**Releases**](https://github.com/jhzhang09/gocompare/releases) page.
 
-# 使用 GUI 对比两个目录
-go run ./cmd/gocompare --directories ./left-dir ./right-dir
+| Platform | Desktop app | Command line |
+|---|---|---|
+| macOS 12+ (Apple Silicon & Intel) | `gocompare-<version>.dmg` | `gocompare-cli_<version>_darwin_<arch>.tar.gz` |
+| Windows 10 / 11 | `gocompare-setup-<version>-<arch>.exe` or the portable `.zip` | `gocompare-cli_<version>_windows_<arch>.zip` |
+| Linux (GTK 3) | `.deb` or `.tar.gz` | `gocompare-cli_<version>_linux_<arch>.tar.gz` |
 
-# 启动 MyGo 开发者热重载模式
-go tool mygo dev
+Every release ships `SHA256SUMS.txt` and a [build provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations) you can check with `gh attestation verify <file> --repo jhzhang09/gocompare`.
+
+<details>
+<summary><b>macOS: "GoCompare can't be opened"</b></summary>
+
+Release builds are ad-hoc signed but not notarized yet. Right-click **GoCompare.app → Open** the first time, or run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/GoCompare.app
+```
+</details>
+
+<details>
+<summary><b>Windows: SmartScreen warning</b></summary>
+
+The binaries are not code-signed yet. Choose **More info → Run anyway**.
+</details>
+
+<details>
+<summary><b>Linux</b></summary>
+
+```bash
+sudo apt install ./gocompare_<version>_amd64.deb
+# or, without installing:
+tar xzf gocompare-<version>-linux-amd64.tar.gz && ./gocompare
 ```
 
----
+GTK 3 is required; it is present on most desktop distributions.
+</details>
 
-## 💻 命令行工具 (CLI)
+### Build from source
 
-GoCompare 提供了轻量独立的命令行工具 `gocompare-cli`，适合直接在终端中快速查看差异或集成至脚本中。
+Requires Go 1.27.3 or newer. All dependencies are vendored, so no network access is needed.
 
-### 构建 CLI
-```sh
-mkdir -p build
-go build -o build/gocompare-cli ./cmd/gocompare-cli
+```bash
+git clone https://github.com/jhzhang09/gocompare.git
+cd gocompare
+go run ./cmd/gocompare                       # run the desktop app
+go build -o build/ ./cmd/gocompare-cli        # build the CLI
+go tool mygo build                            # package the app for this platform (.app/.dmg on macOS)
 ```
 
-### 常用命令示例
+## Usage
 
-```sh
-# 1. 文本文件对比（差异时退出码为 1，无差异时为 0）
-./build/gocompare-cli file1.txt file2.txt
+### Desktop app
 
-# 2. 目录递归比对并输出结构化 JSON 报告
-./build/gocompare-cli dir ./project-v1 ./project-v2
-
-# 3. 目录同步预览 (默认只读，不修改任何文件)
-./build/gocompare-cli sync --mode mirror-right ./source-dir ./target-dir
-
-# 4. 目录同步执行 (需明确指定 --apply 与外部独立备份目录)
-./build/gocompare-cli sync --mode mirror-right --apply --backup-dir /tmp/backup ./source-dir ./target-dir
-
-# 5. 三方文本合并
-./build/gocompare-cli merge --base base.txt left.txt right.txt --output merged.txt
+```bash
+gocompare                                    # start with the text compare workspace
+gocompare left.txt right.txt                 # compare two files
+gocompare --directories ./left ./right       # compare two folders
+gocompare --version
 ```
 
----
+On macOS the executable lives at `/Applications/GoCompare.app/Contents/MacOS/GoCompare`.
 
-## 🛠️ 构建与打包
+### Command line
 
-GoCompare 支持通过 MyGo 工具链快速打包各平台安装程序：
+`gocompare-cli` exits with **0** when inputs are equal (or a merge is clean), **1** when they differ (or conflicts remain) and **2** on errors.
 
-```sh
-# 运行单元测试与静态分析
+```bash
+gocompare-cli left.txt right.txt                                  # compare two files
+gocompare-cli dir --filter '*.go' ./v1 ./v2                       # folder report as JSON
+gocompare-cli preview mirror-right ./src ./dst                    # sync plan (read-only)
+gocompare-cli sync --mode mirror-right --apply --backup-dir ~/gocompare-backup ./src ./dst
+gocompare-cli restore ~/gocompare-backup/sync/journal.json        # undo a sync
+gocompare-cli merge --base base.txt --output merged.txt left.txt right.txt
+gocompare-cli picture before.png after.png
+```
+
+Sync modes: `update-right`, `update-left`, `update-both`, `mirror-right`, `mirror-left`. Run `gocompare-cli --help` for every command, including `hex`, `media`, `pe`, `reg`, `script`, `report` and `extend`.
+
+### Git integration
+
+```bash
+git config --global diff.tool gocompare
+git config --global difftool.gocompare.cmd 'gocompare "$LOCAL" "$REMOTE"'
+git config --global merge.tool gocompare
+git config --global mergetool.gocompare.cmd 'gocompare-cli mergetool --base "$BASE" --output "$MERGED" "$LOCAL" "$REMOTE"'
+git config --global mergetool.gocompare.trustExitCode true
+```
+
+`mergetool` writes the merge result into `$MERGED` and exits with 1 while conflicts remain, so Git keeps the file marked as unresolved until you fix it.
+
+## Safety guarantees
+
+- **Saves are atomic and conflict-aware.** Files are written to a temporary file in the same folder and renamed into place only if the file on disk still matches what was loaded. "Save as" never overwrites an existing file.
+- **Folder sync is plan → confirm → execute.** Every action records the size, SHA-256, mode and time it expects. Execution re-checks them, backs up files before overwriting or deleting, journals each step and rolls back completed steps on any error or cancellation.
+- **Undo never destroys newer work.** Undoing a sync refuses to touch files that changed after the sync, and plans are refused when names collide only by letter case on case-insensitive file systems.
+
+The full contract is in [docs/operations.md](docs/operations.md) (Chinese).
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [Architecture](docs/architecture.md) | Module boundaries and data flow |
+| [Feature matrix](docs/feature-parity.md) | What is complete, partial or planned |
+| [Platform support](docs/platform-support.md) | Build targets and per-platform status |
+| [Operations contract](docs/operations.md) | Save and sync safety guarantees |
+| [Testing](docs/testing.md) | Automated and native regression tests |
+| [MyGo patch](docs/mygo-patch.md) | How the vendored framework patch is maintained |
+| [Releasing](docs/releasing.md) | How maintainers cut a release |
+
+Most design documents are currently written in Chinese.
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md). In short:
+
+```bash
+gofmt -l cmd internal tools     # must print nothing
+go vet ./...
 CGO_ENABLED=0 go test ./...
-go vet ./...
-go tool mygo vet .
-
-# 执行并发安全检查 (Race Detector)
-go test -race ./internal/document ./internal/compare ./internal/native
-
-# 构建当前平台应用安装包 (macOS 生成 .app 与 .dmg)
-go tool mygo build
-
-# 跨平台交叉编译 (支持多架构)
-go tool mygo build -platform darwin/universal,windows/amd64,linux/amd64
-```
-
-编译产物默认输出至 `build/` 目录下。
-
----
-
-## 🛡️ 安全与数据完整性保证
-
-在执行文件保存与目录同步操作时，GoCompare 遵循严格的安全工程规范：
-1. **原子保存与安全备份**：文件保存采用同级临时文件写入与安全重命名机制，原生工作区在覆写前默认自动备份至用户配置目录。
-2. **外部修改保护**：检测到磁盘底层文件被外部进程改动或发生权限冲突时，主动拒绝覆写并明确警告。
-3. **事务日志与回滚**：目录批量同步采用两阶段验证机制。每次操作生成独立挂起日志（Pending Log），遇不可恢复错误或用户取消时支持自动中断与回滚。
-
-详细约定请参阅 [目录操作与同步安全契约](docs/operations.md)。
-
----
-
-## 📚 开发与进阶文档
-
-- [系统架构与数据流分层](docs/architecture.md)：探讨 `cmd`、`native`、`compare` 与 `document` 的模块边界
-- [原生界面设计系统](docs/design-system.md)：双主题配色、组件设计哲学与交互规范
-- [功能规划与支持矩阵](docs/feature-parity.md)：全场景比对功能规划与完成度跟踪
-- [开发阶段路线图](docs/roadmap.md)：P0 ~ P8 阶段演化目标与实现策略
-- [跨平台支持矩阵](docs/platform-support.md)：macOS、Windows 与 Linux 平台构建与实机适配说明
-- [MyGo 框架补丁维护](docs/mygo-patch.md)：深入解析 `vendor/` 补丁机制与依赖维护规约
-- [测试与质量验证指南](docs/testing.md)：自动化回归测试、无头测试与故障场景覆盖
-
----
-
-## 🤝 参与贡献
-
-欢迎对 GoCompare 提交 Issue 和 Pull Request！
-在提交代码前，请确保运行以下检查并通过所有测试：
-
-```sh
-go test ./...
-go vet ./...
 go tool mygo vet .
 ```
 
----
+To report a security issue, please follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
-## 🙏 致谢 (Acknowledgements)
+## Acknowledgements
 
-GoCompare 的极致性能与原生交互体验离不开优秀的开源生态，特别致谢：
+- [MyGo](https://github.com/egoist/mygo) by [@egoist](https://github.com/egoist) — the native Go desktop UI framework GoCompare is built on.
+- [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) and [golang.org/x/image](https://pkg.go.dev/golang.org/x/image).
 
-- **[MyGo](https://github.com/egoist/mygo)** (by [@egoist](https://github.com/egoist)) —— 强大、轻量、开箱即用的 Go 原生跨平台桌面 GUI 框架。
+## License
 
----
-
-## 📄 开源许可证
-
-本项目基于 [MIT License](LICENSE) 开源协议。
+[MIT](LICENSE) © GoCompare Contributors

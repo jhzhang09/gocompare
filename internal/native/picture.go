@@ -228,7 +228,8 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 		}
 		b.OnClick(fn)
 	}
-	ui.Row(c).Height(38).Padding(0, 14).Gap(5).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	// 窄窗口下按钮自动换行，不会被裁掉。
+	ui.Row(c).Wrap().MinHeight(38).Padding(5, 14).Gap(5).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		modeBtn(i18n.T("picture.modeSide"), a.pictureMode == pictureSide, func() { a.showPicture(pictureSide) })
 		modeBtn(i18n.T("picture.modeOverlay"), a.pictureMode == pictureOverlay, func() { a.showPicture(pictureOverlay) })
 		modeBtn(i18n.T("picture.modeDifference"), a.pictureMode == pictureDifference, func() { a.showPicture(pictureDifference) })
@@ -241,6 +242,8 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 			modeBtn(i18n.T("picture.zoom100"), a.pictureZoom == pictureZoom100, func() { a.pictureZoom = pictureZoom100 })
 			modeBtn(i18n.T("picture.zoom200"), a.pictureZoom == pictureZoom200, func() { a.pictureZoom = pictureZoom200 })
 			modeBtn(i18n.T("picture.zoomGrid"), a.pictureZoom == pictureZoomGrid, func() { a.pictureZoom = pictureZoomGrid })
+			ui.Divider(c).Height(14)
+			a.pictureFlipControls(c, pal, disabled)
 		}
 	})
 
@@ -257,17 +260,15 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 	a.pictureCanvas(c, pal)
 }
 
-// pictureStatusRow 显示容差滑块和缓存的差异统计；统计在后台随画布一起计算，绘制时不扫描像素。
+// pictureStatusRow 显示容差滑块和缓存的差异统计（翻转开关在上方模式工具栏）；统计在后台随画布一起计算，绘制时不扫描像素。
 func (a *workspaceState) pictureStatusRow(c *ui.Context, pal uiPalette, disabled bool) {
 	t := c.Theme()
-	ui.Row(c).Height(34).Padding(0, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		ui.Text(c, i18n.TArgs("picture.toleranceValue", a.pictureTol)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+	ui.Row(c).Wrap().MinHeight(34).Padding(5, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Text(c, i18n.TArgs("picture.toleranceValue", a.pictureTol)).Shrink(0).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		a.pictureTolSlider = float64(a.pictureTol)
-		ui.Slider(c, &a.pictureTolSlider, 0, 255).Width(180).Disabled(disabled).Label(i18n.T("picture.toleranceSlider")).OnChange(func() {
+		ui.Slider(c, &a.pictureTolSlider, 0, 255).Width(160).Shrink(0).Disabled(disabled).Label(i18n.T("picture.toleranceSlider")).OnChange(func() {
 			a.setPictureTolerance(uint8(a.pictureTolSlider + 0.5))
 		})
-		ui.Divider(c).Height(14)
-		a.pictureFlipControls(c, pal, disabled)
 		ui.Box(c).Grow(1)
 		lb, rb := a.pictureLeft.Bounds(), a.pictureRight.Bounds()
 		statusPill(c, fmt.Sprintf("%d×%d vs %d×%d px", lb.Dx(), lb.Dy(), rb.Dx(), rb.Dy()), pal.sameFg, pal.sameBg)
@@ -321,7 +322,8 @@ func (a *workspaceState) pictureFlipControls(c *ui.Context, pal uiPalette, disab
 	t := c.Theme()
 	for side := 0; side < 2; side++ {
 		side := side
-		ui.Row(c).Gap(3).Children(func() {
+		// 状态栏空间不足时由右侧的统计药丸收缩，翻转开关保持完整、两组之间留出间距。
+		ui.Row(c).Gap(3).Shrink(0).Margin(0, 6, 0, 0).Children(func() {
 			sideBadge(c, side, pal)
 			for _, vertical := range []bool{false, true} {
 				vertical := vertical

@@ -1,0 +1,147 @@
+name: Release
+
+# 推送 v1.2.3 形式的标签时构建全部平台并发布 GitHub Release；
+# 手动运行只构建产物（版本号为 0.0.0-dev），用来在打标签前检查流水线。
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check formatting
+        run: test -z "$(gofmt -l cmd internal tools)"
+      - run: go vet ./...
+      - run: go test ./...
+      - name: Check MyGo patch
+        run: git apply --reverse --check patches/mygo-v0.7.3-native.patch
+
+  cli:
+    name: CLI archives
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Resolve version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then tag="$GITHUB_REF_NAME"; else tag="v0.0.0-dev"; fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+      - run: scripts/package-cli.sh "$TAG" assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli
+          path: assets/*
+          if-no-files-found: error
+
+  app:
+    name: App (${{ matrix.name }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            platforms: darwin/universal
+          - name: Linux
+            os: ubuntu-latest
+            platforms: linux/amd64,linux/arm64
+          - name: Windows
+            os: windows-latest
+            platforms: windows/amd64,windows/arm64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Resolve version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then tag="$GITHUB_REF_NAME"; else tag="v0.0.0-dev"; fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "VERSION=${tag#v}" >> "$GITHUB_ENV"
+      # mygo build 用 mygo.json 的版本命名安装包；应用内显示的版本通过 MYGO_LDFLAGS 注入。
+      - name: Stamp version
+        run: |
+          sed -i.bak -E "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" mygo.json
+          rm mygo.json.bak
+          grep '"version"' mygo.json
+      - name: Build
+        env:
+          MYGO_LDFLAGS: -X gocompare/internal/brand.Version=${{ env.TAG }}
+        run: go tool mygo build -platform "${{ matrix.platforms }}" -o dist
+      - name: Collect installers
+        run: |
+          mkdir -p assets
+          find dist -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.tar.gz' -o -name '*-setup-*.exe' \) -exec cp {} assets/ \;
+      # Windows 另外提供免安装的单文件版本。
+      - name: Collect portable builds
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($arch in 'amd64', 'arm64') {
+            Compress-Archive -Path "dist/windows-$arch/GoCompare.exe" -DestinationPath "assets/gocompare-$env:VERSION-windows-$arch-portable.zip"
+          }
+      - run: ls -l assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.name }}
+          path: assets/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [cli, app]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Checksums
+        working-directory: assets
+        run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: assets/*
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" assets/* \
+            --verify-tag \
+            --title "GoCompare $GITHUB_REF_NAME" \
+            --notes-file .github/release-notes.md \
+            --generate-notes \
+            $prerelease

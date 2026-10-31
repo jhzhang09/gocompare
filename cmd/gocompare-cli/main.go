@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"gocompare/internal/brand"
 	"gocompare/internal/compare"
 	"gocompare/internal/document"
 	"gocompare/internal/extend"
@@ -25,8 +26,12 @@ import (
 
 // run 返回 0 相同、1 不同、2 参数或读取失败。
 func run(args []string, out, stderr io.Writer) int {
+	if len(args) == 1 && args[0] == "--version" {
+		fmt.Fprintf(out, "gocompare-cli %s\n", brand.AppVersion())
+		return 0
+	}
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Fprintln(out, "Usage: gocompare-cli <left-file> <right-file>\nDirectory report: gocompare-cli dir [--filter pattern] [--compare-mode] [--compare-time] [--links record|follow] <left-dir> <right-dir>\nSync preview: gocompare-cli preview <mode> <left-dir> <right-dir>\nSync: gocompare-cli sync [--apply --backup-dir path] <left-dir> <right-dir>\nRestore: gocompare-cli restore <journal.json>\nMerge: gocompare-cli merge [--base file] [--output file] <left-file> <right-file>\nHex: gocompare-cli hex <left-file> <right-file>\nPicture: gocompare-cli picture <left-image> <right-image>\nMedia: gocompare-cli media <file>\nPE: gocompare-cli pe <left-file> <right-file>\nRegistry: gocompare-cli reg <left.reg> <right.reg>\nExtend: gocompare-cli extend <spec.json> <path> [path]\nGit: gocompare-cli difftool <left-file> <right-file> | mergetool [--base file] [--output file] <left-file> <right-file>\nScript: gocompare-cli script <file>\nReport: gocompare-cli report --title text --input file --output file\nPaginate: gocompare-cli paginate --width N --rows N --input file\nWorkspace: gocompare-cli workspace save <bundle> <session>...\nExit codes: 0 equal or clean, 1 different or conflicts, 2 error")
+		fmt.Fprintln(out, "Usage: gocompare-cli <left-file> <right-file>\nDirectory report: gocompare-cli dir [--filter pattern] [--compare-mode] [--compare-time] [--links record|follow] <left-dir> <right-dir>\nSync preview: gocompare-cli preview <mode> <left-dir> <right-dir>\nSync: gocompare-cli sync [--mode mode] [--apply --backup-dir path] <left-dir> <right-dir>\nRestore: gocompare-cli restore <journal.json>\nMerge: gocompare-cli merge [--base file] [--output file] <left-file> <right-file>\nHex: gocompare-cli hex <left-file> <right-file>\nPicture: gocompare-cli picture <left-image> <right-image>\nMedia: gocompare-cli media <file>\nPE: gocompare-cli pe <left-file> <right-file>\nRegistry: gocompare-cli reg <left.reg> <right.reg>\nExtend: gocompare-cli extend <spec.json> <path> [path]\nGit: gocompare-cli difftool <left-file> <right-file> | mergetool [--base file] [--output file] <left-file> <right-file>\nScript: gocompare-cli script <file>\nReport: gocompare-cli report --title text --input file --output file\nPaginate: gocompare-cli paginate --width N --rows N --input file\nWorkspace: gocompare-cli workspace save <bundle> <session>...\nVersion: gocompare-cli --version\nExit codes: 0 equal or clean, 1 different or conflicts, 2 error")
 		return 0
 	}
 	if len(args) > 0 && args[0] == "hex" {

@@ -227,6 +227,10 @@ func Run(args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(args) == 1 && args[0] == "--version" {
+		fmt.Printf("GoCompare %s\nMyGo %s\n", brand.AppVersion(), version)
+		return nil
+	}
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Printf("GoCompare (%s)\nUsage: gocompare [left-file right-file] | --directories left-dir right-dir\n", version)
 		return nil
@@ -272,7 +276,7 @@ func Run(args []string) error {
 	}
 
 	mygo.App.SetName("GoCompare")
-	mygo.App.SetVersion(version)
+	mygo.App.SetVersion(brand.AppVersion())
 	var iconErr error
 	mygo.App.WhenReady(func() {
 		// darwin 的 Window.SetIcon 不改变图标。Dock.SetIcon 才会把应用图标换成这张 PNG。

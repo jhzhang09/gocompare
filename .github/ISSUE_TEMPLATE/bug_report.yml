@@ -1,0 +1,60 @@
+name: Bug report · 问题报告
+description: Something does not work as expected · 功能异常或结果不正确
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! English or Chinese are both fine. For security issues, use SECURITY.md instead.
+        感谢反馈！中英文均可。安全问题请按 SECURITY.md 私下报告。
+  - type: input
+    id: version
+    attributes:
+      label: Version · 版本
+      description: Output of `gocompare --version` or `gocompare-cli --version`
+      placeholder: GoCompare v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system · 操作系统
+      options: [macOS, Windows, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area · 功能模块
+      options:
+        - Text / file compare · 文本／文件比较
+        - Folder compare / sync · 目录比较／同步
+        - Merge · 合并
+        - Picture compare · 图片比较
+        - Media / version / registry · 媒体／版本／注册表
+        - Command line · 命令行
+        - Installation / release · 安装／发布
+        - Other · 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce · 复现步骤
+      description: Attach small sample files if possible · 尽量附上能复现问题的小文件
+      placeholder: |
+        1. Open …
+        2. Click …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior · 期望结果与实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots · 日志或截图
+      render: text

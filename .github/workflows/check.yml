@@ -1,7 +1,13 @@
-name: GoCompare checks
-on: [push, pull_request]
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
 permissions:
   contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     strategy:
@@ -13,7 +19,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.27.3'
+          go-version-file: go.mod
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: test -z "$(gofmt -l cmd internal tools)"
       - run: go test ./...
         env:
           CGO_ENABLED: '0'
@@ -31,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.27.3'
+          go-version-file: go.mod
       - name: Compile both entry points
         shell: bash
         env:

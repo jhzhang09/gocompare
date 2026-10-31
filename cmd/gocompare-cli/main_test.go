@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"gocompare/internal/brand"
 	"gocompare/internal/compare"
 	"gocompare/internal/extend"
 	"gocompare/internal/integrate"
@@ -735,5 +736,15 @@ func TestMergeDetectsGBK(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(output); string(data) != "x\n\xd6\xd0\xce\xc4\n" {
 		t.Fatalf("output %x", data)
+	}
+}
+
+func TestVersionFlag(t *testing.T) {
+	old := brand.Version
+	brand.Version = "v9.8.7"
+	defer func() { brand.Version = old }()
+	var out, stderr bytes.Buffer
+	if code := run([]string{"--version"}, &out, &stderr); code != 0 || out.String() != "gocompare-cli v9.8.7\n" {
+		t.Fatalf("%d %q", code, out.String())
 	}
 }

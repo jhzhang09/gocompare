@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # 只自动更新 Actions。Go 依赖已 vendor，且 MyGo 带有本地补丁（patches/），
+  # 升级必须按 docs/mygo-patch.md 手动完成，不能交给自动 PR。
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: [dependencies, skip-changelog]

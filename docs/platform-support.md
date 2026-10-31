@@ -12,7 +12,7 @@ MyGo v0.7.3 的声明范围：macOS 12+、Windows 10／11、Linux GTK 3；amd64 
 go tool mygo build -platform darwin/universal,windows/amd64,windows/arm64,linux/amd64,linux/arm64
 ```
 
-macOS 签名／磁盘镜像需要 Mac；安装器依赖对应工具。RPM 不属于当前已配置产物。CI 构建原始二进制，并未配置发布、签名密钥或自动更新服务。
+macOS 签名／磁盘镜像需要 Mac；安装器依赖对应工具。RPM 不属于当前已配置产物。推送版本标签时由 Release 工作流在三个平台的 runner 上生成安装包与 CLI 归档，见 [releasing.md](releasing.md)；尚未配置 Developer ID 签名、公证、Windows 代码签名或自动更新服务。
 
 GUI 可执行文件为 GoCompare，独立控制台程序为 gocompare-cli，避免 Windows 大小写不敏感路径冲突。Windows 不用 GUI 子系统程序代替批处理入口。
 

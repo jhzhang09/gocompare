@@ -1,0 +1,4 @@
+# GitHub 语言统计排除 vendor 依赖与生成的补丁。
+vendor/** linguist-vendored
+patches/** linguist-generated
+*.png binary
