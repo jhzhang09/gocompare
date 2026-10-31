@@ -35,3 +35,25 @@ func TestSessionRejectInvalid(t *testing.T) {
 		}
 	}
 }
+
+// 相对的基准和输出路径按写入时的工作目录解析，读回后不能改指会话目录下的同名文件。
+func TestWriteResolvesOptionalPaths(t *testing.T) {
+	dir := t.TempDir()
+	sessions := filepath.Join(dir, "sessions")
+	if err := os.Mkdir(sessions, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	path := filepath.Join(sessions, "s.gocompare")
+	if err := Write(path, Session{Kind: "merge", Version: 1, Left: "l.txt", Right: "r.txt", Base: "base.txt", Output: "out.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := os.Getwd()
+	if s.Base != filepath.Join(wd, "base.txt") || s.Output != filepath.Join(wd, "out.txt") {
+		t.Fatalf("base %s output %s, want under %s", s.Base, s.Output, wd)
+	}
+}

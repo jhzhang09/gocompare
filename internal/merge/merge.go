@@ -1,5 +1,5 @@
 // Package merge 实现与窗口无关的两方和三方文本合并。
-// 输入按行比较，保留调用方文本中的换行结尾；不调用外部 diff 或 Git。
+// 每行连同其换行符一起比较，因此文件末尾有无换行也是一处可合并、可冲突的修改；不调用外部 diff 或 Git。
 package merge
 
 import (
@@ -44,7 +44,6 @@ type AlignRow struct {
 type Result struct {
 	chunks    []chunk
 	conflicts int
-	newline   bool
 	hasBase   bool
 	LeftName  string
 	RightName string
@@ -61,13 +60,13 @@ type chunk struct {
 
 // MergeTwo 没有共同祖先。相同行保留，不同区域全部成为冲突。
 func MergeTwo(left, right string) (Result, error) {
-	leftLines, leftNL := splitLines(left)
-	rightLines, rightNL := splitLines(right)
+	leftLines := splitLines(left)
+	rightLines := splitLines(right)
 	hunks, err := diffHunks(leftLines, rightLines)
 	if err != nil {
 		return Result{}, err
 	}
-	result := Result{newline: leftNL || rightNL, LeftName: "left", RightName: "right"}
+	result := Result{LeftName: "left", RightName: "right"}
 	posL, posR := 0, 0
 	for _, h := range hunks {
 		if h.a0 > posL {
@@ -97,9 +96,9 @@ func MergeTwo(left, right string) (Result, error) {
 
 // MergeThree 以 base 为祖先。只在一侧变化时采用该侧；两侧做出相同修改时保留该修改；其余区域成为冲突。
 func MergeThree(base, left, right string) (Result, error) {
-	baseLines, baseNL := splitLines(base)
-	leftLines, leftNL := splitLines(left)
-	rightLines, rightNL := splitLines(right)
+	baseLines := splitLines(base)
+	leftLines := splitLines(left)
+	rightLines := splitLines(right)
 	leftHunks, err := diffHunks(baseLines, leftLines)
 	if err != nil {
 		return Result{}, err
@@ -108,7 +107,7 @@ func MergeThree(base, left, right string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	result := Result{newline: baseNL || leftNL || rightNL, hasBase: true, LeftName: "left", RightName: "right"}
+	result := Result{hasBase: true, LeftName: "left", RightName: "right"}
 	basePos, leftPos, rightPos := 0, 0, 0
 	i, j := 0, 0
 	for i < len(leftHunks) || j < len(rightHunks) {
@@ -253,15 +252,15 @@ func (r Result) Alignments() []AlignRow {
 		for i := 0; i < n; i++ {
 			row := AlignRow{ConflictIndex: -1}
 			if i < len(base) {
-				row.Base = base[i]
+				row.Base = displayLine(base[i])
 				row.HasBase = true
 			}
 			if i < len(left) {
-				row.Left = left[i]
+				row.Left = displayLine(left[i])
 				row.HasLeft = true
 			}
 			if i < len(right) {
-				row.Right = right[i]
+				row.Right = displayLine(right[i])
 				row.HasRight = true
 			}
 			if item.conflict {
@@ -287,9 +286,9 @@ func (r Result) Conflicts() []Conflict {
 		}
 		out = append(out, Conflict{
 			Index: index,
-			Base:  joinLines(chunk.base, false),
-			Left:  joinLines(chunk.left, false),
-			Right: joinLines(chunk.right, false),
+			Base:  strings.TrimSuffix(strings.Join(chunk.base, ""), "\n"),
+			Left:  strings.TrimSuffix(strings.Join(chunk.left, ""), "\n"),
+			Right: strings.TrimSuffix(strings.Join(chunk.right, ""), "\n"),
 		})
 		index++
 	}
@@ -297,24 +296,34 @@ func (r Result) Conflicts() []Conflict {
 }
 
 // Text 渲染稳定文本和冲突标记。标记只存在于显示文本，不写回输入文件。
+// 冲突中某侧的末行没有换行时，在标记前补一个换行，保证标记独占一行。
 func (r Result) Text() string {
-	var lines []string
+	var b strings.Builder
+	write := func(lines []string) {
+		for _, line := range lines {
+			if b.Len() > 0 && !strings.HasSuffix(b.String(), "\n") {
+				b.WriteByte('\n')
+			}
+			b.WriteString(line)
+		}
+	}
+	marker := func(text string) { write([]string{text + "\n"}) }
 	for _, chunk := range r.chunks {
 		if !chunk.conflict {
-			lines = append(lines, chunk.lines...)
+			write(chunk.lines)
 			continue
 		}
-		lines = append(lines, "<<<<<<< "+r.LeftName)
-		lines = append(lines, chunk.left...)
+		marker("<<<<<<< " + r.LeftName)
+		write(chunk.left)
 		if r.hasBase {
-			lines = append(lines, "||||||| base")
-			lines = append(lines, chunk.base...)
+			marker("||||||| base")
+			write(chunk.base)
 		}
-		lines = append(lines, "=======")
-		lines = append(lines, chunk.right...)
-		lines = append(lines, ">>>>>>> "+r.RightName)
+		marker("=======")
+		write(chunk.right)
+		marker(">>>>>>> " + r.RightName)
 	}
-	return joinLines(lines, r.newline)
+	return b.String()
 }
 
 // Take 用一次决策替换指定冲突。已手工改写 Text 后不能再调用，调用方需先比较文本。
@@ -374,28 +383,16 @@ func equalLines(a, b []string) bool {
 	return true
 }
 
-func splitLines(s string) ([]string, bool) {
+// splitLines 按行切分并保留每行的换行符；只有最后一行可能没有换行符。
+func splitLines(s string) []string {
 	if s == "" {
-		return nil, false
+		return nil
 	}
-	newline := strings.HasSuffix(s, "\n")
-	s = strings.TrimSuffix(s, "\n")
-	if s == "" {
-		return nil, newline
+	lines := strings.SplitAfter(s, "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
 	}
-	return strings.Split(s, "\n"), newline
+	return lines
 }
 
-func joinLines(lines []string, newline bool) string {
-	if len(lines) == 0 {
-		if newline {
-			return "\n"
-		}
-		return ""
-	}
-	text := strings.Join(lines, "\n")
-	if newline {
-		text += "\n"
-	}
-	return text
-}
+func displayLine(line string) string { return strings.TrimSuffix(line, "\n") }

@@ -1,6 +1,10 @@
 package merge
 
-import "testing"
+import (
+	"math/rand"
+	"strings"
+	"testing"
+)
 
 func TestDiffHunks(t *testing.T) {
 	h, err := diffHunks([]string{"a", "b", "c"}, []string{"a", "x", "c"})
@@ -96,4 +100,56 @@ func stringIndex(s, part string) int {
 		}
 	}
 	return -1
+}
+
+// 文件末尾的换行与普通行一样参与三方判断：只有一侧改动时采用该侧，删空文件得到空文本。
+func TestMergeTrailingNewlineAndEmpty(t *testing.T) {
+	cases := []struct{ base, left, right, want string }{
+		{"a\nb\n", "a\nb", "a\nb\n", "a\nb"},
+		{"a\nb", "a\nb\n", "a\nb", "a\nb\n"},
+		{"d\nd\n", "", "d\nd\n", ""},
+		{"a\nb\n", "a\nb\n", "a\nc", "a\nc"},
+	}
+	for _, c := range cases {
+		got, err := MergeThree(c.base, c.left, c.right)
+		if err != nil || got.ConflictCount() != 0 || got.Text() != c.want {
+			t.Fatalf("%q %q %q -> %q conflicts=%d err=%v, want %q", c.base, c.left, c.right, got.Text(), got.ConflictCount(), err, c.want)
+		}
+	}
+	two, err := MergeTwo("a\nb", "a\nb\n")
+	if err != nil || two.ConflictCount() != 1 {
+		t.Fatalf("two-way trailing newline difference must conflict: %q %d", two.Text(), two.ConflictCount())
+	}
+	// 冲突一侧末行没有换行时，标记仍独占一行。
+	if want := "a\n<<<<<<< left\nb\n=======\nb\n>>>>>>> right\n"; two.Text() != want {
+		t.Fatalf("markers: %q", two.Text())
+	}
+	taken, _ := two.Take(0, ChoiceLeft)
+	if taken.Text() != "a\nb" {
+		t.Fatalf("take left keeps missing newline: %q", taken.Text())
+	}
+}
+
+// 随机检查：只有一侧修改时结果等于该侧，且没有冲突。
+func TestMergeOneSidedProperty(t *testing.T) {
+	r := rand.New(rand.NewSource(1))
+	gen := func(n int) string {
+		var b strings.Builder
+		for i := 0; i < n; i++ {
+			b.WriteByte(byte('a' + r.Intn(3)))
+			if i < n-1 || r.Intn(2) == 0 {
+				b.WriteByte('\n')
+			}
+		}
+		return b.String()
+	}
+	for i := 0; i < 20000; i++ {
+		base, side := gen(r.Intn(6)), gen(r.Intn(6))
+		for _, c := range [][3]string{{base, side, base}, {base, base, side}, {base, side, side}} {
+			got, err := MergeThree(c[0], c[1], c[2])
+			if err != nil || got.ConflictCount() != 0 || got.Text() != side {
+				t.Fatalf("%q %q %q -> %q conflicts=%d err=%v", c[0], c[1], c[2], got.Text(), got.ConflictCount(), err)
+			}
+		}
+	}
 }

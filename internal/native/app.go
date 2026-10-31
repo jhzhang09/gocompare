@@ -78,6 +78,7 @@ type modeSession struct {
 	mergeBuffer *editor.Buffer
 	mergeEdit   editor.State
 	mergeLeft   *document.File
+	mergeSaved  *document.File
 
 	pictureLeft    image.Image
 	pictureRight   image.Image
@@ -147,14 +148,16 @@ type workspaceState struct {
 	syncRolledBack bool
 	directoryNote  string
 
-	mergeBase     string
-	mergeOutput   string
-	mergeResult   *merge.Result
-	mergeRows     []merge.AlignRow
-	mergeAlign    ui.ListState
-	mergeBuffer   *editor.Buffer
-	mergeEdit     editor.State
-	mergeLeft     *document.File
+	mergeBase   string
+	mergeOutput string
+	mergeResult *merge.Result
+	mergeRows   []merge.AlignRow
+	mergeAlign  ui.ListState
+	mergeBuffer *editor.Buffer
+	mergeEdit   editor.State
+	mergeLeft   *document.File
+	// mergeSaved 是本窗口上次写出的合并输出，只有它可以被再次保存覆盖。
+	mergeSaved    *document.File
 	mergeConflict int
 	mergeWindows  []*workspaceState
 	detached      bool
@@ -767,6 +770,7 @@ func (a *workspaceState) saveModeSession(kind int) {
 		mergeBuffer:      a.mergeBuffer,
 		mergeEdit:        a.mergeEdit,
 		mergeLeft:        a.mergeLeft,
+		mergeSaved:       a.mergeSaved,
 		pictureLeft:      a.pictureLeft,
 		pictureRight:     a.pictureRight,
 		pictureResult:    a.pictureResult,
@@ -822,6 +826,7 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.mergeBuffer = sess.mergeBuffer
 	a.mergeEdit = sess.mergeEdit
 	a.mergeLeft = sess.mergeLeft
+	a.mergeSaved = sess.mergeSaved
 	a.pictureLeft = sess.pictureLeft
 	a.pictureRight = sess.pictureRight
 	a.pictureResult = sess.pictureResult

@@ -60,7 +60,7 @@ func run(args []string, out, stderr io.Writer) int {
 		return workspaceCmd(args[1:], out, stderr)
 	}
 	if len(args) > 0 && args[0] == "mergetool" {
-		return mergeFiles(args[1:], out, stderr)
+		return mergeFiles(args[1:], out, stderr, true)
 	}
 	if len(args) > 0 && args[0] == "difftool" {
 		args = args[1:]
@@ -81,7 +81,7 @@ func run(args []string, out, stderr io.Writer) int {
 		return 0
 	}
 	if len(args) > 0 && args[0] == "merge" {
-		return mergeFiles(args[1:], out, stderr)
+		return mergeFiles(args[1:], out, stderr, false)
 	}
 	if len(args) > 0 && args[0] == "sync" {
 		flags := flag.NewFlagSet("sync", flag.ContinueOnError)
@@ -159,11 +159,18 @@ func run(args []string, out, stderr io.Writer) int {
 	fmt.Fprintln(out, "different")
 	return 1
 }
-func mergeFiles(args []string, out, stderr io.Writer) int {
+
+// mergeFiles 实现 merge 与 mergetool。merge 的输出只能是新文件；mergetool 遵循 Git 约定，
+// $MERGED 在调用前已经存在，因此按刚读到的基线替换它，期间被其他程序改动则拒绝。
+func mergeFiles(args []string, out, stderr io.Writer, replaceOutput bool) int {
 	flags := flag.NewFlagSet("merge", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	base := flags.String("base", "", "common ancestor")
-	output := flags.String("output", "", "new output file; existing files are refused")
+	outputHelp := "new output file; existing files are refused"
+	if replaceOutput {
+		outputHelp = "output file; an existing file (Git's $MERGED) is replaced"
+	}
+	output := flags.String("output", "", outputHelp)
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -172,12 +179,12 @@ func mergeFiles(args []string, out, stderr io.Writer) int {
 		return 2
 	}
 	ctx := context.Background()
-	left, err := document.Read(ctx, flags.Arg(0))
+	left, err := document.ReadDetected(ctx, flags.Arg(0))
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	right, err := document.Read(ctx, flags.Arg(1))
+	right, err := document.ReadDetected(ctx, flags.Arg(1))
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
@@ -186,7 +193,7 @@ func mergeFiles(args []string, out, stderr io.Writer) int {
 	if *base == "" {
 		result, err = merge.MergeTwo(left.Text, right.Text)
 	} else {
-		ancestor, readErr := document.Read(ctx, *base)
+		ancestor, readErr := document.ReadDetected(ctx, *base)
 		if readErr != nil {
 			fmt.Fprintln(stderr, readErr)
 			return 2
@@ -200,7 +207,7 @@ func mergeFiles(args []string, out, stderr io.Writer) int {
 	text := result.Text()
 	if *output == "" {
 		fmt.Fprint(out, text)
-	} else if _, err = left.SaveAs(ctx, *output, text); err != nil {
+	} else if err = writeMergeOutput(ctx, left, *output, text, replaceOutput); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
@@ -209,6 +216,23 @@ func mergeFiles(args []string, out, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func writeMergeOutput(ctx context.Context, left *document.File, path, text string, replace bool) error {
+	if !replace {
+		_, err := left.SaveAs(ctx, path, text)
+		return err
+	}
+	var baseline *document.File
+	if _, err := os.Lstat(path); err == nil {
+		if baseline, err = document.ReadDetected(ctx, path); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	_, err := left.SaveAsOverwrite(ctx, path, text, baseline)
+	return err
 }
 
 func dirFiles(args []string, out, stderr io.Writer) int {
@@ -348,12 +372,22 @@ func regFiles(args []string, out, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	lv, err := regfile.Parse(string(left))
+	leftText, err := regfile.Decode(left)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	rv, err := regfile.Parse(string(right))
+	rightText, err := regfile.Decode(right)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	lv, err := regfile.Parse(leftText)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	rv, err := regfile.Parse(rightText)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2

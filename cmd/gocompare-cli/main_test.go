@@ -688,3 +688,52 @@ func writeSolidPNG(t *testing.T, path string, a, b color.RGBA) {
 		t.Fatal(err)
 	}
 }
+
+// Git 在调用 mergetool 前已写好 $MERGED，必须能替换它；merge 子命令仍然不覆盖已有文件。
+func TestMergetoolReplacesExistingMerged(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, text string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	base, left, right := write("base", "a\nb\nc\n"), write("left", "a\nL\nc\n"), write("right", "a\nb\nc\n")
+	merged := write("merged", "a\n<<<<<<< ours\nL\n=======\nb\n>>>>>>> theirs\nc\n")
+	var out, stderr bytes.Buffer
+	if code := run(integrate.MergetoolArgs(base, left, right, merged), &out, &stderr); code != 0 {
+		t.Fatalf("mergetool %d %s", code, stderr.String())
+	}
+	if data, _ := os.ReadFile(merged); string(data) != "a\nL\nc\n" {
+		t.Fatalf("merged %q", data)
+	}
+	stderr.Reset()
+	if code := run([]string{"merge", "--base", base, "--output", merged, left, right}, &out, &stderr); code != 2 {
+		t.Fatalf("merge must refuse an existing output, got %d", code)
+	}
+}
+
+// 合并和文件比较一样自动识别 GBK，输出沿用左侧编码。
+func TestMergeDetectsGBK(t *testing.T) {
+	dir := t.TempDir()
+	gbk := func(name string, raw []byte) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	// “中文” 的 GBK 编码是 D6 D0 CE C4。
+	base := gbk("base", []byte("a\n\xd6\xd0\xce\xc4\n"))
+	left := gbk("left", []byte("x\n\xd6\xd0\xce\xc4\n"))
+	right := gbk("right", []byte("a\n\xd6\xd0\xce\xc4\n"))
+	output := filepath.Join(dir, "out")
+	var out, stderr bytes.Buffer
+	if code := run([]string{"merge", "--base", base, "--output", output, left, right}, &out, &stderr); code != 0 {
+		t.Fatalf("merge %d %s", code, stderr.String())
+	}
+	if data, _ := os.ReadFile(output); string(data) != "x\n\xd6\xd0\xce\xc4\n" {
+		t.Fatalf("output %x", data)
+	}
+}

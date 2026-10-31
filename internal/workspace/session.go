@@ -100,6 +100,15 @@ func Write(path string, s Session) error {
 	if err != nil {
 		return err
 	}
+	// 可选路径同样保存为绝对路径；Read 会按会话目录解析相对路径，两者必须一致。
+	for _, p := range []*string{&s.Base, &s.Output} {
+		if *p == "" {
+			continue
+		}
+		if *p, err = filepath.Abs(*p); err != nil {
+			return err
+		}
+	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err

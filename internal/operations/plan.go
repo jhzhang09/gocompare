@@ -82,6 +82,9 @@ func Preview(ctx context.Context, left, right string, mode Mode) (Plan, error) {
 	if err != nil {
 		return p, err
 	}
+	// newTargets 记录扫描时目标侧不存在的路径。若磁盘上该路径却已存在，说明文件系统把它与
+	// 另一个只差大小写或 Unicode 规范化的名字视为同一个，复制和删除会互相覆盖。
+	newTargets := map[string]bool{}
 	add := func(kind, path, from, to, reason string) {
 		p.Actions = append(p.Actions, Action{Kind: kind, Path: path, From: from, To: to, Reason: reason})
 	}
@@ -140,6 +143,7 @@ func Preview(ctx context.Context, left, right string, mode Mode) (Plan, error) {
 		if src.Directory {
 			if dst == nil {
 				add("create-directory", row.Path, "", rootTo, "only in source")
+				newTargets[rootTo+"\x00"+row.Path] = true
 			}
 			continue
 		}
@@ -160,6 +164,9 @@ func Preview(ctx context.Context, left, right string, mode Mode) (Plan, error) {
 			}
 		}
 		add("copy", row.Path, rootFrom, rootTo, "new or changed source")
+		if dst == nil {
+			newTargets[rootTo+"\x00"+row.Path] = true
+		}
 	}
 	// 先建父目录、再复制文件，删除按子项优先；排序确定，方便审阅与后续执行。
 	rank := func(a Action) int {
@@ -196,6 +203,9 @@ func Preview(ctx context.Context, left, right string, mode Mode) (Plan, error) {
 		item.TargetVersion, err = fingerprint(ctx, target)
 		if err != nil {
 			return Plan{}, err
+		}
+		if newTargets[item.To+"\x00"+item.Path] && item.TargetVersion.Exists {
+			return Plan{}, fmt.Errorf("%s collides with an existing name that differs only in case or Unicode normalization; rename it first", item.Path)
 		}
 		if item.Kind == "copy" {
 			source, err := safePath(item.From, item.Path)

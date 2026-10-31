@@ -11,6 +11,7 @@ func TestSettingsModalAndOptionsDefaultOpen(t *testing.T) {
 	i18n.SetLanguage(i18n.ZhCN)
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp) // Windows 上 os.UserHomeDir 读取它
 
 	a := &workspaceState{
 		optionsOpen: true,

@@ -3,9 +3,13 @@ package regfile
 
 import (
 	"bufio"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // Value 是一条注册表值。
@@ -15,14 +19,45 @@ type Value struct {
 	Data string
 }
 
-// Parse 读取 Windows Registry Editor Version 5.00 文本。
+// Decode 把 .reg 文件字节转成文本。注册表编辑器默认导出带 BOM 的 UTF-16LE；
+// 也接受 UTF-16BE、带或不带 BOM 的 UTF-8。其他字节返回错误，调用方据此判断不是注册表文本。
+func Decode(data []byte) (string, error) {
+	var units []uint16
+	switch {
+	case len(data) >= 2 && data[0] == 0xff && data[1] == 0xfe:
+		for i := 2; i+1 < len(data); i += 2 {
+			units = append(units, binary.LittleEndian.Uint16(data[i:]))
+		}
+	case len(data) >= 2 && data[0] == 0xfe && data[1] == 0xff:
+		for i := 2; i+1 < len(data); i += 2 {
+			units = append(units, binary.BigEndian.Uint16(data[i:]))
+		}
+	default:
+		text := strings.TrimPrefix(string(data), "\ufeff")
+		if !utf8.ValidString(text) {
+			return "", errors.New("registry text must be UTF-8 or UTF-16 with BOM")
+		}
+		return text, nil
+	}
+	if len(data)%2 != 0 {
+		return "", errors.New("truncated UTF-16 registry text")
+	}
+	return string(utf16.Decode(units)), nil
+}
+
+// Parse 读取 Windows Registry Editor Version 5.00 文本。行尾的反斜杠表示值在下一行继续，
+// 注册表编辑器导出较长的 hex 值时会这样折行。
 func Parse(text string) ([]Value, error) {
 	s := bufio.NewScanner(strings.NewReader(text))
+	s.Buffer(make([]byte, 64<<10), 16<<20)
 	header := false
 	key := ""
 	var out []Value
 	for s.Scan() {
 		line := strings.TrimSpace(s.Text())
+		for strings.HasSuffix(line, "\\") && s.Scan() {
+			line = strings.TrimSuffix(line, "\\") + strings.TrimSpace(s.Text())
+		}
 		if line == "" || strings.HasPrefix(line, ";") {
 			continue
 		}
@@ -84,19 +119,29 @@ func index(values []Value) map[string]string {
 	return out
 }
 
+// splitValue 拆出值名和数据。带引号的值名可能包含 = 和转义的 \" 或 \\，按引号边界解析。
 func splitValue(line string) (string, string, bool) {
-	eq := strings.Index(line, "=")
-	if eq < 0 {
+	if strings.HasPrefix(line, "@=") {
+		return "", line[2:], true
+	}
+	if !strings.HasPrefix(line, `"`) {
 		return "", "", false
 	}
-	name := line[:eq]
-	data := line[eq+1:]
-	if name == "@" {
-		name = ""
-	} else if len(name) >= 2 && name[0] == '"' && name[len(name)-1] == '"' {
-		name = name[1 : len(name)-1]
-	} else {
-		return "", "", false
+	var name strings.Builder
+	for i := 1; i < len(line); i++ {
+		switch c := line[i]; {
+		case c == '\\' && i+1 < len(line):
+			i++
+			name.WriteByte(line[i])
+		case c == '"':
+			rest := line[i+1:]
+			if !strings.HasPrefix(rest, "=") {
+				return "", "", false
+			}
+			return name.String(), rest[1:], true
+		default:
+			name.WriteByte(c)
+		}
 	}
-	return name, data, true
+	return "", "", false
 }

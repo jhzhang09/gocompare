@@ -3,6 +3,7 @@ package script
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,5 +38,16 @@ func TestScriptUsesCompareHexAndMerge(t *testing.T) {
 	}
 	if code != 1 || !strings.Contains(out.String(), "offset 0") || !strings.Contains(out.String(), "<<<<<<< left") {
 		t.Fatalf("%d %s", code, out.String())
+	}
+}
+
+func TestHexRejectsOversizedFiles(t *testing.T) {
+	dir := t.TempDir()
+	big := filepath.Join(dir, "big")
+	if err := os.WriteFile(big, make([]byte, maxHexBytes+1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, err := Execute(context.Background(), "hex "+big+" "+big, io.Discard); code != 2 || err == nil {
+		t.Fatalf("oversized hex input accepted: %d %v", code, err)
 	}
 }

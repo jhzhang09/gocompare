@@ -54,11 +54,11 @@ func dispatch(ctx context.Context, fields []string, out io.Writer) (int, error) 
 		if len(fields) != 3 {
 			return 2, fmt.Errorf("hex needs two paths")
 		}
-		left, err := os.ReadFile(fields[1])
+		left, err := readLimited(fields[1])
 		if err != nil {
 			return 2, err
 		}
-		right, err := os.ReadFile(fields[2])
+		right, err := readLimited(fields[2])
 		if err != nil {
 			return 2, err
 		}
@@ -72,15 +72,15 @@ func dispatch(ctx context.Context, fields []string, out io.Writer) (int, error) 
 		if len(fields) != 4 {
 			return 2, fmt.Errorf("merge needs base, left and right")
 		}
-		base, err := document.Read(ctx, fields[1])
+		base, err := document.ReadDetected(ctx, fields[1])
 		if err != nil {
 			return 2, err
 		}
-		left, err := document.Read(ctx, fields[2])
+		left, err := document.ReadDetected(ctx, fields[2])
 		if err != nil {
 			return 2, err
 		}
-		right, err := document.Read(ctx, fields[3])
+		right, err := document.ReadDetected(ctx, fields[3])
 		if err != nil {
 			return 2, err
 		}
@@ -97,3 +97,22 @@ func dispatch(ctx context.Context, fields []string, out io.Writer) (int, error) 
 		return 2, fmt.Errorf("unknown script command %s", fields[0])
 	}
 }
+
+// readLimited 与 CLI 的 hex 命令使用同样的 16 MiB 上限，避免脚本把大文件整个读进内存。
+func readLimited(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxHexBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxHexBytes {
+		return nil, fmt.Errorf("%s exceeds 16 MiB", path)
+	}
+	return data, nil
+}
+
+const maxHexBytes = 16 << 20

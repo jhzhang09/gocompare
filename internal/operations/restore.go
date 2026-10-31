@@ -164,6 +164,10 @@ func undoRecord(ctx context.Context, record Record) error {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("restore refused, copy target is not a regular file: %s", target)
 		}
+		// 只撤销仍是本次同步写入内容的文件。之后被修改过就拒绝，避免覆盖或删除用户的新内容。
+		if err = sameContent(ctx, target, action.SourceVersion); err != nil {
+			return err
+		}
 		if !action.TargetVersion.Exists {
 			return os.Remove(target)
 		}
@@ -174,6 +178,18 @@ func undoRecord(ctx context.Context, record Record) error {
 	default:
 		return fmt.Errorf("unknown operation: %s", action.Kind)
 	}
+}
+
+// sameContent 比较大小和 SHA-256，不比较权限和时间：复制时权限经过 umask，不能据此判定被修改。
+func sameContent(ctx context.Context, path string, want Version) error {
+	got, err := fingerprint(ctx, path)
+	if err != nil {
+		return err
+	}
+	if !got.Exists || got.Size != want.Size || got.Hash != want.Hash {
+		return fmt.Errorf("restore refused, file changed after sync: %s", path)
+	}
+	return nil
 }
 
 func regularBackup(path string) error {

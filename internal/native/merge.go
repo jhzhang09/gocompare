@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -22,7 +23,7 @@ func (a *workspaceState) openMergeWindow() {
 		return
 	}
 	child := &workspaceState{
-		kind:        2,
+		kind:        kindMerge,
 		detached:    true,
 		paths:       a.paths,
 		mergeBase:   a.mergeBase,
@@ -133,14 +134,14 @@ func (a *workspaceState) loadMerge() {
 		return
 	}
 	a.job(func(ctx context.Context) {
-		lf, err := document.Read(ctx, left)
+		lf, err := document.ReadDetected(ctx, left)
 		var rf, bf *document.File
 		var result merge.Result
 		if err == nil {
-			rf, err = document.Read(ctx, right)
+			rf, err = document.ReadDetected(ctx, right)
 		}
 		if err == nil && base != "" {
-			bf, err = document.Read(ctx, base)
+			bf, err = document.ReadDetected(ctx, base)
 			if err == nil {
 				result, err = merge.MergeThree(bf.Text, lf.Text, rf.Text)
 			}
@@ -166,6 +167,7 @@ func (a *workspaceState) clearMerge() {
 	a.mergeBuffer = nil
 	a.mergeEdit = editor.State{}
 	a.mergeLeft = nil
+	a.mergeSaved = nil
 	a.mergeConflict = 0
 }
 
@@ -215,8 +217,19 @@ func (a *workspaceState) saveMerge() {
 		return
 	}
 	file, text, version := a.mergeLeft, a.mergeBuffer.String(), a.mergeBuffer.Version()
+	// 已存在的文件只有在是本窗口上次保存的输出时才覆盖，并按那次保存的基线检查外部修改。
+	baseline := a.mergeSaved
+	if full, err := filepath.Abs(path); err != nil || baseline == nil || full != baseline.Path {
+		baseline = nil
+	}
 	a.job(func(ctx context.Context) {
-		saved, err := file.SaveAs(ctx, path, text)
+		var saved *document.File
+		var err error
+		if baseline != nil {
+			saved, err = file.SaveAsOverwrite(ctx, path, text, baseline)
+		} else {
+			saved, err = file.SaveAs(ctx, path, text)
+		}
 		a.publish(func() {
 			a.busy = false
 			if err != nil {
@@ -224,6 +237,7 @@ func (a *workspaceState) saveMerge() {
 				return
 			}
 			a.mergeOutput = saved.Path
+			a.mergeSaved = saved
 			if a.mergeBuffer.Version() == version {
 				a.mergeBuffer.MarkSaved()
 			}

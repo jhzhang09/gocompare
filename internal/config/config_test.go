@@ -9,6 +9,7 @@ import (
 func TestConfigLoadSave(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp) // Windows 上 os.UserHomeDir 读取它
 
 	// Default when file does not exist
 	s := Load()

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 type cancelAfterCreate struct {
@@ -96,5 +97,41 @@ func TestRestoreRefusesRecreatedPath(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(right, "old"))
 	if err != nil || string(data) != "recreated" {
 		t.Fatalf("recreated: %q %v", data, err)
+	}
+}
+
+// 同步之后用户又改过的文件不能被撤销覆盖或删除。
+func TestRestoreRefusesFilesEditedAfterSync(t *testing.T) {
+	ctx := context.Background()
+	for _, existing := range []bool{true, false} {
+		left, right := t.TempDir(), t.TempDir()
+		target := filepath.Join(right, "a.txt")
+		if err := os.WriteFile(filepath.Join(left, "a.txt"), []byte("from-left"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if existing {
+			if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			old := time.Now().Add(-time.Hour)
+			os.Chtimes(target, old, old)
+		}
+		plan, err := Preview(ctx, left, right, UpdateRight)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := Execute(ctx, plan, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(target, []byte("user edit"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = Restore(ctx, report.Journal); err == nil {
+			t.Fatalf("existing=%v: restore must refuse an edited file", existing)
+		}
+		if data, _ := os.ReadFile(target); string(data) != "user edit" {
+			t.Fatalf("existing=%v: user edit lost: %q", existing, data)
+		}
 	}
 }

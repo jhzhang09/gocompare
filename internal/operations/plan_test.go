@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,5 +56,28 @@ func TestRejectNestedRoots(t *testing.T) {
 	os.Mkdir(child, 0o700)
 	if _, err := Preview(context.Background(), root, child, MirrorRight); err == nil {
 		t.Fatal("nested roots accepted")
+	}
+}
+
+// 只差大小写的文件名在大小写不敏感的文件系统上指向同一文件，镜像会先覆盖再删除，必须拒绝。
+func TestPreviewRejectsCaseOnlyCollision(t *testing.T) {
+	left, right := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(left, "README.md"), []byte("same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(right, "Readme.md"), []byte("same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, probeErr := os.Stat(filepath.Join(right, "README.md"))
+	caseInsensitive := probeErr == nil
+	plan, err := Preview(context.Background(), left, right, MirrorRight)
+	if caseInsensitive {
+		if err == nil || !strings.Contains(err.Error(), "differs only in case") {
+			t.Fatalf("case-insensitive target must be refused: %v", err)
+		}
+		return
+	}
+	if err != nil || len(plan.Actions) != 2 {
+		t.Fatalf("case-sensitive target keeps both names: %+v %v", plan.Actions, err)
 	}
 }

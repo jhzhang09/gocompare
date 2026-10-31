@@ -2,7 +2,6 @@ package native
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -135,16 +134,19 @@ func (a *workspaceState) versionView(c *ui.Context) {
 }
 
 func compareVersionBytes(left, right []byte) (versionResult, error) {
-	leftReg, rightReg := looksLikeRegistry(left), looksLikeRegistry(right)
+	leftText, leftErr := regfile.Decode(left)
+	rightText, rightErr := regfile.Decode(right)
+	leftReg := leftErr == nil && looksLikeRegistry(leftText)
+	rightReg := rightErr == nil && looksLikeRegistry(rightText)
 	if leftReg || rightReg {
 		if !leftReg || !rightReg {
 			return versionResult{}, errors.New(i18n.T("version.mixed"))
 		}
-		lv, err := regfile.Parse(string(left))
+		lv, err := regfile.Parse(leftText)
 		if err != nil {
 			return versionResult{}, err
 		}
-		rv, err := regfile.Parse(string(right))
+		rv, err := regfile.Parse(rightText)
 		if err != nil {
 			return versionResult{}, err
 		}
@@ -162,8 +164,8 @@ func compareVersionBytes(left, right []byte) (versionResult, error) {
 }
 
 // looksLikeRegistry 只看第一条实质内容是否为 5.00 头，用来选择比较器。它不读取注册表。
-func looksLikeRegistry(data []byte) bool {
-	s := bufio.NewScanner(bytes.NewReader(data))
+func looksLikeRegistry(text string) bool {
+	s := bufio.NewScanner(strings.NewReader(text))
 	for s.Scan() {
 		line := strings.TrimSpace(s.Text())
 		if line == "" || strings.HasPrefix(line, ";") {

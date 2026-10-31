@@ -998,3 +998,33 @@ func TestNonWindowsHidesLiveRegistry(t *testing.T) {
 		t.Fatal("windows-only action is shown")
 	}
 }
+
+// 合并输出保存后还能继续保存，且只覆盖本窗口写出的文件。
+func TestMergeOutputCanBeSavedRepeatedly(t *testing.T) {
+	dir := t.TempDir()
+	left, right, out := filepath.Join(dir, "l.txt"), filepath.Join(dir, "r.txt"), filepath.Join(dir, "out.txt")
+	if err := os.WriteFile(left, []byte("a\nL\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(right, []byte("a\nR\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := &workspaceState{kind: kindMerge, paths: [2]string{left, right}, mergeOutput: out}
+	a.load()
+	a.mergeBuffer.Set("first\n")
+	a.saveMerge()
+	a.mergeBuffer.Set("second\n")
+	a.saveMerge()
+	if data, _ := os.ReadFile(out); a.err != "" || string(data) != "second\n" || a.mergeBuffer.Modified() {
+		t.Fatalf("second save err=%q data=%q", a.err, data)
+	}
+	// 外部程序改了输出文件后不再覆盖。
+	if err := os.WriteFile(out, []byte("external\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.mergeBuffer.Set("third\n")
+	a.saveMerge()
+	if data, _ := os.ReadFile(out); a.err == "" || string(data) != "external\n" {
+		t.Fatalf("external change overwritten: err=%q data=%q", a.err, data)
+	}
+}

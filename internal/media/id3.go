@@ -11,8 +11,8 @@ import (
 	"unicode/utf16"
 )
 
-// maxBytes 与文档读取上限一致，避免把整个容器读进内存。
-const maxBytes = 16 << 20
+// maxTagBytes 是 ID3v2 标签区的读取上限。只读文件开头的标签，音频本身的大小不受限制。
+const maxTagBytes = 16 << 20
 
 // Tags 是从一个容器里读到的文本标签。空字符串表示该帧不存在。
 type Tags struct {
@@ -34,30 +34,51 @@ func ID3v2Title(data []byte) (Tags, error) {
 	return tags, nil
 }
 
-// ReadID3v2 读取 ID3v2 中的 TIT2、TPE1 和 TALB。三者都没有时返回错误。
-// 不处理扩展头和不同步；调用方应提供普通连续帧。不解码音频。
+// ReadID3v2 读取 ID3v2.3 或 ID3v2.4 中的 TIT2、TPE1 和 TALB。三者都没有时返回错误。
+// v2.4 的帧大小是同步安全整数，v2.3 是普通大端整数；扩展头会被跳过。
+// 整个标签使用不同步编码，或目标帧被压缩、加密时明确报错，不返回猜测的文本。
 func ReadID3v2(data []byte) (Tags, error) {
 	if len(data) < 10 || string(data[0:3]) != "ID3" {
 		return Tags{}, errors.New("not an id3v2 header")
+	}
+	version, flags := data[3], data[5]
+	if version != 3 && version != 4 {
+		return Tags{}, fmt.Errorf("unsupported id3v2.%d tag", version)
+	}
+	if flags&0x80 != 0 {
+		return Tags{}, errors.New("unsynchronised id3 tag is not supported")
 	}
 	size := synchsafe(data[6:10])
 	if size < 0 || 10+size > len(data) {
 		return Tags{}, errors.New("id3 size exceeds buffer")
 	}
+	body := data[10 : 10+size]
+	if flags&0x40 != 0 {
+		skip, err := extendedHeaderSize(body, version)
+		if err != nil {
+			return Tags{}, err
+		}
+		body = body[skip:]
+	}
 	var tags Tags
 	var sawTitle bool
-	body := data[10 : 10+size]
 	for len(body) >= 10 {
 		if body[0] == 0 {
 			break
 		}
 		id := string(body[0:4])
 		frameSize := int(binary.BigEndian.Uint32(body[4:8]))
+		if version == 4 {
+			frameSize = synchsafe(body[4:8])
+		}
 		if frameSize < 0 || 10+frameSize > len(body) {
 			return Tags{}, errors.New("truncated id3 frame")
 		}
 		payload := body[10 : 10+frameSize]
 		if id == "TIT2" || id == "TPE1" || id == "TALB" {
+			if packedFrame(body[9], version) {
+				return Tags{}, fmt.Errorf("compressed or encrypted %s is not supported", id)
+			}
 			if len(payload) == 0 {
 				return Tags{}, errors.New("empty " + id)
 			}
@@ -86,7 +107,30 @@ func ReadID3v2(data []byte) (Tags, error) {
 	return tags, nil
 }
 
-// Open 按 16 MiB 上限读取路径并解析 ID3v2 文本标签。取消时返回 ctx 的错误。
+// extendedHeaderSize 返回扩展头占用的字节数。v2.3 的大小不含自身 4 字节，v2.4 的同步安全大小含自身。
+func extendedHeaderSize(body []byte, version byte) (int, error) {
+	if len(body) < 4 {
+		return 0, errors.New("truncated id3 extended header")
+	}
+	n := int(binary.BigEndian.Uint32(body[0:4])) + 4
+	if version == 4 {
+		n = synchsafe(body[0:4])
+	}
+	if n < 4 || n > len(body) {
+		return 0, errors.New("truncated id3 extended header")
+	}
+	return n, nil
+}
+
+// packedFrame 判断帧格式标志里是否有压缩、加密或帧级不同步。
+func packedFrame(format, version byte) bool {
+	if version == 4 {
+		return format&0x0e != 0
+	}
+	return format&0xc0 != 0
+}
+
+// Open 只读取文件开头的 ID3v2 标签区并解析文本标签，音频再大也不整体读入。取消时返回 ctx 的错误。
 func Open(ctx context.Context, path string) (Tags, error) {
 	if err := ctx.Err(); err != nil {
 		return Tags{}, err
@@ -96,12 +140,27 @@ func Open(ctx context.Context, path string) (Tags, error) {
 		return Tags{}, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
-	if err != nil {
+	header := make([]byte, 10)
+	if _, err = io.ReadFull(f, header); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return Tags{}, errors.New("not an id3v2 header")
+		}
 		return Tags{}, err
 	}
-	if len(data) > maxBytes {
-		return Tags{}, fmt.Errorf("%s exceeds 16 MiB", path)
+	if string(header[0:3]) != "ID3" {
+		return Tags{}, errors.New("not an id3v2 header")
+	}
+	size := synchsafe(header[6:10])
+	if size > maxTagBytes {
+		return Tags{}, fmt.Errorf("id3 tag in %s exceeds 16 MiB", path)
+	}
+	data := make([]byte, 10+size)
+	copy(data, header)
+	if _, err = io.ReadFull(f, data[10:]); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return Tags{}, errors.New("id3 size exceeds buffer")
+		}
+		return Tags{}, err
 	}
 	if err = ctx.Err(); err != nil {
 		return Tags{}, err
@@ -116,15 +175,26 @@ func synchsafe(b []byte) int {
 	return int(b[0]&0x7f)<<21 | int(b[1]&0x7f)<<14 | int(b[2]&0x7f)<<7 | int(b[3]&0x7f)
 }
 
+// decodeText 按 ID3 文本编码解码：0 是 Latin-1，1 是带 BOM 的 UTF-16，2 是无 BOM 的 UTF-16BE，3 是 UTF-8。
 func decodeText(enc byte, payload []byte) string {
 	switch enc {
-	case 0, 3:
-		return string(trimZero(payload))
+	case 0:
+		payload = trimZero(payload)
+		runes := make([]rune, len(payload))
+		for i, b := range payload {
+			runes[i] = rune(b)
+		}
+		return string(runes)
 	case 1:
+		if len(payload) >= 2 && payload[0] == 0xfe && payload[1] == 0xff {
+			return utf16Text(payload[2:], binary.BigEndian)
+		}
 		if len(payload) >= 2 && payload[0] == 0xff && payload[1] == 0xfe {
 			payload = payload[2:]
 		}
-		return utf16le(payload)
+		return utf16Text(payload, binary.LittleEndian)
+	case 2:
+		return utf16Text(payload, binary.BigEndian)
 	default:
 		return string(trimZero(payload))
 	}
@@ -137,13 +207,13 @@ func trimZero(b []byte) []byte {
 	return b
 }
 
-func utf16le(b []byte) string {
+func utf16Text(b []byte, order binary.ByteOrder) string {
 	if len(b)%2 == 1 {
 		b = b[:len(b)-1]
 	}
 	u := make([]uint16, len(b)/2)
 	for i := range u {
-		u[i] = binary.LittleEndian.Uint16(b[i*2:])
+		u[i] = order.Uint16(b[i*2:])
 	}
 	for len(u) > 0 && u[len(u)-1] == 0 {
 		u = u[:len(u)-1]
