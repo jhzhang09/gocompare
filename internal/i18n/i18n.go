@@ -412,15 +412,50 @@ var messages = map[string]map[Language]string{
 		ZhTW: "取代顏色",
 		EnUS: "Replace Color",
 	},
-	"picture.modeFlipH": {
-		ZhCN: "水平翻转",
-		ZhTW: "水平翻轉",
-		EnUS: "Flip Horizontal",
+	"picture.flipH": {
+		ZhCN: "水平",
+		ZhTW: "水平",
+		EnUS: "Flip H",
 	},
-	"picture.modeFlipV": {
-		ZhCN: "垂直翻转",
-		ZhTW: "垂直翻轉",
-		EnUS: "Flip Vertical",
+	"picture.flipV": {
+		ZhCN: "垂直",
+		ZhTW: "垂直",
+		EnUS: "Flip V",
+	},
+	"picture.flipLeftH": {
+		ZhCN: "左图水平翻转",
+		ZhTW: "左圖水平翻轉",
+		EnUS: "Flip left image horizontally",
+	},
+	"picture.flipLeftV": {
+		ZhCN: "左图垂直翻转",
+		ZhTW: "左圖垂直翻轉",
+		EnUS: "Flip left image vertically",
+	},
+	"picture.flipRightH": {
+		ZhCN: "右图水平翻转",
+		ZhTW: "右圖水平翻轉",
+		EnUS: "Flip right image horizontally",
+	},
+	"picture.flipRightV": {
+		ZhCN: "右图垂直翻转",
+		ZhTW: "右圖垂直翻轉",
+		EnUS: "Flip right image vertically",
+	},
+	"picture.flippedH": {
+		ZhCN: "已水平翻转",
+		ZhTW: "已水平翻轉",
+		EnUS: "flipped horizontally",
+	},
+	"picture.flippedV": {
+		ZhCN: "已垂直翻转",
+		ZhTW: "已垂直翻轉",
+		EnUS: "flipped vertically",
+	},
+	"picture.flippedBoth": {
+		ZhCN: "已水平和垂直翻转",
+		ZhTW: "已水平和垂直翻轉",
+		EnUS: "flipped both ways",
 	},
 	"picture.zoomFit": {
 		ZhCN: "适应窗口",
@@ -446,6 +481,11 @@ var messages = map[string]map[Language]string{
 		ZhCN: "两图完全一致",
 		ZhTW: "兩圖完全一致",
 		EnUS: "Identical",
+	},
+	"picture.identicalFlipped": {
+		ZhCN: "翻转后完全一致",
+		ZhTW: "翻轉後完全一致",
+		EnUS: "Identical after flipping",
 	},
 	"picture.sizeMismatch": {
 		ZhCN: "尺寸不同",
@@ -483,9 +523,9 @@ var messages = map[string]map[Language]string{
 		EnUS: "Select two PNG, JPEG or GIF images",
 	},
 	"picture.emptyDesc": {
-		ZhCN: "支持并排、半透明叠加、像素差值、容差阈值校验及镜像翻转",
-		ZhTW: "支援並排、半透明疊加、像素差值、容差閾值校驗及鏡像翻轉",
-		EnUS: "Supports side-by-side, overlay, pixel difference, tolerance threshold, and flipping",
+		ZhCN: "支持并排、半透明叠加、像素差值、容差阈值校验，可分别翻转左右图后再比较",
+		ZhTW: "支援並排、半透明疊加、像素差值、容差閾值校驗，可分別翻轉左右圖後再比較",
+		EnUS: "Side-by-side, overlay, pixel difference and tolerance checks; flip either image before comparing",
 	},
 	"picture.loaded": {
 		ZhCN: "已加载图片",
@@ -806,9 +846,9 @@ var messages = map[string]map[Language]string{
 		EnUS: "Zoom & Transform",
 	},
 	"intro.pictureFeat3Desc": {
-		ZhCN: "自动适应视口，支持 1:1、200% 缩放与水平垂直翻转",
-		ZhTW: "自動適應視口，支援 1:1、200% 縮放與水平垂直翻轉",
-		EnUS: "Viewport fitting, 1:1, 200% zoom, and horizontal/vertical flip",
+		ZhCN: "自动适应视口与 1:1、200% 缩放；翻转左图或右图后，所有模式按翻转结果比较",
+		ZhTW: "自動適應視口與 1:1、200% 縮放；翻轉左圖或右圖後，所有模式按翻轉結果比較",
+		EnUS: "Fit, 1:1 and 200% zoom; flip either image and every mode compares the flipped result",
 	},
 
 	// Kind 4: Media Compare

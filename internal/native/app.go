@@ -88,6 +88,7 @@ type modeSession struct {
 	pictureZoom    int
 	pictureNote    string
 	pictureSummary picture.Summary
+	pictureFlips   [2]pictureFlip
 
 	mediaLeft  media.Tags
 	mediaRight media.Tags
@@ -169,6 +170,7 @@ type workspaceState struct {
 	pictureNote   string
 	// pictureSummary 与画布一起在后台算好，绘制时只读取。
 	pictureSummary   picture.Summary
+	pictureFlips     [2]pictureFlip
 	pictureTolSlider float64
 	pictureRerender  bool
 
@@ -774,6 +776,7 @@ func (a *workspaceState) saveModeSession(kind int) {
 		pictureZoom:      a.pictureZoom,
 		pictureNote:      a.pictureNote,
 		pictureSummary:   a.pictureSummary,
+		pictureFlips:     a.pictureFlips,
 		mediaLeft:        a.mediaLeft,
 		mediaRight:       a.mediaRight,
 		mediaReady:       a.mediaReady,
@@ -828,6 +831,7 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.pictureZoom = sess.pictureZoom
 	a.pictureNote = sess.pictureNote
 	a.pictureSummary = sess.pictureSummary
+	a.pictureFlips = sess.pictureFlips
 	a.mediaLeft = sess.mediaLeft
 	a.mediaRight = sess.mediaRight
 	a.mediaReady = sess.mediaReady

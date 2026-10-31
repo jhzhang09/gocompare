@@ -23,9 +23,14 @@ const (
 	pictureDifference
 	pictureTolerance
 	pictureReplace
-	pictureFlipH
-	pictureFlipV
 )
+
+// pictureFlip 是单侧图片的翻转状态。翻转与显示模式正交：先翻转，再按并排、叠加、差值等模式比较，
+// 差异统计也基于翻转后的图片，用来检查一张图是否是另一张的镜像。
+type pictureFlip struct {
+	H bool
+	V bool
+}
 
 // 缩放模式：适应窗口只缩小不放大；像素网格按 pictureCanvasScale 放大，用于极小图片。
 const (
@@ -67,6 +72,7 @@ func (a *workspaceState) loadPictures() {
 			a.pictureRight = right
 			a.pictureMode = pictureSide
 			a.pictureTol = 2
+			a.pictureFlips = [2]pictureFlip{}
 			a.pictureZoom = pictureZoomFit
 			if isTiny(left) && isTiny(right) {
 				a.pictureZoom = pictureZoomGrid
@@ -91,6 +97,7 @@ func (a *workspaceState) clearPictures() {
 	a.pictureBitmap = nil
 	a.pictureNote = ""
 	a.pictureSummary = picture.Summary{}
+	a.pictureFlips = [2]pictureFlip{}
 	a.pictureRerender = false
 }
 
@@ -108,6 +115,19 @@ func (a *workspaceState) setPictureTolerance(tol uint8) {
 		return
 	}
 	a.pictureTol = tol
+	a.renderPicture()
+}
+
+// toggleFlip 切换一侧图片的水平或垂直翻转；再点一次恢复原方向。
+func (a *workspaceState) toggleFlip(side int, vertical bool) {
+	if a.pictureLeft == nil || a.pictureRight == nil {
+		return
+	}
+	if vertical {
+		a.pictureFlips[side].V = !a.pictureFlips[side].V
+	} else {
+		a.pictureFlips[side].H = !a.pictureFlips[side].H
+	}
 	a.renderPicture()
 }
 
@@ -131,11 +151,11 @@ func (a *workspaceState) renderPicture() {
 		return
 	}
 	a.pictureRerender = false
-	mode, tol := a.pictureMode, a.pictureTol
+	mode, tol, flips := a.pictureMode, a.pictureTol, a.pictureFlips
 	a.pictureGen++
 	gen := a.pictureGen
 	a.job(func(ctx context.Context) {
-		out, note, summary := buildPicture(left, right, mode, tol)
+		out, note, summary := buildPicture(applyFlip(left, flips[0]), applyFlip(right, flips[1]), mode, tol)
 		a.publish(func() {
 			a.busy = false
 			if gen != a.pictureGen {
@@ -156,8 +176,18 @@ func (a *workspaceState) renderPicture() {
 	})
 }
 
-// buildPicture 按模式生成画布，并返回说明文案的 i18n 键和差异统计。
-// 翻转和替换颜色把处理后的左图与右图并排，方便核对镜像或去背景后的内容。
+func applyFlip(img image.Image, f pictureFlip) image.Image {
+	if f.H {
+		img = picture.FlipH(img)
+	}
+	if f.V {
+		img = picture.FlipV(img)
+	}
+	return img
+}
+
+// buildPicture 按模式生成画布，并返回说明文案的 i18n 键和差异统计。输入是已按各侧状态翻转后的图片。
+// 替换颜色把处理后的左图与右图并排，方便核对去背景后的内容。
 func buildPicture(left, right image.Image, mode int, tol uint8) (*image.RGBA, string, picture.Summary) {
 	summary := picture.Summarize(left, right, tol)
 	switch mode {
@@ -180,10 +210,6 @@ func buildPicture(left, right image.Image, mode int, tol uint8) (*image.RGBA, st
 			picture.ReplaceColor(right, from, pictureReplaceColor, tol),
 		)
 		return out, "picture.modeReplace", summary
-	case pictureFlipH:
-		return picture.SideBySide(picture.FlipH(left), right), "picture.modeFlipH", summary
-	case pictureFlipV:
-		return picture.SideBySide(picture.FlipV(left), right), "picture.modeFlipV", summary
 	default:
 		return picture.SideBySide(left, right), "picture.modeSide", summary
 	}
@@ -209,8 +235,6 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 		modeBtn(i18n.T("picture.modeTolerance"), a.pictureMode == pictureTolerance, func() { a.showPicture(pictureTolerance) })
 		ui.Divider(c).Height(14)
 		modeBtn(i18n.T("picture.modeReplace"), a.pictureMode == pictureReplace, func() { a.showPicture(pictureReplace) })
-		modeBtn(i18n.T("picture.modeFlipH"), a.pictureMode == pictureFlipH, func() { a.showPicture(pictureFlipH) })
-		modeBtn(i18n.T("picture.modeFlipV"), a.pictureMode == pictureFlipV, func() { a.showPicture(pictureFlipV) })
 		if loaded {
 			ui.Divider(c).Height(14)
 			modeBtn(i18n.T("picture.zoomFit"), a.pictureZoom == pictureZoomFit, func() { a.pictureZoom = pictureZoomFit })
@@ -242,6 +266,8 @@ func (a *workspaceState) pictureStatusRow(c *ui.Context, pal uiPalette, disabled
 		ui.Slider(c, &a.pictureTolSlider, 0, 255).Width(180).Disabled(disabled).Label(i18n.T("picture.toleranceSlider")).OnChange(func() {
 			a.setPictureTolerance(uint8(a.pictureTolSlider + 0.5))
 		})
+		ui.Divider(c).Height(14)
+		a.pictureFlipControls(c, pal, disabled)
 		ui.Box(c).Grow(1)
 		lb, rb := a.pictureLeft.Bounds(), a.pictureRight.Bounds()
 		statusPill(c, fmt.Sprintf("%d×%d vs %d×%d px", lb.Dx(), lb.Dy(), rb.Dx(), rb.Dy()), pal.sameFg, pal.sameBg)
@@ -249,7 +275,12 @@ func (a *workspaceState) pictureStatusRow(c *ui.Context, pal uiPalette, disabled
 		switch {
 		case s.Total == 0:
 		case !s.Found:
-			statusPill(c, i18n.T("picture.identical"), pal.successFg, pal.successBg)
+			// 翻转后才一致时要说清楚，避免误以为原图相同。
+			key := "picture.identical"
+			if a.pictureFlips != ([2]pictureFlip{}) {
+				key = "picture.identicalFlipped"
+			}
+			statusPill(c, i18n.T(key), pal.successFg, pal.successBg)
 		case !s.SameSize:
 			statusPill(c, i18n.T("picture.sizeMismatch"), pal.diffFg, pal.diffBg)
 		default:
@@ -272,22 +303,73 @@ func (a *workspaceState) pictureStatusRow(c *ui.Context, pal uiPalette, disabled
 	})
 }
 
+// flipNote 返回图例里的翻转说明；未翻转时为空。
+func flipNote(f pictureFlip) string {
+	switch {
+	case f.H && f.V:
+		return i18n.T("picture.flippedBoth")
+	case f.H:
+		return i18n.T("picture.flippedH")
+	case f.V:
+		return i18n.T("picture.flippedV")
+	}
+	return ""
+}
+
+// pictureFlipControls 为左右两侧各放一组水平／垂直翻转开关，明确翻转的是哪一张，再点一次即恢复。
+func (a *workspaceState) pictureFlipControls(c *ui.Context, pal uiPalette, disabled bool) {
+	t := c.Theme()
+	for side := 0; side < 2; side++ {
+		side := side
+		ui.Row(c).Gap(3).Children(func() {
+			sideBadge(c, side, pal)
+			for _, vertical := range []bool{false, true} {
+				vertical := vertical
+				active := a.pictureFlips[side].H
+				textKey, labelKey := "picture.flipH", []string{"picture.flipLeftH", "picture.flipRightH"}[side]
+				if vertical {
+					active = a.pictureFlips[side].V
+					textKey, labelKey = "picture.flipV", []string{"picture.flipLeftV", "picture.flipRightV"}[side]
+				}
+				b := ui.Button(c, "").Label(i18n.T(labelKey)).Padding(2, 6).Radius(5).Disabled(disabled)
+				if active && !disabled {
+					b.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35))
+				}
+				b.OnClick(func() { a.toggleFlip(side, vertical) })
+				b.Children(func() {
+					txt := ui.Text(c, i18n.T(textKey)).FontSize(10).SingleLine()
+					if active && !disabled {
+						txt.TextColor(pal.baseAccent).Bold()
+					} else {
+						txt.TextColor(t.Text)
+					}
+				})
+			}
+		})
+	}
+}
+
 func (a *workspaceState) pictureCanvas(c *ui.Context, pal uiPalette) {
 	t := c.Theme()
 	b := a.pictureResult.Bounds()
 	bw, bh := float32(b.Dx()), float32(b.Dy())
-	sideBySide := a.pictureMode == pictureSide || a.pictureMode == pictureReplace || a.pictureMode == pictureFlipH || a.pictureMode == pictureFlipV
+	sideBySide := a.pictureMode == pictureSide || a.pictureMode == pictureReplace
 	legend := func(width float32, side int, img image.Image) {
+		// width > 0 按图片宽度对齐；0 平分可用宽度；负数按内容自适应。
 		row := ui.Row(c).Gap(4)
-		if width > 0 {
+		switch {
+		case width > 0:
 			row.Width(width)
-		} else {
+		case width == 0:
 			row.Grow(1).Basis(0)
 		}
 		row.Children(func() {
 			sideBadge(c, side, pal)
 			ui.Text(c, i18n.T([]string{"picture.leftImage", "picture.rightImage"}[side])).FontSize(11).Bold().TextColor(pal.sidebarText)
 			ui.Text(c, fmt.Sprintf("%d×%d px", img.Bounds().Dx(), img.Bounds().Dy())).FontSize(10).TextColor(t.TextMuted)
+			if note := flipNote(a.pictureFlips[side]); note != "" {
+				ui.Text(c, note).FontSize(10).Bold().TextColor(pal.baseAccent)
+			}
 		})
 	}
 
@@ -322,11 +404,16 @@ func (a *workspaceState) pictureCanvas(c *ui.Context, pal uiPalette) {
 			if sideBySide {
 				lw := float32(a.pictureLeft.Bounds().Dx()) * scale
 				rw := float32(a.pictureRight.Bounds().Dx()) * scale
-				// 像素网格下单侧可能只有几十像素宽，标签不按宽度截断。
-				if a.pictureZoom != pictureZoomGrid || lw >= 120 {
+				if lw >= 120 {
 					ui.Row(c).Width(w).Children(func() {
 						legend(lw, 0, a.pictureLeft)
 						legend(rw, 1, a.pictureRight)
+					})
+				} else {
+					// 单侧太窄时图例不按图片宽度对齐，改为紧凑排列，翻转状态仍然可见。
+					ui.Row(c).Gap(12).Children(func() {
+						legend(-1, 0, a.pictureLeft)
+						legend(-1, 1, a.pictureRight)
 					})
 				}
 			}

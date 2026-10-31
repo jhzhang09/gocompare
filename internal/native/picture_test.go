@@ -113,16 +113,23 @@ func TestWorkspacePictureJPEG(t *testing.T) {
 	assertPicture(t, tt, a, "替换颜色", map[image.Point]color.RGBA{
 		{4, 4}: pictureReplaceColor, {12, 4}: tr, {16, 4}: rightTL,
 	})
-	if err = tt.Click("水平翻转"); err != nil {
+	// 翻转是左图的开关，叠加在并排模式上；右图保持原样。
+	if err = tt.Click("并排"); err != nil {
 		t.Fatal(err)
 	}
-	assertPicture(t, tt, a, "水平翻转", map[image.Point]color.RGBA{
+	if err = tt.Click("左图水平翻转"); err != nil {
+		t.Fatal(err)
+	}
+	assertPicture(t, tt, a, "并排", map[image.Point]color.RGBA{
 		{4, 4}: tr, {12, 4}: tl, {4, 12}: br, {12, 12}: bl, {20, 4}: rightTL,
 	})
-	if err = tt.Click("垂直翻转"); err != nil {
+	if err = tt.Click("左图水平翻转"); err != nil {
 		t.Fatal(err)
 	}
-	assertPicture(t, tt, a, "垂直翻转", map[image.Point]color.RGBA{
+	if err = tt.Click("左图垂直翻转"); err != nil {
+		t.Fatal(err)
+	}
+	assertPicture(t, tt, a, "并排", map[image.Point]color.RGBA{
 		{4, 4}: bl, {4, 12}: tl, {12, 4}: br, {12, 12}: tr, {20, 12}: bl,
 	})
 	afterLeft, err := os.ReadFile(leftPath)
@@ -260,26 +267,51 @@ func runGridComparison(t *testing.T, leftPath, rightPath string, leftPx [2][2]co
 		{0, 1}: leftPx[1][0],
 		{2, 0}: rightPx[0][0],
 	})
-	if err = tt.Click("水平翻转"); err != nil {
+	// 翻转是每侧的开关：可叠加水平与垂直，再点一次恢复，切换显示模式不会丢失。
+	if err = tt.Click("并排"); err != nil {
 		t.Fatal(err)
 	}
-	assertPicture(t, tt, a, "水平翻转", map[image.Point]color.RGBA{
+	if err = tt.Click("左图水平翻转"); err != nil {
+		t.Fatal(err)
+	}
+	assertPicture(t, tt, a, "并排", map[image.Point]color.RGBA{
 		{0, 0}: leftPx[0][1],
 		{1, 0}: leftPx[0][0],
 		{0, 1}: leftPx[1][1],
 		{1, 1}: leftPx[1][0],
 		{2, 0}: rightPx[0][0],
 	})
-	if err = tt.Click("垂直翻转"); err != nil {
+	if !tt.HasText("已水平翻转") {
+		t.Fatalf("legend must say which image is flipped: %v", tt.Texts())
+	}
+	if err = tt.Click("左图垂直翻转"); err != nil {
 		t.Fatal(err)
 	}
-	assertPicture(t, tt, a, "垂直翻转", map[image.Point]color.RGBA{
+	assertPicture(t, tt, a, "并排", map[image.Point]color.RGBA{
+		{0, 0}: leftPx[1][1],
+		{1, 0}: leftPx[1][0],
+		{0, 1}: leftPx[0][1],
+		{1, 1}: leftPx[0][0],
+		{2, 1}: rightPx[1][0],
+	})
+	if err = tt.Click("左图水平翻转"); err != nil {
+		t.Fatal(err)
+	}
+	assertPicture(t, tt, a, "并排", map[image.Point]color.RGBA{
 		{0, 0}: leftPx[1][0],
 		{1, 0}: leftPx[1][1],
 		{0, 1}: leftPx[0][0],
 		{1, 1}: leftPx[0][1],
 		{2, 1}: rightPx[1][0],
 		{3, 1}: rightPx[1][1],
+	})
+	if err = tt.Click("左图垂直翻转"); err != nil {
+		t.Fatal(err)
+	}
+	assertPicture(t, tt, a, "并排", map[image.Point]color.RGBA{
+		{0, 0}: leftPx[0][0],
+		{1, 1}: leftPx[1][1],
+		{2, 0}: rightPx[0][0],
 	})
 
 	afterLeft, err := os.ReadFile(leftPath)
@@ -525,5 +557,43 @@ func TestPictureToleranceCoalescesWhileBusy(t *testing.T) {
 	a.renderPicture()
 	if a.pictureRerender || a.pictureNote != "picture.withinTolerance" || a.pictureSummary.Exceeding != 0 {
 		t.Fatalf("note %q summary %+v", a.pictureNote, a.pictureSummary)
+	}
+}
+
+// 翻转后所有模式与统计都按翻转结果比较：右图是左图的水平镜像时，翻转右图后差值全黑且判定一致。
+func TestPictureFlipAppliesToComparison(t *testing.T) {
+	left := image.NewRGBA(image.Rect(0, 0, 2, 1))
+	right := image.NewRGBA(image.Rect(0, 0, 2, 1))
+	red, blue := color.RGBA{R: 255, A: 255}, color.RGBA{B: 255, A: 255}
+	left.SetRGBA(0, 0, red)
+	left.SetRGBA(1, 0, blue)
+	right.SetRGBA(0, 0, blue)
+	right.SetRGBA(1, 0, red)
+	a := &workspaceState{kind: kindPicture, pictureLeft: left, pictureRight: right, pictureMode: pictureDifference}
+	a.renderPicture()
+	if !a.pictureSummary.Found {
+		t.Fatal("mirrored images must differ before flipping")
+	}
+	a.toggleFlip(1, false)
+	if a.pictureSummary.Found || a.pictureResult.RGBAAt(0, 0) != (color.RGBA{A: 255}) {
+		t.Fatalf("flipped right should match left: %+v %v", a.pictureSummary, a.pictureResult.RGBAAt(0, 0))
+	}
+	tt := ui.NewTester(a.view, 1380, 880)
+	tt.Frame()
+	if !tt.HasText("翻转后完全一致") || tt.HasText("两图完全一致") {
+		t.Fatalf("identical pill must mention the flip: %v", tt.Texts())
+	}
+	a.showPicture(pictureOverlay)
+	if a.pictureFlips[1] != (pictureFlip{H: true}) || a.pictureResult.RGBAAt(0, 0) != red {
+		t.Fatal("flip must survive mode changes")
+	}
+	a.toggleFlip(1, false)
+	if !a.pictureSummary.Found {
+		t.Fatal("toggling again must restore the original orientation")
+	}
+	a.toggleFlip(0, true)
+	a.clearPictures()
+	if a.pictureFlips != ([2]pictureFlip{}) {
+		t.Fatal("reset must clear flips")
 	}
 }
