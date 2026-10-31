@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"gocompare/internal/i18n"
 )
 
 func writeTestImage(t *testing.T, path string, w, h int, fill color.RGBA) {
@@ -126,4 +127,20 @@ func TestWorkspacePictureRealImageFitAndModes(t *testing.T) {
 	if r1.W != 400 || r1.H != 600 {
 		t.Fatalf("expected 1:1 canvas 400x600, got %gx%g", r1.W, r1.H)
 	}
+
+	// 3. Test i18n language switching
+	i18n.SetLanguage(i18n.EnUS)
+	tt.Frame()
+	if !tt.HasText("Side by Side") || !tt.HasText("Overlay") || !tt.HasText("Fit Window") {
+		t.Fatalf("expected English i18n labels in picture view, got: %v", tt.Texts())
+	}
+
+	i18n.SetLanguage(i18n.ZhTW)
+	tt.Frame()
+	if !tt.HasText("並排") || !tt.HasText("疊加") || !tt.HasText("適應視窗") {
+		t.Fatalf("expected Traditional Chinese i18n labels in picture view, got: %v", tt.Texts())
+	}
+
+	// Restore ZhCN
+	i18n.SetLanguage(i18n.ZhCN)
 }

@@ -328,12 +328,12 @@ func (a *workspaceState) view(c *ui.Context) {
 
 			message := a.message
 			if a.compareRunning {
-				message = "正在后台计算差异，可继续编辑…"
+				message = i18n.T("status.diffRunning")
 			} else if a.compareErr != nil {
-				message = "差异计算已停止，请重新计算"
+				message = i18n.T("status.diffStopped")
 			}
 			if a.busy {
-				message = "正在处理…"
+				message = i18n.T("status.processing")
 			}
 			dotColor := pal.successFg
 			if a.busy || a.compareRunning {
@@ -395,28 +395,28 @@ func (a *workspaceState) view(c *ui.Context) {
 func (a *workspaceState) renderToolbarMeta(c *ui.Context, pal uiPalette) {
 	switch a.kind {
 	case 1:
-		statusPill(c, "文件树与属性比对", pal.sameFg, pal.sameBg)
+		statusPill(c, i18n.T("meta.dir"), pal.sameFg, pal.sameBg)
 		if strings.TrimSpace(a.dirFilter) != "" {
 			statusPill(c, "过滤 "+a.dirFilter, pal.baseAccent, pal.baseBg)
 		}
 		if a.compareMode {
-			statusPill(c, "权限", pal.baseAccent, pal.baseBg)
+			statusPill(c, i18n.T("meta.permission"), pal.baseAccent, pal.baseBg)
 		}
 		if a.compareTime {
-			statusPill(c, "时间", pal.baseAccent, pal.baseBg)
+			statusPill(c, i18n.T("meta.time"), pal.baseAccent, pal.baseBg)
 		}
 	case 2:
 		if strings.TrimSpace(a.mergeBase) != "" {
-			statusPill(c, "三方合并", pal.baseAccent, pal.baseBg)
+			statusPill(c, i18n.T("meta.merge3"), pal.baseAccent, pal.baseBg)
 		} else {
-			statusPill(c, "两方合并", pal.sameFg, pal.sameBg)
+			statusPill(c, i18n.T("meta.merge2"), pal.sameFg, pal.sameBg)
 		}
 	case 3:
-		statusPill(c, "PNG · JPEG · GIF 像素级", pal.sameFg, pal.sameBg)
+		statusPill(c, i18n.T("meta.picture"), pal.sameFg, pal.sameBg)
 	case 4:
-		statusPill(c, "ID3v2 元数据标签", pal.sameFg, pal.sameBg)
+		statusPill(c, i18n.T("meta.media"), pal.sameFg, pal.sameBg)
 	case 5:
-		statusPill(c, "PE FileVersion 与注册表", pal.sameFg, pal.sameBg)
+		statusPill(c, i18n.T("meta.version"), pal.sameFg, pal.sameBg)
 	}
 }
 

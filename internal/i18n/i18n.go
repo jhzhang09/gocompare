@@ -366,6 +366,113 @@ var messages = map[string]map[Language]string{
 		EnUS: "💡 Tip: Type or press ⌘V to paste text into either pane. Real-time diff and dual-side editing supported.",
 	},
 
+	// Picture Compare
+	"picture.modeSide": {
+		ZhCN: "并排",
+		ZhTW: "並排",
+		EnUS: "Side by Side",
+	},
+	"picture.modeOverlay": {
+		ZhCN: "叠加",
+		ZhTW: "疊加",
+		EnUS: "Overlay",
+	},
+	"picture.modeDifference": {
+		ZhCN: "差值",
+		ZhTW: "差值",
+		EnUS: "Difference",
+	},
+	"picture.modeTolerance2": {
+		ZhCN: "容差 2",
+		ZhTW: "容差 2",
+		EnUS: "Tolerance 2",
+	},
+	"picture.modeTolerance255": {
+		ZhCN: "容差 255",
+		ZhTW: "容差 255",
+		EnUS: "Tolerance 255",
+	},
+	"picture.modeReplace": {
+		ZhCN: "替换颜色",
+		ZhTW: "取代顏色",
+		EnUS: "Replace Color",
+	},
+	"picture.modeFlipH": {
+		ZhCN: "水平翻转",
+		ZhTW: "水平翻轉",
+		EnUS: "Flip Horizontal",
+	},
+	"picture.modeFlipV": {
+		ZhCN: "垂直翻转",
+		ZhTW: "垂直翻轉",
+		EnUS: "Flip Vertical",
+	},
+	"picture.zoomFit": {
+		ZhCN: "适应窗口",
+		ZhTW: "適應視窗",
+		EnUS: "Fit Window",
+	},
+	"picture.zoom100": {
+		ZhCN: "1:1 实际",
+		ZhTW: "1:1 實際",
+		EnUS: "1:1 Actual",
+	},
+	"picture.zoom200": {
+		ZhCN: "200%",
+		ZhTW: "200%",
+		EnUS: "200%",
+	},
+	"picture.identical": {
+		ZhCN: "两图完全一致",
+		ZhTW: "兩圖完全一致",
+		EnUS: "Identical",
+	},
+	"picture.sizeMismatch": {
+		ZhCN: "尺寸不同",
+		ZhTW: "尺寸不同",
+		EnUS: "Size Mismatch",
+	},
+	"picture.diffFound": {
+		ZhCN: "存在差异 (首处: %d, %d)",
+		ZhTW: "存在差異 (首處: %d, %d)",
+		EnUS: "Differences (first at %d, %d)",
+	},
+	"picture.withinTolerance": {
+		ZhCN: "容差内相同",
+		ZhTW: "容差內相同",
+		EnUS: "Within Tolerance",
+	},
+	"picture.outOfTolerance": {
+		ZhCN: "超出容差",
+		ZhTW: "超出容差",
+		EnUS: "Out of Tolerance",
+	},
+	"picture.leftImage": {
+		ZhCN: "左侧图片",
+		ZhTW: "左側圖片",
+		EnUS: "Left Image",
+	},
+	"picture.rightImage": {
+		ZhCN: "右侧图片",
+		ZhTW: "右側圖片",
+		EnUS: "Right Image",
+	},
+	"picture.emptyTitle": {
+		ZhCN: "选择两张 PNG、JPEG 或 GIF",
+		ZhTW: "選擇兩張 PNG、JPEG 或 GIF",
+		EnUS: "Select two PNG, JPEG or GIF images",
+	},
+	"picture.emptyDesc": {
+		ZhCN: "支持并排、半透明叠加、像素差值、容差阈值校验及镜像翻转",
+		ZhTW: "支援並排、半透明疊加、像素差值、容差閾值校驗及鏡像翻轉",
+		EnUS: "Supports side-by-side, overlay, pixel difference, tolerance threshold, and flipping",
+	},
+	"picture.loaded": {
+		ZhCN: "已加载图片",
+		ZhTW: "已載入圖片",
+		EnUS: "Images loaded",
+	},
+
 	// Status Badges & Messages
 	"badge.same": {
 		ZhCN: "内容一致",
@@ -406,6 +513,63 @@ var messages = map[string]map[Language]string{
 		ZhCN: "选择左右来源，然后开始比较",
 		ZhTW: "選擇左右來源，然後開始比較",
 		EnUS: "Select left and right sources, then start comparison",
+	},
+	"status.processing": {
+		ZhCN: "正在处理…",
+		ZhTW: "正在處理…",
+		EnUS: "Processing…",
+	},
+	"status.diffRunning": {
+		ZhCN: "正在后台计算差异，可继续编辑…",
+		ZhTW: "正在背景計算差異，可繼續編輯…",
+		EnUS: "Computing diff in background, you can continue editing…",
+	},
+	"status.diffStopped": {
+		ZhCN: "差异计算已停止，请重新计算",
+		ZhTW: "差異計算已停止，請重新計算",
+		EnUS: "Diff calculation stopped, please recompute",
+	},
+
+	// Mode Metadata
+	"meta.dir": {
+		ZhCN: "文件树与属性比对",
+		ZhTW: "檔案樹與屬性比對",
+		EnUS: "File Tree & Attribute Comparison",
+	},
+	"meta.permission": {
+		ZhCN: "权限",
+		ZhTW: "權限",
+		EnUS: "Permissions",
+	},
+	"meta.time": {
+		ZhCN: "时间",
+		ZhTW: "時間",
+		EnUS: "Timestamps",
+	},
+	"meta.merge3": {
+		ZhCN: "三方合并",
+		ZhTW: "三方合併",
+		EnUS: "3-Way Merge",
+	},
+	"meta.merge2": {
+		ZhCN: "两方合并",
+		ZhTW: "兩方合併",
+		EnUS: "2-Way Merge",
+	},
+	"meta.picture": {
+		ZhCN: "PNG · JPEG · GIF 像素级",
+		ZhTW: "PNG · JPEG · GIF 像素級",
+		EnUS: "PNG · JPEG · GIF Pixel-Level",
+	},
+	"meta.media": {
+		ZhCN: "ID3v2 元数据标签",
+		ZhTW: "ID3v2 元數據標籤",
+		EnUS: "ID3v2 Metadata Tags",
+	},
+	"meta.version": {
+		ZhCN: "PE FileVersion 与注册表",
+		ZhTW: "PE FileVersion 與登錄檔",
+		EnUS: "PE FileVersion & Registry",
 	},
 	"status.clearedBoth": {
 		ZhCN: "已清空两栏文本",

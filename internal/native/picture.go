@@ -7,6 +7,7 @@ import (
 	"image/color"
 
 	"github.com/egoist/mygo/ui"
+	"gocompare/internal/i18n"
 	"gocompare/internal/picture"
 )
 
@@ -58,7 +59,7 @@ func (a *workspaceState) loadPictures() {
 			}
 			a.renderPicture()
 			a.err = ""
-			a.message = "已加载图片"
+			a.message = i18n.T("picture.loaded")
 		})
 	})
 }
@@ -146,22 +147,22 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 			}
 			b.OnClick(fn)
 		}
-		modeBtn("并排", a.pictureMode == pictureSide, func() { a.showPicture(pictureSide) })
-		modeBtn("叠加", a.pictureMode == pictureOverlay, func() { a.showPicture(pictureOverlay) })
-		modeBtn("差值", a.pictureMode == pictureDifference, func() { a.showPicture(pictureDifference) })
+		modeBtn(i18n.T("picture.modeSide"), a.pictureMode == pictureSide, func() { a.showPicture(pictureSide) })
+		modeBtn(i18n.T("picture.modeOverlay"), a.pictureMode == pictureOverlay, func() { a.showPicture(pictureOverlay) })
+		modeBtn(i18n.T("picture.modeDifference"), a.pictureMode == pictureDifference, func() { a.showPicture(pictureDifference) })
 		ui.Divider(c).Height(14)
-		modeBtn("容差 2", a.pictureMode == pictureTolerance && a.pictureTol == 2, func() { a.showTolerance(2) })
-		modeBtn("容差 255", a.pictureMode == pictureTolerance && a.pictureTol == 255, func() { a.showTolerance(255) })
+		modeBtn(i18n.T("picture.modeTolerance2"), a.pictureMode == pictureTolerance && a.pictureTol == 2, func() { a.showTolerance(2) })
+		modeBtn(i18n.T("picture.modeTolerance255"), a.pictureMode == pictureTolerance && a.pictureTol == 255, func() { a.showTolerance(255) })
 		ui.Divider(c).Height(14)
-		modeBtn("替换颜色", a.pictureMode == pictureReplace, func() { a.showPicture(pictureReplace) })
-		modeBtn("水平翻转", a.pictureMode == pictureFlipH, func() { a.showPicture(pictureFlipH) })
-		modeBtn("垂直翻转", a.pictureMode == pictureFlipV, func() { a.showPicture(pictureFlipV) })
+		modeBtn(i18n.T("picture.modeReplace"), a.pictureMode == pictureReplace, func() { a.showPicture(pictureReplace) })
+		modeBtn(i18n.T("picture.modeFlipH"), a.pictureMode == pictureFlipH, func() { a.showPicture(pictureFlipH) })
+		modeBtn(i18n.T("picture.modeFlipV"), a.pictureMode == pictureFlipV, func() { a.showPicture(pictureFlipV) })
 
 		if a.pictureLeft != nil && a.pictureRight != nil && (a.pictureLeft.Bounds().Dx() > 32 || a.pictureLeft.Bounds().Dy() > 32) {
 			ui.Divider(c).Height(14)
-			modeBtn("适应窗口", a.pictureZoom == 0, func() { a.pictureZoom = 0 })
-			modeBtn("1:1 实际", a.pictureZoom == 1, func() { a.pictureZoom = 1 })
-			modeBtn("200%", a.pictureZoom == 2, func() { a.pictureZoom = 2 })
+			modeBtn(i18n.T("picture.zoomFit"), a.pictureZoom == 0, func() { a.pictureZoom = 0 })
+			modeBtn(i18n.T("picture.zoom100"), a.pictureZoom == 1, func() { a.pictureZoom = 1 })
+			modeBtn(i18n.T("picture.zoom200"), a.pictureZoom == 2, func() { a.pictureZoom = 2 })
 		}
 
 		ui.Box(c).Grow(1)
@@ -170,21 +171,40 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 			statusPill(c, fmt.Sprintf("%d×%d vs %d×%d px", lb.Dx(), lb.Dy(), rb.Dx(), rb.Dy()), pal.sameFg, pal.sameBg)
 			diff := picture.FirstDifference(a.pictureLeft, a.pictureRight)
 			if !diff.Found {
-				statusPill(c, "两图完全一致", pal.successFg, pal.successBg)
+				statusPill(c, i18n.T("picture.identical"), pal.successFg, pal.successBg)
 			} else if !diff.SameSize {
-				statusPill(c, "尺寸不同", pal.diffFg, pal.diffBg)
+				statusPill(c, i18n.T("picture.sizeMismatch"), pal.diffFg, pal.diffBg)
 			} else {
-				statusPill(c, fmt.Sprintf("存在差异 (首处: %d, %d)", diff.X, diff.Y), pal.diffFg, pal.diffBg)
+				statusPill(c, i18n.TArgs("picture.diffFound", diff.X, diff.Y), pal.diffFg, pal.diffBg)
 			}
 		}
 		if a.pictureNote != "" {
+			noteText := a.pictureNote
+			switch a.pictureNote {
+			case "并排":
+				noteText = i18n.T("picture.modeSide")
+			case "叠加":
+				noteText = i18n.T("picture.modeOverlay")
+			case "差值":
+				noteText = i18n.T("picture.modeDifference")
+			case "容差内相同":
+				noteText = i18n.T("picture.withinTolerance")
+			case "超出容差":
+				noteText = i18n.T("picture.outOfTolerance")
+			case "替换颜色":
+				noteText = i18n.T("picture.modeReplace")
+			case "水平翻转":
+				noteText = i18n.T("picture.modeFlipH")
+			case "垂直翻转":
+				noteText = i18n.T("picture.modeFlipV")
+			}
 			fg, bg := pal.baseAccent, pal.baseBg
 			if a.pictureNote == "超出容差" {
 				fg, bg = pal.diffFg, pal.diffBg
 			} else if a.pictureNote == "容差内相同" {
 				fg, bg = pal.successFg, pal.successBg
 			}
-			statusPill(c, a.pictureNote, fg, bg)
+			statusPill(c, noteText, fg, bg)
 		}
 	})
 
@@ -195,8 +215,8 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 					ui.Row(c).Size(32, 32).Center().Radius(8).Background(pal.baseBg).Children(func() {
 						ui.Icon(c, iconImageDiff).Size(16, 16).TextColor(pal.baseAccent)
 					})
-					ui.Text(c, "选择两张 PNG、JPEG 或 GIF").FontSize(17).Bold()
-					ui.Text(c, "支持并排、半透明叠加、像素差值、容差阈值校验及镜像翻转").FontSize(11).TextColor(t.TextMuted)
+					ui.Text(c, i18n.T("picture.emptyTitle")).FontSize(17).Bold()
+					ui.Text(c, i18n.T("picture.emptyDesc")).FontSize(11).TextColor(t.TextMuted)
 				})
 			})
 		}
@@ -243,12 +263,12 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 				ui.Row(c).Width(w).Children(func() {
 					ui.Row(c).Width(lw).Gap(4).Children(func() {
 						sideBadge(c, 0, pal)
-						ui.Text(c, "左侧图片").FontSize(11).Bold().TextColor(pal.sidebarText)
+						ui.Text(c, i18n.T("picture.leftImage")).FontSize(11).Bold().TextColor(pal.sidebarText)
 						ui.Text(c, fmt.Sprintf("%d×%d px", a.pictureLeft.Bounds().Dx(), a.pictureLeft.Bounds().Dy())).FontSize(10).TextColor(t.TextMuted)
 					})
 					ui.Row(c).Width(rw).Gap(4).Children(func() {
 						sideBadge(c, 1, pal)
-						ui.Text(c, "右侧图片").FontSize(11).Bold().TextColor(pal.sidebarText)
+						ui.Text(c, i18n.T("picture.rightImage")).FontSize(11).Bold().TextColor(pal.sidebarText)
 						ui.Text(c, fmt.Sprintf("%d×%d px", a.pictureRight.Bounds().Dx(), a.pictureRight.Bounds().Dy())).FontSize(10).TextColor(t.TextMuted)
 					})
 				})
