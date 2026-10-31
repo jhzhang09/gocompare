@@ -56,6 +56,18 @@
 
 ## 安装
 
+### Homebrew（macOS）
+
+```bash
+# 桌面应用（GUI）
+brew install --cask --no-quarantine jhzhang09/tap/gocompare
+
+# 命令行工具（CLI）
+brew install jhzhang09/tap/gocompare-cli
+```
+
+### 手动下载
+
 从 [**Releases**](https://github.com/jhzhang09/gocompare/releases) 页面下载最新版本。
 
 | 平台 | 桌面应用 | 命令行 |

@@ -56,6 +56,18 @@ Compare text, folders, images and binary metadata, merge three-way, and sync dir
 
 ## Installation
 
+### Homebrew (macOS)
+
+```bash
+# Desktop app (GUI)
+brew install --cask --no-quarantine jhzhang09/tap/gocompare
+
+# Command line (CLI)
+brew install jhzhang09/tap/gocompare-cli
+```
+
+### Manual download
+
 Download the latest build from the [**Releases**](https://github.com/jhzhang09/gocompare/releases) page.
 
 | Platform | Desktop app | Command line |

@@ -146,3 +146,8 @@ jobs:
             --notes-file .github/release-notes.md \
             --generate-notes \
             $prerelease
+      - name: Update Homebrew tap
+        if: env.TAP_GITHUB_TOKEN != ''
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: scripts/update-homebrew-tap.sh "$GITHUB_REF_NAME" assets/SHA256SUMS.txt
