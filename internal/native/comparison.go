@@ -15,13 +15,14 @@ func (a *workspaceState) stopComparison() {
 		a.compareCancel = nil
 	}
 	a.compareRunning = false
+	a.compareRequested = false
 }
 
 // refreshComparison 只在输入版本改变时启动任务，不能在绘制回调中触发。
 func (a *workspaceState) refreshComparison() {
 	panes := a.activePanes()
 	diff := a.activeDiff()
-	if panes[0] == nil || !diff.ExternalComparison {
+	if panes[0] == nil || panes[1] == nil || !diff.ExternalComparison {
 		return
 	}
 	buffers := [2]*editor.Buffer{panes[0].buffer, panes[1].buffer}
