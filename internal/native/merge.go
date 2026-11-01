@@ -247,20 +247,27 @@ func (a *workspaceState) saveMerge() {
 	})
 }
 
+func (a *workspaceState) mergeInputsRow(c *ui.Context, pal uiPalette) {
+	sideBadge(c, 2, pal)
+	ui.TextInput(c.Key("merge-base"), &a.mergeBase).Grow(1).MinWidth(140).Placeholder(i18n.T("merge.basePlaceholder")).Disabled(a.busy).Label(i18n.T("merge.baseLabel"))
+	ui.TextInput(c.Key("merge-output"), &a.mergeOutput).Grow(1).MinWidth(140).Placeholder(i18n.T("merge.outputPlaceholder")).Disabled(a.busy).Label(i18n.T("merge.outputLabel"))
+	saveBtn := ui.PrimaryButton(c, "").Label(i18n.T("merge.save")).Padding(4, 10).Gap(4).Radius(5).Disabled(a.busy || a.mergeBuffer == nil)
+	saveBtn.OnClick(a.saveMerge)
+	saveBtn.Children(func() {
+		ui.Icon(c, iconSave).Size(11, 11)
+		ui.Text(c, i18n.T("merge.save")).FontSize(11).Bold().SingleLine()
+	})
+}
+
 func (a *workspaceState) mergeView(c *ui.Context) {
 	t := c.Theme()
 	pal := paletteFor(t)
-	ui.Row(c).Padding(6, 14).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		sideBadge(c, 2, pal)
-		ui.TextInput(c.Key("merge-base"), &a.mergeBase).Grow(1).Placeholder(i18n.T("merge.basePlaceholder")).Disabled(a.busy).Label(i18n.T("merge.baseLabel"))
-		ui.TextInput(c.Key("merge-output"), &a.mergeOutput).Grow(1).Placeholder(i18n.T("merge.outputPlaceholder")).Disabled(a.busy).Label(i18n.T("merge.outputLabel"))
-		saveBtn := ui.PrimaryButton(c, "").Label(i18n.T("merge.save")).Padding(4, 10).Gap(4).Radius(5).Disabled(a.busy || a.mergeBuffer == nil)
-		saveBtn.OnClick(a.saveMerge)
-		saveBtn.Children(func() {
-			ui.Icon(c, iconSave).Size(11, 11)
-			ui.Text(c, i18n.T("merge.save")).FontSize(11).Bold().SingleLine()
+	// 主窗口在路径区显示基准与输出；独立窗口没有路径区，在这里显示。
+	if a.detached {
+		ui.Row(c).Padding(6, 14).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+			a.mergeInputsRow(c, pal)
 		})
-	})
+	}
 	if a.mergeResult == nil || a.mergeBuffer == nil {
 		if a.err == "" {
 			a.modeEmptyView(c, pal, 2)

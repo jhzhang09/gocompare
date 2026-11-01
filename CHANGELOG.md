@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-01
+
+### Changed
+
+- **Open Merge Window** now sits in the action toolbar right after **Reset**, in File Compare and Text Merge only. It no longer appears twice in Text Merge, and is gone from modes that cannot merge text (scratch text, folders, tables, pictures, media tags, versions), where it always failed.
+- **Diff Options** and its drawer appear only in modes that have options (Text Compare, File Compare, Folder Compare), so the other modes no longer show an empty bar. The open/closed state is kept when switching modes.
+- Text Merge shows the base file, output path and **Save output** in one row under the left/right paths, independent of the options drawer.
+- File Compare shows its options (ignore whitespace, ignore blank lines, wrap, inline diff) before any files are loaded, so they can be set up front and the layout no longer jumps after comparing.
+
 ## [0.3.0] - 2026-11-01
 
 ### Added
@@ -51,7 +60,8 @@ First public release.
 - Merges treat a missing final newline as a change; merge output can be saved repeatedly.
 - `.reg` exports in UTF-16 with continued hex lines and ID3v2.4 tags are parsed correctly.
 
-[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/jhzhang09/gocompare/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/jhzhang09/gocompare/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jhzhang09/gocompare/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jhzhang09/gocompare/releases/tag/v0.1.0

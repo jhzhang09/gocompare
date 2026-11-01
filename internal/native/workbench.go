@@ -275,14 +275,6 @@ func (a *workspaceState) view(c *ui.Context) {
 						ui.Text(c, i18n.T("action.backToFolder")).FontSize(11).SingleLine()
 					})
 				}
-				if a.kind == kindMerge {
-					winBtn := ui.Button(c, "").Label(i18n.T("action.openMerge")).Padding(4, 9).Gap(4).Radius(6)
-					winBtn.OnClick(a.openMergeWindow)
-					winBtn.Children(func() {
-						ui.Icon(c, iconExternal).Size(12, 12)
-						ui.Text(c, i18n.T("action.openMerge")).FontSize(11).SingleLine()
-					})
-				}
 				if a.busy || a.compareRunning {
 					ui.Spinner(c).Size(14, 14)
 					cancelBtn := ui.Button(c, i18n.T("action.cancelTask")).Padding(4, 8).Radius(6).Background(pal.dangerBg).Border(1, pal.dangerFg.Alpha(0.25)).TextColor(pal.dangerFg).FontSize(11)
@@ -294,15 +286,18 @@ func (a *workspaceState) view(c *ui.Context) {
 						}
 					})
 				}
-				optBtn := ui.Button(c, "").Label(i18n.T("action.options")).Padding(4, 9).Gap(4).Radius(6)
-				if a.optionsOpen {
-					optBtn.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35)).TextColor(pal.baseAccent)
+				// 只有存在比较选项的模式才提供抽屉开关，避免打开一条空抽屉。
+				if a.hasOptions() {
+					optBtn := ui.Button(c, "").Label(i18n.T("action.options")).Padding(4, 9).Gap(4).Radius(6)
+					if a.optionsOpen {
+						optBtn.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35)).TextColor(pal.baseAccent)
+					}
+					optBtn.OnClick(func() { a.optionsOpen = !a.optionsOpen })
+					optBtn.Children(func() {
+						ui.Icon(c, iconSliders).Size(12, 12)
+						ui.Text(c, i18n.T("action.options")).FontSize(11).SingleLine()
+					})
 				}
-				optBtn.OnClick(func() { a.optionsOpen = !a.optionsOpen })
-				optBtn.Children(func() {
-					ui.Icon(c, iconSliders).Size(12, 12)
-					ui.Text(c, i18n.T("action.options")).FontSize(11).SingleLine()
-				})
 			})
 
 			if a.kind != kindScratch {
@@ -330,6 +325,12 @@ func (a *workspaceState) view(c *ui.Context) {
 						})
 					}
 				})
+				// 文本合并的基准与输出路径和左右来源同属输入，常驻显示，不受比较选项开关影响。
+				if a.kind == kindMerge {
+					ui.Row(c).Padding(6, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+						a.mergeInputsRow(c, pal)
+					})
+				}
 			}
 
 			// 操作命令工具栏（文本比较与各模式完全对齐）
@@ -339,8 +340,8 @@ func (a *workspaceState) view(c *ui.Context) {
 				a.actionToolbar(c, pal)
 			}
 
-			// 比较选项抽屉：无论何种模式，都严格位于操作命令工具栏正下方！
-			if a.optionsOpen {
+			// 比较选项抽屉：位于操作命令工具栏正下方，只在存在比较选项的模式显示。
+			if a.optionsOpen && a.hasOptions() {
 				a.optionsView(c)
 			}
 			if a.err != "" {
@@ -685,6 +686,17 @@ func (a *workspaceState) actionToolbar(c *ui.Context, pal uiPalette) {
 			ui.Text(c, i18n.T("action.reset")).FontSize(11).SingleLine()
 		})
 
+		// 独立合并窗口按左右文本文件逐行合并，只在文件比较和文本合并提供，位置固定在重置之后。
+		if a.canOpenMerge() {
+			ui.Divider(c).Height(16).Margin(0, 2)
+			winBtn := ui.Button(c, "").Label(i18n.T("action.openMerge")).Padding(4, 9).Gap(4).Radius(6).Disabled(a.busy)
+			winBtn.OnClick(a.openMergeWindow)
+			winBtn.Children(func() {
+				ui.Icon(c, iconExternal).Size(11, 11)
+				ui.Text(c, i18n.T("action.openMerge")).FontSize(11).SingleLine()
+			})
+		}
+
 		if a.kind == kindFile && a.panes[0] != nil {
 			ui.Divider(c).Height(16).Margin(0, 2)
 			ready := a.activeDiff().ComparisonReady() && !a.busy && !a.compareRunning && a.compareErr == nil
@@ -801,27 +813,28 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 	})
 }
 
+// hasOptions 报告当前模式是否有比较选项；没有选项的模式不显示抽屉和开关。
+func (a *workspaceState) hasOptions() bool {
+	return a.kind == kindScratch || a.kind == kindFile || a.kind == kindDirectory
+}
+
+// canOpenMerge 报告当前模式的左右来源能否送入独立合并窗口：只有文本文件来源可以。
+func (a *workspaceState) canOpenMerge() bool {
+	return a.kind == kindFile || a.kind == kindMerge
+}
+
 func (a *workspaceState) optionsView(c *ui.Context) {
 	t := c.Theme()
 	pal := paletteFor(t)
 	ui.Column(c).Padding(6, 14).Gap(6).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		ui.Row(c).Gap(8).Wrap().Children(func() {
-			winBtn := ui.Button(c, "").Label(i18n.T("action.openMerge")).Padding(4, 9).Gap(4).Radius(6).Disabled(a.busy)
-			winBtn.OnClick(a.openMergeWindow)
-			winBtn.Children(func() {
-				ui.Icon(c, iconExternal).Size(11, 11)
-				ui.Text(c, i18n.T("action.openMerge")).FontSize(11).SingleLine()
-			})
-
 			if a.kind == kindDirectory {
-				ui.Divider(c).Height(16)
 				ui.TextInput(c.Key("dir-filter"), &a.dirFilter).Label(i18n.T("option.dirFilter")).Placeholder(i18n.T("option.dirFilterPlaceholder")).Grow(1).MinWidth(160).Disabled(a.busy)
 				ui.Checkbox(c, &a.compareMode, i18n.T("option.compareMode")).Disabled(a.busy)
 				ui.Checkbox(c, &a.compareTime, i18n.T("option.compareTime")).Disabled(a.busy)
 				ui.Checkbox(c, &a.followLinks, i18n.T("option.followLinks")).Disabled(a.busy)
 			}
-			if (a.kind == kindFile && a.panes[0] != nil) || a.kind == kindScratch {
-				ui.Divider(c).Height(16)
+			if a.kind == kindFile || a.kind == kindScratch {
 				if a.kind == kindFile {
 					ui.Segmented(c, &a.mode, i18n.T("option.modeCompare"), i18n.T("option.modeEditLeft"), i18n.T("option.modeEditRight"))
 				}
@@ -829,7 +842,7 @@ func (a *workspaceState) optionsView(c *ui.Context) {
 				ui.Checkbox(c, &a.ignoreBlankLines, i18n.T("option.ignoreBlankLines")).OnChange(func() { a.setIgnoreBlankLines(a.ignoreBlankLines) })
 				ui.Checkbox(c, &a.wrap, i18n.T("option.wrap"))
 				ui.Checkbox(c, &a.inlineDiff, i18n.T("option.inlineDiff")).OnChange(func() { a.setInlineDiff(a.inlineDiff) })
-				ui.Button(c, i18n.T("action.recompute")).Padding(4, 8).Radius(6).FontSize(11).OnClick(a.recompute)
+				ui.Button(c, i18n.T("action.recompute")).Padding(4, 8).Radius(6).FontSize(11).Disabled(a.kind == kindFile && a.panes[0] == nil).OnClick(a.recompute)
 			}
 		})
 		if a.kind == kindFile && a.panes[0] != nil {

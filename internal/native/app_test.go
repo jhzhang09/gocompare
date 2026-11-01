@@ -1028,3 +1028,65 @@ func TestMergeOutputCanBeSavedRepeatedly(t *testing.T) {
 		t.Fatalf("external change overwritten: err=%q data=%q", a.err, data)
 	}
 }
+
+func TestUnifiedToolbarLayout(t *testing.T) {
+	// 文件比较与文本合并：「打开合并窗口」在操作栏中紧随「重置」，全界面只有一个。
+	for _, kind := range []int{kindFile, kindMerge} {
+		a := &workspaceState{kind: kind, optionsOpen: true}
+		tt := ui.NewTester(a.view, 1380, 880)
+		tt.Frame()
+		resetRect, okReset := tt.Find("重置")
+		openRect, okOpen := tt.Find("打开合并窗口")
+		if !okReset || !okOpen || !overlapY(resetRect, openRect) || openRect.X <= resetRect.X {
+			t.Fatalf("kind %d: open merge should follow reset in the action toolbar: reset=%v %+v open=%v %+v", kind, okReset, resetRect, okOpen, openRect)
+		}
+		// 按钮的无障碍标签和内部文字各算一条；与只出现一次的「重置」按钮比较条数。
+		n, resets := 0, 0
+		for _, s := range tt.Texts() {
+			switch s {
+			case "打开合并窗口":
+				n++
+			case "重置":
+				resets++
+			}
+		}
+		if n != resets {
+			t.Fatalf("kind %d: want exactly one 打开合并窗口 button, got %d texts vs %d for 重置", kind, n, resets)
+		}
+	}
+
+	// 文本合并：没有比较选项，不显示开关和抽屉；基准与输出路径常驻在操作栏上方。
+	m := &workspaceState{kind: kindMerge, optionsOpen: true}
+	mt := ui.NewTester(m.view, 1380, 880)
+	mt.Frame()
+	if mt.HasText("比较选项") {
+		t.Fatal("merge mode has no options and must not show the options toggle")
+	}
+	baseRect, okBase := mt.Find("基准文件，可留空")
+	saveRect, okSave := mt.Find("保存输出")
+	startRect, okStart := mt.Find("开始比较")
+	if !okBase || !okSave || !okStart || !overlapY(baseRect, saveRect) || baseRect.Y >= startRect.Y {
+		t.Fatalf("merge inputs should sit in one row above the action toolbar: base=%v %+v save=%v %+v start=%v %+v", okBase, baseRect, okSave, saveRect, okStart, startRect)
+	}
+
+	// 文件比较：未加载文件前也常驻显示比较选项，抽屉里不再混入动作按钮。
+	f := &workspaceState{kind: kindFile, optionsOpen: true}
+	ft := ui.NewTester(f.view, 1380, 880)
+	ft.Frame()
+	if !ft.HasText("比较选项") || !ft.HasText("忽略空白") {
+		t.Fatal("file compare should show its options before loading files")
+	}
+
+	// 其余模式不能做文本合并，不显示「打开合并窗口」；无选项的模式也不显示抽屉开关。
+	for _, kind := range []int{kindScratch, kindDirectory, kindTable, kindPicture, kindMedia, kindVersion} {
+		a := &workspaceState{kind: kind, optionsOpen: true}
+		tt := ui.NewTester(a.view, 1380, 880)
+		tt.Frame()
+		if tt.HasText("打开合并窗口") {
+			t.Fatalf("kind %d must not offer the merge window", kind)
+		}
+		if got, want := tt.HasText("比较选项"), a.hasOptions(); got != want {
+			t.Fatalf("kind %d: options toggle shown=%v, want %v", kind, got, want)
+		}
+	}
+}
