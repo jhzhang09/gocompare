@@ -1,6 +1,9 @@
 package native
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -56,4 +59,48 @@ func TestSettingsModalAndOptionsDefaultOpen(t *testing.T) {
 
 	// Restore language to ZhCN
 	i18n.SetLanguage(i18n.ZhCN)
+}
+
+func TestSettingsCheckUpdate(t *testing.T) {
+	i18n.SetLanguage(i18n.ZhCN)
+	a := &workspaceState{
+		settingsOpen: true,
+	}
+	tt := ui.NewTester(a.view, 1380, 880)
+	tt.Frame()
+
+	if !tt.HasText("软件更新") {
+		t.Fatal("expected 软件更新 section in settings modal")
+	}
+	if !tt.HasText("检查更新") {
+		t.Fatal("expected 检查更新 button in settings modal")
+	}
+
+	// Directly invoke checkForUpdates with simulated result
+	a.updateStatus = "当前已是最新版本"
+	tt.Frame()
+	if !tt.HasText("当前已是最新版本") {
+		t.Fatal("expected status update in settings modal")
+	}
+}
+
+func TestCheckForUpdatesKeepsRunningJob(t *testing.T) {
+	i18n.SetLanguage(i18n.ZhCN)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tag_name":"v999.0.0","html_url":"https://example.com/release"}`))
+	}))
+	defer srv.Close()
+	canceled := false
+	a := &workspaceState{busy: true, cancel: func() { canceled = true }}
+	a.checkForUpdates(srv.URL)
+	if !a.busy || a.cancel == nil {
+		t.Fatal("update check must not reset the running job's busy state or cancel func")
+	}
+	a.cancel()
+	if !canceled {
+		t.Fatal("running job's cancel func was replaced")
+	}
+	if a.updateChecking || a.updateURL != "https://example.com/release" || !strings.Contains(a.updateStatus, "v999.0.0") {
+		t.Fatalf("status %q url %q", a.updateStatus, a.updateURL)
+	}
 }

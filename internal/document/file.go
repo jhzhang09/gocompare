@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"gocompare/internal/doctext"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,16 +18,20 @@ const MaxBytes = 16 << 20
 // ErrChanged 表示文件在加载后已被其他程序修改。
 var ErrChanged = errors.New("file changed on disk")
 
+// ErrReadOnly 表示不可逆转换得到的文档禁止保存。
+var ErrReadOnly = errors.New("converted document is read-only")
+
 // File 保留文本与原始文件信息；Text 使用 LF，保存时还原编码、BOM 和换行。
 // Encoding 为空时按 utf-8 处理。
 type File struct {
-	Path     string
-	Text     string
-	Encoding string
-	BOM      bool
-	CRLF     bool
-	digest   [32]byte
-	info     os.FileInfo
+	Path      string
+	Text      string
+	Encoding  string
+	BOM       bool
+	CRLF      bool
+	converted bool
+	digest    [32]byte
+	info      os.FileInfo
 }
 
 // Read 读取普通 UTF-8 文件；其他已声明编码使用 ReadEncoded。
@@ -41,6 +46,13 @@ func ReadDetected(ctx context.Context, path string) (*File, error) {
 	full, data, info, err := readRaw(ctx, path)
 	if err != nil {
 		return nil, err
+	}
+	// RTF 本身是文本，保持按源码读取和编辑的既有行为；只有 docx、PDF 这类无法按文本读取的格式才自动转换为只读文本。
+	if doctext.Supports(full, data) && !doctext.IsRTF(full, data) {
+		text, docErr := doctext.Convert(full, data)
+		if docErr == nil {
+			return &File{Path: full, Text: text, converted: true, Encoding: "utf-8", BOM: false, CRLF: false, digest: sha256.Sum256(data), info: info}, nil
+		}
 	}
 	encoding := detectEncoding(data)
 	if encoding == "" {
@@ -111,7 +123,7 @@ func readRaw(ctx context.Context, path string) (string, []byte, os.FileInfo, err
 }
 
 // Save 通过同目录临时文件替换原文件并保留其权限；外部变化时拒绝覆盖。
-// 返回新的基线，不修改调用者持有的 File。
+// 返回新的基线，不修改调用者持有的 File。转换文档返回 ErrReadOnly。
 func (d *File) Save(ctx context.Context, text string) (*File, error) {
 	if d.Missing() {
 		if err := ctx.Err(); err != nil {
@@ -191,3 +203,19 @@ func EmptyAt(path string) (*File, error) {
 	return &File{Path: full, Encoding: "utf-8"}, nil
 }
 func (d *File) Missing() bool { return d.info == nil }
+
+// ReadMergeable 读取用于合并的文本。转换文档返回 ErrReadOnly：
+// 提取文本与源格式不对应，合并结果既不能写回源格式，也会把提取文本混进其他文本文件。
+func ReadMergeable(ctx context.Context, path string) (*File, error) {
+	f, err := ReadDetected(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if f.ReadOnly() {
+		return nil, fmt.Errorf("%s: %w", f.Path, ErrReadOnly)
+	}
+	return f, nil
+}
+
+// ReadOnly 表示文档是否由不可逆转换生成。
+func (d *File) ReadOnly() bool { return d.converted }

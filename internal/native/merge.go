@@ -134,14 +134,14 @@ func (a *workspaceState) loadMerge() {
 		return
 	}
 	a.job(func(ctx context.Context) {
-		lf, err := document.ReadDetected(ctx, left)
+		lf, err := document.ReadMergeable(ctx, left)
 		var rf, bf *document.File
 		var result merge.Result
 		if err == nil {
-			rf, err = document.ReadDetected(ctx, right)
+			rf, err = document.ReadMergeable(ctx, right)
 		}
 		if err == nil && base != "" {
-			bf, err = document.ReadDetected(ctx, base)
+			bf, err = document.ReadMergeable(ctx, base)
 			if err == nil {
 				result, err = merge.MergeThree(bf.Text, lf.Text, rf.Text)
 			}
@@ -176,6 +176,7 @@ func (a *workspaceState) installMerge(left *document.File, result merge.Result) 
 	a.panes = [2]*pane{}
 	a.directoryRows = nil
 	a.syncPlan = nil
+	a.dirMergeDecisions = nil
 	a.kind = kindMerge
 	a.mergeLeft = left
 	a.mergeResult = &result

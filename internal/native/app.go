@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -16,13 +17,16 @@ import (
 	"gocompare/internal/brand"
 	"gocompare/internal/compare"
 	"gocompare/internal/config"
+	"gocompare/internal/dirmerge"
 	"gocompare/internal/document"
 	"gocompare/internal/i18n"
 	"gocompare/internal/media"
 	"gocompare/internal/merge"
 	"gocompare/internal/operations"
 	"gocompare/internal/picture"
+	"gocompare/internal/table"
 	"gocompare/internal/textcompare"
+	"gocompare/internal/updater"
 )
 
 // 工作区模式编号，作为模式会话的键；新增模式只能追加，不能重排。
@@ -34,6 +38,7 @@ const (
 	kindMedia
 	kindVersion
 	kindScratch
+	kindTable
 )
 
 type pane struct {
@@ -59,16 +64,17 @@ type modeSession struct {
 	anchorRightSet bool
 	mode           int
 
-	directoryRoots   [2]string
-	directoryRows    []compare.Entry
-	directoryList    ui.ListState
-	syncPlan         *operations.Plan
-	dirFilter        string
-	compareMode      bool
-	compareTime      bool
-	followLinks      bool
-	closedDirs       map[string]bool
-	directoryOptions compare.ScanOptions
+	directoryRoots    [2]string
+	directoryRows     []compare.Entry
+	directoryList     ui.ListState
+	syncPlan          *operations.Plan
+	dirMergeDecisions []dirmerge.Decision
+	dirFilter         string
+	compareMode       bool
+	compareTime       bool
+	followLinks       bool
+	closedDirs        map[string]bool
+	directoryOptions  compare.ScanOptions
 
 	mergeBase   string
 	mergeOutput string
@@ -101,6 +107,10 @@ type modeSession struct {
 	infoDiffs []string
 	infoReady bool
 
+	tableSheets [2][]table.Sheet
+	tableDiffs  []table.Diff
+	tableReady  bool
+
 	message string
 }
 
@@ -113,34 +123,35 @@ type workspaceState struct {
 	compareIgnoreSpace bool
 	ignoreBlankLines   bool
 	// 忽略空行时比较视图换成去除空行的只读副本，用户缓冲区和保存基线保持原样。
-	blankPanes       [2]*pane
-	blankSources     [2]*editor.Buffer
-	blankVersions    [2]uint64
-	blankDiff        editor.DiffState
-	inlineDiff       bool
-	modeSessions     map[int]*modeSession
-	closedDirs       map[string]bool
-	dirSearch        string
-	directoryOptions compare.ScanOptions
-	allowMissing     bool
-	win              *mygo.Window
-	icon             *ui.Bitmap
-	backupDir        string
-	panes            [2]*pane
-	paths            [2]string
-	kind             int
-	directoryRoots   [2]string
-	directoryRows    []compare.Entry
-	directoryList    ui.ListState
-	onlyDifferences  bool
-	dirFilter        string
-	compareMode      bool
-	compareTime      bool
-	followLinks      bool
-	scanSeen         []string
-	scanPath         string
-	syncChoice       string
-	syncPlan         *operations.Plan
+	blankPanes        [2]*pane
+	blankSources      [2]*editor.Buffer
+	blankVersions     [2]uint64
+	blankDiff         editor.DiffState
+	inlineDiff        bool
+	modeSessions      map[int]*modeSession
+	closedDirs        map[string]bool
+	dirSearch         string
+	directoryOptions  compare.ScanOptions
+	allowMissing      bool
+	win               *mygo.Window
+	icon              *ui.Bitmap
+	backupDir         string
+	panes             [2]*pane
+	paths             [2]string
+	kind              int
+	directoryRoots    [2]string
+	directoryRows     []compare.Entry
+	directoryList     ui.ListState
+	onlyDifferences   bool
+	dirFilter         string
+	compareMode       bool
+	compareTime       bool
+	followLinks       bool
+	scanSeen          []string
+	scanPath          string
+	syncChoice        string
+	syncPlan          *operations.Plan
+	dirMergeDecisions []dirmerge.Decision
 
 	confirmSync    bool
 	syncGen        uint64
@@ -189,6 +200,11 @@ type workspaceState struct {
 	infoDiffs []string
 	infoReady bool
 
+	tableGen    uint64
+	tableSheets [2][]table.Sheet
+	tableDiffs  []table.Diff
+	tableReady  bool
+
 	compareGeneration uint64
 	compareRequested  bool
 	compareBuffers    [2]*editor.Buffer
@@ -209,6 +225,10 @@ type workspaceState struct {
 
 	scratchPanes [2]*pane
 	scratchDiff  editor.DiffState
+
+	updateChecking bool
+	updateStatus   string
+	updateURL      string
 
 	diff    editor.DiffState
 	mode    int
@@ -405,6 +425,40 @@ func (a *workspaceState) job(fn func(context.Context)) {
 		go run()
 	}
 }
+
+// checkForUpdates 独立于 a.job 运行：更新检查可以和比较任务并行，
+// 不能覆盖当前任务的 cancel，也不能在任务未完成时把 busy 复位。
+func (a *workspaceState) checkForUpdates(customURL string) {
+	if a.updateChecking {
+		return
+	}
+	a.updateChecking = true
+	a.updateStatus = i18n.T("settings.checkingUpdate")
+	a.updateURL = ""
+	run := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		res, err := updater.Check(ctx, customURL, brand.AppVersion(), updater.ProductApp)
+		a.publish(func() {
+			a.updateChecking = false
+			if err != nil {
+				a.updateStatus = i18n.T("settings.updateFailed") + ": " + err.Error()
+				return
+			}
+			if res.HasUpdate {
+				a.updateStatus = i18n.TArgs("settings.updateAvailable", res.LatestVersion)
+				a.updateURL = res.DownloadURL
+			} else {
+				a.updateStatus = i18n.T("settings.updateLatest")
+			}
+		})
+	}
+	if a.win == nil {
+		run()
+	} else {
+		go run()
+	}
+}
 func (a *workspaceState) load() {
 	if a.busy {
 		return
@@ -434,6 +488,10 @@ func (a *workspaceState) load() {
 	}
 	if a.kind == kindVersion {
 		a.loadVersion()
+		return
+	}
+	if a.kind == kindTable {
+		a.loadTable()
 		return
 	}
 	a.job(func(ctx context.Context) {
@@ -527,6 +585,10 @@ func (a *workspaceState) apply(side int) {
 	diff := a.activeDiff()
 	panes := a.activePanes()
 	if a.busy || a.compareRunning || a.compareErr != nil || panes[0] == nil || !diff.ComparisonReady() {
+		return
+	}
+	if panes[side].file != nil && panes[side].file.ReadOnly() {
+		a.err = document.ErrReadOnly.Error()
 		return
 	}
 	hunks := diff.Hunks()
@@ -747,53 +809,57 @@ func (a *workspaceState) saveModeSession(kind int) {
 	}
 	anchors := append([]textcompare.Anchor(nil), a.anchors...)
 	a.modeSessions[kind] = &modeSession{
-		paths:            a.paths,
-		panes:            a.panes,
-		diff:             a.diff,
-		anchors:          anchors,
-		anchorLeft:       a.anchorLeft,
-		anchorRight:      a.anchorRight,
-		anchorLeftSet:    a.anchorLeftSet,
-		anchorRightSet:   a.anchorRightSet,
-		mode:             a.mode,
-		directoryRoots:   a.directoryRoots,
-		directoryRows:    a.directoryRows,
-		directoryList:    a.directoryList,
-		syncPlan:         a.syncPlan,
-		dirFilter:        a.dirFilter,
-		compareMode:      a.compareMode,
-		compareTime:      a.compareTime,
-		followLinks:      a.followLinks,
-		closedDirs:       closed,
-		directoryOptions: a.directoryOptions,
-		mergeBase:        a.mergeBase,
-		mergeOutput:      a.mergeOutput,
-		mergeResult:      a.mergeResult,
-		mergeRows:        a.mergeRows,
-		mergeAlign:       a.mergeAlign,
-		mergeBuffer:      a.mergeBuffer,
-		mergeEdit:        a.mergeEdit,
-		mergeLeft:        a.mergeLeft,
-		mergeSaved:       a.mergeSaved,
-		pictureLeft:      a.pictureLeft,
-		pictureRight:     a.pictureRight,
-		pictureResult:    a.pictureResult,
-		pictureBitmap:    a.pictureBitmap,
-		pictureMode:      a.pictureMode,
-		pictureTol:       a.pictureTol,
-		pictureZoom:      a.pictureZoom,
-		pictureNote:      a.pictureNote,
-		pictureSummary:   a.pictureSummary,
-		pictureFlips:     a.pictureFlips,
-		mediaLeft:        a.mediaLeft,
-		mediaRight:       a.mediaRight,
-		mediaReady:       a.mediaReady,
-		infoKind:         a.infoKind,
-		infoLeft:         a.infoLeft,
-		infoRight:        a.infoRight,
-		infoDiffs:        append([]string(nil), a.infoDiffs...),
-		infoReady:        a.infoReady,
-		message:          a.message,
+		paths:             a.paths,
+		panes:             a.panes,
+		diff:              a.diff,
+		anchors:           anchors,
+		anchorLeft:        a.anchorLeft,
+		anchorRight:       a.anchorRight,
+		anchorLeftSet:     a.anchorLeftSet,
+		anchorRightSet:    a.anchorRightSet,
+		mode:              a.mode,
+		directoryRoots:    a.directoryRoots,
+		directoryRows:     a.directoryRows,
+		directoryList:     a.directoryList,
+		syncPlan:          a.syncPlan,
+		dirMergeDecisions: a.dirMergeDecisions,
+		dirFilter:         a.dirFilter,
+		compareMode:       a.compareMode,
+		compareTime:       a.compareTime,
+		followLinks:       a.followLinks,
+		closedDirs:        closed,
+		directoryOptions:  a.directoryOptions,
+		mergeBase:         a.mergeBase,
+		mergeOutput:       a.mergeOutput,
+		mergeResult:       a.mergeResult,
+		mergeRows:         a.mergeRows,
+		mergeAlign:        a.mergeAlign,
+		mergeBuffer:       a.mergeBuffer,
+		mergeEdit:         a.mergeEdit,
+		mergeLeft:         a.mergeLeft,
+		mergeSaved:        a.mergeSaved,
+		pictureLeft:       a.pictureLeft,
+		pictureRight:      a.pictureRight,
+		pictureResult:     a.pictureResult,
+		pictureBitmap:     a.pictureBitmap,
+		pictureMode:       a.pictureMode,
+		pictureTol:        a.pictureTol,
+		pictureZoom:       a.pictureZoom,
+		pictureNote:       a.pictureNote,
+		pictureSummary:    a.pictureSummary,
+		pictureFlips:      a.pictureFlips,
+		mediaLeft:         a.mediaLeft,
+		mediaRight:        a.mediaRight,
+		mediaReady:        a.mediaReady,
+		infoKind:          a.infoKind,
+		infoLeft:          a.infoLeft,
+		infoRight:         a.infoRight,
+		infoDiffs:         append([]string(nil), a.infoDiffs...),
+		infoReady:         a.infoReady,
+		tableSheets:       a.tableSheets,
+		tableDiffs:        a.tableDiffs,
+		tableReady:        a.tableReady,
+		message:           a.message,
 	}
 }
 
@@ -816,6 +882,7 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.directoryRows = sess.directoryRows
 	a.directoryList = sess.directoryList
 	a.syncPlan = sess.syncPlan
+	a.dirMergeDecisions = sess.dirMergeDecisions
 	a.dirFilter = sess.dirFilter
 	a.compareMode = sess.compareMode
 	a.compareTime = sess.compareTime
@@ -849,6 +916,9 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.infoRight = sess.infoRight
 	a.infoDiffs = sess.infoDiffs
 	a.infoReady = sess.infoReady
+	a.tableSheets = sess.tableSheets
+	a.tableDiffs = sess.tableDiffs
+	a.tableReady = sess.tableReady
 	if sess.message != "" {
 		a.message = sess.message
 	}

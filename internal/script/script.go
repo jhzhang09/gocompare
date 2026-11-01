@@ -72,15 +72,15 @@ func dispatch(ctx context.Context, fields []string, out io.Writer) (int, error) 
 		if len(fields) != 4 {
 			return 2, fmt.Errorf("merge needs base, left and right")
 		}
-		base, err := document.ReadDetected(ctx, fields[1])
+		base, err := document.ReadMergeable(ctx, fields[1])
 		if err != nil {
 			return 2, err
 		}
-		left, err := document.ReadDetected(ctx, fields[2])
+		left, err := document.ReadMergeable(ctx, fields[2])
 		if err != nil {
 			return 2, err
 		}
-		right, err := document.ReadDetected(ctx, fields[3])
+		right, err := document.ReadMergeable(ctx, fields[3])
 		if err != nil {
 			return 2, err
 		}

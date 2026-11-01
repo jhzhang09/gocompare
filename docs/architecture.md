@@ -56,3 +56,25 @@ MyGo v0.7.3 的 `DiffView` 左侧固定只读，视图中的 `ensure` 会更新�
 `merge` 提供两方和三方行级文本合并，每行连同换行符一起比较，文件末尾有无换行也参与合并与冲突。GUI 只覆盖本窗口上次写出的合并输出。没有祖先时，不同区域都是冲突；有祖先时，单侧修改自动采用，两侧不同修改保留基准、左侧和右侧。决策通过 `Take` 作用于结构化结果，不从冲突标记反解析。不超过 4000 行时沿用原有行对齐；超过后改用 Myers，单份输入超过 100000 行时拒绝计算。`Alignments` 按行给出基准、左侧和右侧原文：未改区域三列相同，单侧修改保留未改一侧，较短的一侧没有对应行。`Take` 只替换输出，不改这些原文。两方合并没有基准列。
 
 原生层通过单个后台 I/O 任务串行调用；文件列表使用稳定路径键和虚拟列表。三方合并在同一工作区用虚拟列表把基准、左侧和右侧放在同一行里滚动，输出编辑器仍在下方。主窗口的「打开合并窗口」另建一份只含合并的窗口状态，不切换当前比较；应用已就绪时才调用 `NewWindow`。CLI 与 GUI 使用相同目录、合并与操作核心。PNG、JPEG 和 GIF 由 `picture.Open` 解码后再做像素比较。工作区的「图片比较」不走文本安装：加载完成后先按左右两侧各自的翻转开关处理图片，再按并排、叠加、差值、容差或替换颜色生成位图，并用 `ui.Bitmap` 的 Pixelated 画到「图片画布」。切换模式或容差时在后台重算，计算期间的新请求合并为一次补算；差异统计随位图缓存，绘制时不扫描像素。适应窗口交给 `ui.Image` 的 Fit 按可用区域缩放。GIF 只显示第一帧，不播放后续帧。工作区的「媒体标签」同样不走文本安装：后台读取两侧 ID3v2 的 `TIT2`、`TPE1` 和 `TALB`，只展示这些文本并标明不能播放。时间推进不改变标签，也不解码音频。`extend` 用版本 1 的 JSON 规格启动外部进程：`compare` 把退出码 0 和 1 当成相同与不同，`convert` 取标准输出，`compress` 读取 `%out` 文件。占位符必须独占一个参数，不经过 shell。失败、超限和取消都不把部分输出当成成功。工作区「目录比较」和 CLI `dir` 把过滤、权限、修改时间和链接策略传给 `CompareDirectories`。扫描顺序只在界面线程追加，父目录早于子项；默认只记录链接，跟随才会检查是否逃出根。应用图标来自嵌入的 PNG，顶栏显示构建信息中的 MyGo 版本。`Run` 在创建窗口前调用 `Dock.SetIcon`；图标设置失败则退出，不打开窗口。工作区「版本与注册表」和 CLI 的 `pe`、`reg` 只读文件：两侧都是注册表 5.00 文本时列出不同的键，否则读取 PE 资源里的 `FileVersion`。这一路不访问实时注册表。
+
+## 表格、远程、压缩包、快照与文档转换
+
+- `table`：解析 CSV、TSV、Excel (.xlsx) 工作表与 HTML `<table>` 节点，支持复合主键对齐、列映射和浮点数容差比较；CLI `table` 通过 `--keys`、`--map`、`--tolerance` 暴露这些选项，GUI `kindTable`「表格比较」模式按行号对齐呈现单元格级差异。
+- `remote`：实现 `Store` 抽象，覆盖 FTP、FTPS、WebDAV、S3 (AWS SigV4)、Dropbox、OneDrive 与 SVN HTTP 子集；SFTP 与 SMB2 只有夹具级消息层，`ParseURL` 明确拒绝 `sftp://`、`smb://`。`webdav+https`、`s3+https`、`svn+https` 走 HTTPS。CLI `remote [--timeout]` 提供 read、write、delete 与 compare 操作。
+- `archive`：支持 zip（读写与 Deflate/Store 压缩）、tar.gz（只读）与 7z（明确拒绝）；CLI `archive` 提供 list、compare 与 pack 跨归档差异对比与打包。
+- `snapshot`：带有 `GOCMPSNP` 头部的无内容目录快照，序列化记录路径、是否目录与文件大小；支持扫描目录构建快照并在脱机环境下进行结构与文件大小对比。
+- `doctext`：将 Word (.docx)、RTF 与 PDF 文档提取为纯文本；PDF 只取内容流（含 FlateDecode）中 Tj/TJ/'/" 操作符的字符串，跳过字体、图片、XRef 等非内容流。`document.ReadDetected` 自动把 docx、PDF 转为只读文本参与比较，RTF 保持按源码编辑；合并入口（CLI、GUI、脚本）通过 `document.ReadMergeable` 拒绝转换文档。
+- `dirmerge`：提供两方与三方目录合并决策引擎，自动对齐相对路径并结合文本冲突检测（Myers/三方对齐），支持合并结果安全写出至独立输出目录；二进制与删除/修改冲突写成 `<path>.left`、`<path>.right`，不生成占位内容；单棵目录树读入上限 256 MiB。GUI 目录工具栏提供「目录合并」预览面板与冲突徽标指示。
+- `updater`：实现版本对比与在线更新检测，支持 GitHub Release 查询、含预发布版的 SemVer 比较及按整词匹配的平台资产选择（区分桌面应用与 CLI 产物，跳过校验和、签名文件），下载地址只接受 https；CLI `check-update` 与 Native 设置弹窗「检查更新」提供更新提示，GUI 检查独立于工作区任务运行。
+- `acl`：在 Unix 读取权限位、属主与属组并比较，每项差异只报告一次；Windows 明确返回不支持。CLI `acl` 子命令输出差异。
+
+### 比较输入与写入边界
+
+- 文档转换不可逆：`document.File.ReadOnly()` 标识转换结果，编辑器只读，保存接口拒绝写入；普通文本仍保留原有保存行为。
+- 目录合并只接受空输出目录，通过 `os.Root` 限制写入范围并排他创建文件，拒绝已有内容及目标目录符号链接。
+- Excel 按行列坐标恢复稀疏单元格；HTML 使用锁定版本 `golang.org/x/net/html` 解析嵌套文本和实体。
+- HTTP、FTP 远程读取与原生表格输入、xlsx 单个部件超过 32 MiB 明确失败，不返回截断内容；SMB 按偏移分块读取至 EOF，写入使用 `FILE_OVERWRITE_IF` 截断旧内容，帧长度超过 24 位上限时拒绝。
+- FTP 数据连接只采用 PASV 返回的端口，主机沿用控制连接对端；路径与凭据中的 CR/LF 被拒绝。
+- 快照解码先验证节点数量与输入长度一致，再分配内存。
+- FTPS URL 使用主机名校验证书；SFTP 尚未建立 SSH 通道、SMB 尚未实现 NTLM/Kerberos、Windows ACL 尚未读取安全描述符，三者明确返回不支持。
+- CLI `archive pack`、`snapshot create` 以排他方式创建输出文件，目标已存在时报错。

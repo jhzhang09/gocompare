@@ -7,9 +7,13 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf16"
@@ -18,6 +22,7 @@ import (
 	"gocompare/internal/compare"
 	"gocompare/internal/extend"
 	"gocompare/internal/integrate"
+	"gocompare/internal/updater"
 	"gocompare/internal/workspace"
 )
 
@@ -751,5 +756,341 @@ func TestVersionFlag(t *testing.T) {
 	var out, stderr bytes.Buffer
 	if code := run([]string{"--version"}, &out, &stderr); code != 0 || out.String() != "gocompare-cli v9.8.7\n" {
 		t.Fatalf("%d %q", code, out.String())
+	}
+}
+
+func TestTableArchiveSnapshotRemoteAndDoctextCLI(t *testing.T) {
+	dir := t.TempDir()
+
+	// 1. Table CLI
+	tLeft := filepath.Join(dir, "left.csv")
+	tRight := filepath.Join(dir, "right.csv")
+	os.WriteFile(tLeft, []byte("id,val\n1,10.0\n2,20.0\n"), 0o600)
+	os.WriteFile(tRight, []byte("id,val\n1,10.005\n2,25.0\n"), 0o600)
+
+	var out, stderr bytes.Buffer
+	// Without tolerance, different
+	if code := run([]string{"table", tLeft, tRight}, &out, &stderr); code != 1 {
+		t.Fatalf("table expected 1, got %d (err: %s)", code, stderr.String())
+	}
+	out.Reset()
+	stderr.Reset()
+	// With keys and tolerance 0.01, row 1 is equal (10.0 vs 10.005), row 2 is diff
+	if code := run([]string{"table", "--keys", "0", "--tolerance", "0.01", tLeft, tRight}, &out, &stderr); code != 1 {
+		t.Fatalf("table expected 1, got %d", code)
+	}
+	if !strings.Contains(out.String(), "20.0 != 25.0") {
+		t.Fatalf("unexpected table output: %s", out.String())
+	}
+	out.Reset()
+	stderr.Reset()
+	// Equal table
+	if code := run([]string{"table", tLeft, tLeft}, &out, &stderr); code != 0 || strings.TrimSpace(out.String()) != "equal" {
+		t.Fatalf("expected table equal 0, got %d %q", code, out.String())
+	}
+
+	// 2. Archive CLI
+	f1 := filepath.Join(dir, "f1.txt")
+	f2 := filepath.Join(dir, "f2.txt")
+	os.WriteFile(f1, []byte("hello"), 0o600)
+	os.WriteFile(f2, []byte("world"), 0o600)
+	zip1 := filepath.Join(dir, "a.zip")
+	zip2 := filepath.Join(dir, "b.zip")
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"archive", "pack", "zip", zip1, f1, f2}, &out, &stderr); code != 0 {
+		t.Fatalf("archive pack: %d %s", code, stderr.String())
+	}
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"archive", "pack", "zip", zip2, f1}, &out, &stderr); code != 0 {
+		t.Fatalf("archive pack 2: %d %s", code, stderr.String())
+	}
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"archive", "list", zip1}, &out, &stderr); code != 0 || !strings.Contains(out.String(), "f1.txt") {
+		t.Fatalf("archive list: %d %s", code, out.String())
+	}
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"archive", "compare", zip1, zip2}, &out, &stderr); code != 1 {
+		t.Fatalf("archive compare diff expected 1, got %d", code)
+	}
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"archive", "compare", zip1, zip1}, &out, &stderr); code != 0 || strings.TrimSpace(out.String()) != "equal" {
+		t.Fatalf("archive compare same expected 0, got %d %s", code, out.String())
+	}
+
+	// 3. Snapshot CLI
+	snapDir := filepath.Join(dir, "snap_src")
+	os.MkdirAll(filepath.Join(snapDir, "sub"), 0o755)
+	os.WriteFile(filepath.Join(snapDir, "sub", "x.txt"), []byte("123"), 0o600)
+	snapFile1 := filepath.Join(dir, "s1.snp")
+	snapFile2 := filepath.Join(dir, "s2.snp")
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"snapshot", "create", snapDir, snapFile1}, &out, &stderr); code != 0 {
+		t.Fatalf("snapshot create: %d %s", code, stderr.String())
+	}
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"snapshot", "list", snapFile1}, &out, &stderr); code != 0 || !strings.Contains(out.String(), "sub/x.txt") {
+		t.Fatalf("snapshot list: %d %s", code, out.String())
+	}
+	// Change file
+	os.WriteFile(filepath.Join(snapDir, "sub", "x.txt"), []byte("123456"), 0o600)
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"snapshot", "create", snapDir, snapFile2}, &out, &stderr); code != 0 {
+		t.Fatalf("snapshot create 2: %d %s", code, stderr.String())
+	}
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"snapshot", "compare", snapFile1, snapFile2}, &out, &stderr); code != 1 {
+		t.Fatalf("snapshot compare diff: %d", code)
+	}
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"snapshot", "compare", snapFile1, snapFile1}, &out, &stderr); code != 0 || strings.TrimSpace(out.String()) != "equal" {
+		t.Fatalf("snapshot compare equal: %d %s", code, out.String())
+	}
+
+	// 4. DocText CLI
+	rtfFile := filepath.Join(dir, "test.rtf")
+	os.WriteFile(rtfFile, []byte("{\\rtf1 Hello \\par DocText}"), 0o600)
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"doctext", rtfFile}, &out, &stderr); code != 0 || out.String() != "Hello DocText" {
+		t.Fatalf("doctext rtf: %d %q", code, out.String())
+	}
+
+	// 5. Remote CLI (WebDAV test server)
+	files := make(map[string][]byte)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		switch r.Method {
+		case http.MethodGet:
+			data, ok := files[p]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Write(data)
+		case http.MethodPut:
+			body, _ := io.ReadAll(r.Body)
+			files[p] = body
+			w.WriteHeader(http.StatusOK)
+		case http.MethodDelete:
+			delete(files, p)
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	u := strings.Replace(srv.URL, "http://", "webdav://", 1) + "/remote.txt"
+	localFile := filepath.Join(dir, "local.txt")
+	os.WriteFile(localFile, []byte("remote content"), 0o600)
+
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"remote", "write", u, localFile}, &out, &stderr); code != 0 {
+		t.Fatalf("remote write: %d %s", code, stderr.String())
+	}
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"remote", "read", u}, &out, &stderr); code != 0 || out.String() != "remote content" {
+		t.Fatalf("remote read: %d %q", code, out.String())
+	}
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"remote", "compare", u, u}, &out, &stderr); code != 0 || strings.TrimSpace(out.String()) != "equal" {
+		t.Fatalf("remote compare equal: %d %s", code, out.String())
+	}
+	out.Reset()
+	stderr.Reset()
+	if code := run([]string{"remote", "delete", u}, &out, &stderr); code != 0 {
+		t.Fatalf("remote delete: %d %s", code, stderr.String())
+	}
+}
+
+func TestDirMergeCLI(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base")
+	left := filepath.Join(dir, "left")
+	right := filepath.Join(dir, "right")
+	outDir := filepath.Join(dir, "merged_out")
+
+	os.MkdirAll(base, 0o755)
+	os.MkdirAll(left, 0o755)
+	os.MkdirAll(right, 0o755)
+
+	os.WriteFile(filepath.Join(base, "f.txt"), []byte("base\n"), 0o600)
+	os.WriteFile(filepath.Join(left, "f.txt"), []byte("left\n"), 0o600)
+	os.WriteFile(filepath.Join(right, "f.txt"), []byte("base\n"), 0o600)
+	os.WriteFile(filepath.Join(right, "r_only.txt"), []byte("r\n"), 0o600)
+
+	var out, stderr bytes.Buffer
+	// 3-way dirmerge: left change adopted, right only adopted -> clean merge (code 0)
+	if code := run([]string{"dirmerge", "--base", base, "--output", outDir, left, right}, &out, &stderr); code != 0 {
+		t.Fatalf("dirmerge expected 0, got %d (%s)", code, stderr.String())
+	}
+	if data, _ := os.ReadFile(filepath.Join(outDir, "f.txt")); string(data) != "left\n" {
+		t.Fatalf("merged f.txt = %q, want left", string(data))
+	}
+	if data, _ := os.ReadFile(filepath.Join(outDir, "r_only.txt")); string(data) != "r\n" {
+		t.Fatalf("merged r_only.txt = %q, want r", string(data))
+	}
+
+	// 2-way dirmerge with conflict
+	out.Reset()
+	stderr.Reset()
+	conflictOut := filepath.Join(dir, "conflict_out")
+	if code := run([]string{"dirmerge", "--output", conflictOut, left, right}, &out, &stderr); code != 1 {
+		t.Fatalf("dirmerge conflict expected 1, got %d", code)
+	}
+	if !strings.Contains(out.String(), "conflict\tf.txt") {
+		t.Fatalf("expected conflict in output, got %s", out.String())
+	}
+}
+
+func TestCheckUpdateCLI(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(updater.Release{
+			TagName: "v9.9.9",
+			Body:    "Major new features",
+			HTMLURL: "https://github.com/jhzhang09/gocompare/releases/tag/v9.9.9",
+		})
+	}))
+	defer ts.Close()
+
+	var out, stderr bytes.Buffer
+	// Test newer available -> code 1
+	code := run([]string{"check-update", "--url", ts.URL}, &out, &stderr)
+	if code != 1 {
+		t.Fatalf("expected code 1 for newer update, got %d, out: %s, err: %s", code, out.String(), stderr.String())
+	}
+	if !strings.Contains(out.String(), "New version available: v9.9.9") {
+		t.Fatalf("expected output to mention v9.9.9, got: %s", out.String())
+	}
+
+	// Test current version already same as remote -> code 0
+	old := brand.Version
+	brand.Version = "v9.9.9"
+	defer func() { brand.Version = old }()
+	out.Reset()
+	stderr.Reset()
+	code = run([]string{"check-update", "--url", ts.URL}, &out, &stderr)
+	if code != 0 {
+		t.Fatalf("expected code 0 when up-to-date, got %d", code)
+	}
+	if !strings.Contains(out.String(), "up to date") {
+		t.Fatalf("expected output to say up to date, got: %s", out.String())
+	}
+}
+
+func TestACLCLI(t *testing.T) {
+	dir := t.TempDir()
+	f1 := filepath.Join(dir, "f1.txt")
+	f2 := filepath.Join(dir, "f2.txt")
+	f3 := filepath.Join(dir, "f3.txt")
+
+	_ = os.WriteFile(f1, []byte("data"), 0o644)
+	_ = os.WriteFile(f2, []byte("data"), 0o644)
+	_ = os.WriteFile(f3, []byte("data"), 0o755)
+
+	var out, stderr bytes.Buffer
+	// 1. Same permissions -> code 0
+	code := run([]string{"acl", f1, f2}, &out, &stderr)
+	if runtime.GOOS == "windows" {
+		if code != 2 || !strings.Contains(stderr.String(), "not supported") {
+			t.Fatalf("unsupported ACL must fail: %d %s", code, stderr.String())
+		}
+		return
+	}
+	if code != 0 {
+		t.Fatalf("expected code 0 for matching permissions, got %d (err: %s)", code, stderr.String())
+	}
+	if !strings.Contains(out.String(), "match") {
+		t.Fatalf("expected output to contain match, got %s", out.String())
+	}
+
+	// 2. Different permissions -> code 1
+	out.Reset()
+	stderr.Reset()
+	code = run([]string{"acl", f1, f3}, &out, &stderr)
+	if code != 1 {
+		t.Fatalf("expected code 1 for differing permissions, got %d", code)
+	}
+
+	// 3. Missing file -> code 2
+	out.Reset()
+	stderr.Reset()
+	code = run([]string{"acl", f1, filepath.Join(dir, "missing.txt")}, &out, &stderr)
+	if code != 2 {
+		t.Fatalf("expected code 2 on missing file, got %d", code)
+	}
+}
+
+func TestCLIOutputsNeverOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.txt")
+	os.WriteFile(a, []byte("a"), 0o600)
+	existing := filepath.Join(dir, "existing")
+	os.WriteFile(existing, []byte("keep"), 0o600)
+	var out, stderr bytes.Buffer
+	if code := run([]string{"archive", "pack", "zip", existing, a}, &out, &stderr); code != 2 {
+		t.Fatalf("pack overwrote existing output: %d", code)
+	}
+	if code := run([]string{"snapshot", "create", dir, existing}, &out, &stderr); code != 2 {
+		t.Fatalf("snapshot overwrote existing output: %d", code)
+	}
+	if data, _ := os.ReadFile(existing); string(data) != "keep" {
+		t.Fatalf("existing output changed: %q", data)
+	}
+	sub := filepath.Join(dir, "sub")
+	os.Mkdir(sub, 0o700)
+	b := filepath.Join(sub, "a.txt")
+	os.WriteFile(b, []byte("b"), 0o600)
+	stderr.Reset()
+	if code := run([]string{"archive", "pack", "zip", filepath.Join(dir, "dup.zip"), a, b}, &out, &stderr); code != 2 || !strings.Contains(stderr.String(), "duplicate") {
+		t.Fatalf("duplicate entry names accepted: %d %s", code, stderr.String())
+	}
+}
+
+func TestCLITableMapAndValidation(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "l.csv")
+	right := filepath.Join(dir, "r.csv")
+	os.WriteFile(left, []byte("id,name\n1,a\n"), 0o600)
+	os.WriteFile(right, []byte("name,id\na,1\n"), 0o600)
+	var out, stderr bytes.Buffer
+	if code := run([]string{"table", "--keys", "0", "--map", "1,0", left, right}, &out, &stderr); code != 0 {
+		t.Fatalf("mapped columns should match: %d %s %s", code, out.String(), stderr.String())
+	}
+	for _, args := range [][]string{
+		{"table", "--keys", "-1", left, right},
+		{"table", "--map", "0,-2", left, right},
+		{"table", "--tolerance", "-1", left, right},
+	} {
+		if code := run(args, &out, &stderr); code != 2 {
+			t.Fatalf("%v accepted: %d", args, code)
+		}
+	}
+}
+
+func TestCLIRemoteTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	u := strings.Replace(srv.URL, "http://", "webdav://", 1) + "/slow"
+	var out, stderr bytes.Buffer
+	start := time.Now()
+	if code := run([]string{"remote", "--timeout", "200ms", "read", u}, &out, &stderr); code != 2 {
+		t.Fatalf("timeout read: %d", code)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatal("remote read ignored --timeout")
 	}
 }

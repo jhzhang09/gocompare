@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"gocompare/internal/compare"
+	"gocompare/internal/dirmerge"
 	"gocompare/internal/i18n"
 	"gocompare/internal/operations"
 )
@@ -70,6 +71,7 @@ func (a *workspaceState) installDirectory(paths [2]string, rows []compare.Entry)
 	a.compareRequested = false
 	a.panes = [2]*pane{}
 	a.syncPlan = nil
+	a.dirMergeDecisions = nil
 	if a.syncChoice == "" {
 		a.syncChoice = i18n.T(syncModes[0].key)
 	}
@@ -144,6 +146,10 @@ func (a *workspaceState) directoryView(c *ui.Context) {
 		a.syncPreviewView(c)
 		return
 	}
+	if a.dirMergeDecisions != nil {
+		a.dirMergePreviewView(c)
+		return
+	}
 	t := c.Theme()
 	pal := paletteFor(t)
 	rows := a.visibleDirectoryRows()
@@ -174,6 +180,12 @@ func (a *workspaceState) directoryView(c *ui.Context) {
 		syncBtn.Children(func() {
 			ui.Icon(c, iconSync).Size(11, 11)
 			ui.Text(c, i18n.T("sync.preview")).FontSize(11).SingleLine()
+		})
+		dirMergeBtn := ui.Button(c, "").Label(i18n.T("dirmerge.action")).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
+		dirMergeBtn.OnClick(a.previewDirMerge)
+		dirMergeBtn.Children(func() {
+			ui.Icon(c, iconGitMerge).Size(11, 11)
+			ui.Text(c, i18n.T("dirmerge.action")).FontSize(11).SingleLine()
 		})
 		if a.lastJournal != "" && !a.syncRolledBack {
 			undoBtn := ui.Button(c, "").Label(i18n.T("sync.undo")).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
@@ -460,4 +472,95 @@ func (a *workspaceState) executeSync() {
 			a.loadDirectory(a.directoryRoots)
 		})
 	})
+}
+
+func (a *workspaceState) previewDirMerge() {
+	if a.busy {
+		return
+	}
+	roots := a.directoryRoots
+	if roots[0] == "" || roots[1] == "" {
+		return
+	}
+	a.job(func(ctx context.Context) {
+		decisions, err := dirmerge.Two(ctx, roots[0], roots[1])
+		a.publish(func() {
+			a.busy = false
+			if err != nil {
+				a.err = err.Error()
+				return
+			}
+			a.dirMergeDecisions = decisions
+			a.directoryList = ui.ListState{}
+			a.message = i18n.TArgs("dirmerge.previewDone", len(decisions))
+		})
+	})
+}
+
+func (a *workspaceState) dirMergePreviewView(c *ui.Context) {
+	t := c.Theme()
+	pal := paletteFor(t)
+	decisions := a.dirMergeDecisions
+	conflicts := 0
+	for _, d := range decisions {
+		if d.Kind == dirmerge.KindConflict {
+			conflicts++
+		}
+	}
+	ui.Row(c).Height(38).Padding(0, 16).Gap(10).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Button(c, i18n.T("sync.back")).Padding(4, 9).Radius(5).FontSize(11).OnClick(func() { a.dirMergeDecisions = nil; a.directoryList = ui.ListState{} })
+		statusPill(c, i18n.TArgs("dirmerge.items", len(decisions)), pal.baseAccent, pal.baseBg)
+		if conflicts > 0 {
+			statusPill(c, i18n.TArgs("dirmerge.conflicts", conflicts), pal.dangerFg, pal.dangerBg)
+		} else {
+			statusPill(c, i18n.T("dirmerge.clean"), pal.successFg, pal.successBg)
+		}
+		ui.Box(c).Grow(1)
+	})
+	if len(decisions) == 0 {
+		ui.Column(c).Grow(1).FillWidth().Center().Gap(6).Children(func() {
+			ui.Icon(c, iconCheck).Size(22, 22).TextColor(pal.successFg)
+			ui.Text(c, i18n.T("dirmerge.empty")).FontSize(15).Bold()
+		})
+		return
+	}
+	ui.List(c, &a.directoryList, len(decisions)).Grow(1).FillWidth().ItemKey(func(i int) any { return decisions[i].Path }).Rows(func(row ui.ListRow) {
+		item := decisions[row.Index]
+		rc := row.Context
+		fg, bg := pal.baseAccent, pal.baseBg
+		switch item.Kind {
+		case dirmerge.KindConflict:
+			fg, bg = pal.dangerFg, pal.dangerBg
+		case dirmerge.KindLeft:
+			fg, bg = pal.leftAccent, pal.leftBg
+		case dirmerge.KindRight:
+			fg, bg = pal.rightAccent, pal.rightBg
+		case dirmerge.KindDelete:
+			fg, bg = pal.dangerFg, pal.dangerBg
+		case dirmerge.KindMerged:
+			fg, bg = pal.successFg, pal.successBg
+		}
+		rowBg := ui.Transparent
+		if row.Index%2 == 1 {
+			rowBg = pal.subtleSurface.Alpha(0.35)
+		}
+		ui.Row(rc).Height(34).Padding(0, 14).Gap(10).Background(rowBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder.Alpha(0.5)).Children(func() {
+			statusPill(rc, i18n.T("dirmerge.kind."+item.Kind), fg, bg)
+			ui.Text(rc, item.Path).FontSize(12).Grow(1).SingleLine()
+			if reason := dirMergeReason(item.Reason); reason != "" {
+				ui.Text(rc, reason).FontSize(11).TextColor(pal.dangerFg).SingleLine()
+			}
+		})
+	})
+}
+
+// dirMergeReason 把 dirmerge 的冲突原因映射为界面文案。
+func dirMergeReason(reason string) string {
+	switch reason {
+	case "binary conflict":
+		return i18n.T("dirmerge.reason.binary")
+	case "delete/modify conflict":
+		return i18n.T("dirmerge.reason.deleteModify")
+	}
+	return reason
 }

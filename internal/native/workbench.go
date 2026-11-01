@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"gocompare/internal/brand"
 	"gocompare/internal/document"
 	"gocompare/internal/i18n"
 )
@@ -29,7 +30,7 @@ func (a *workspaceState) selectKind(kind int) {
 		a.stopComparison()
 		a.compareRequested = false
 		currentPaths := a.paths
-		hadResult := a.panes[0] != nil || a.directoryRows != nil || a.mergeResult != nil || a.pictureResult != nil || a.mediaReady || a.infoReady
+		hadResult := a.panes[0] != nil || a.directoryRows != nil || a.mergeResult != nil || a.pictureResult != nil || a.mediaReady || a.infoReady || a.tableReady
 
 		if hadResult || currentPaths[0] != "" || currentPaths[1] != "" {
 			a.saveModeSession(a.kind)
@@ -41,10 +42,12 @@ func (a *workspaceState) selectKind(kind int) {
 			a.panes = [2]*pane{}
 			a.directoryRows = nil
 			a.syncPlan = nil
+			a.dirMergeDecisions = nil
 			a.clearMerge()
 			a.clearPictures()
 			a.clearMedia()
 			a.clearVersion()
+			a.clearTable()
 			a.allowMissing = false
 			a.directoryRoots = [2]string{}
 			if !hadResult {
@@ -107,6 +110,7 @@ var modes = []modeItem{
 	{kind: kindFile, msgKey: "mode.file", icon: iconFileDiff},
 	{kind: kindDirectory, msgKey: "mode.directory", icon: iconFolderDiff},
 	{kind: kindMerge, msgKey: "mode.merge", icon: iconGitMerge},
+	{kind: kindTable, msgKey: "mode.table", icon: iconTable},
 	{kind: kindPicture, msgKey: "mode.picture", icon: iconImageDiff},
 	{kind: kindMedia, msgKey: "mode.media", icon: iconMediaTag},
 	{kind: kindVersion, msgKey: "mode.version", icon: iconVersionReg},
@@ -317,6 +321,8 @@ func (a *workspaceState) view(c *ui.Context) {
 				a.mediaView(c)
 			case a.kind == kindVersion:
 				a.versionView(c)
+			case a.kind == kindTable:
+				a.tableView(c)
 			case a.kind == kindDirectory && a.directoryRows != nil:
 				a.directoryView(c)
 			case a.kind == kindFile && a.panes[0] != nil:
@@ -467,6 +473,8 @@ func (a *workspaceState) canReset() bool {
 		return a.mediaReady
 	case kindVersion:
 		return a.infoReady
+	case kindTable:
+		return a.tableReady
 	case kindScratch:
 		return a.scratchPanes[0] != nil && (a.scratchPanes[0].buffer.Len() > 0 || a.scratchPanes[1].buffer.Len() > 0)
 	}
@@ -494,6 +502,7 @@ func (a *workspaceState) resetCurrentMode() {
 		a.directoryRows = nil
 		a.directoryRoots = [2]string{"", ""}
 		a.syncPlan = nil
+		a.dirMergeDecisions = nil
 		a.syncChoice = ""
 		a.dirFilter = ""
 		a.directoryNote = ""
@@ -510,6 +519,8 @@ func (a *workspaceState) resetCurrentMode() {
 		a.clearMedia()
 	case kindVersion:
 		a.clearVersion()
+	case kindTable:
+		a.clearTable()
 	case kindScratch:
 		// 重建面板和差异状态；只清空差异状态会让比较视图失去缓冲区，无法继续输入。
 		a.stopComparison()
@@ -560,6 +571,11 @@ func (a *workspaceState) modeEmptyView(c *ui.Context, pal uiPalette, kind int) {
 		f1TKey, f1DKey = "intro.versionFeat1Title", "intro.versionFeat1Desc"
 		f2TKey, f2DKey = "intro.versionFeat2Title", "intro.versionFeat2Desc"
 		f3TKey, f3DKey = "intro.versionFeat3Title", "intro.versionFeat3Desc"
+	case kindTable:
+		tagKey, titleKey, descKey = "intro.tableTag", "intro.tableTitle", "intro.tableDesc"
+		f1TKey, f1DKey = "intro.tableFeat1Title", "intro.tableFeat1Desc"
+		f2TKey, f2DKey = "intro.tableFeat2Title", "intro.tableFeat2Desc"
+		f3TKey, f3DKey = "intro.tableFeat3Title", "intro.tableFeat3Desc"
 	default: // 0: 文件比较
 		tagKey, titleKey, descKey = "intro.fileTag", "intro.fileTitle", "intro.fileDesc"
 		f1TKey, f1DKey = "intro.fileFeat1Title", "intro.fileFeat1Desc"
@@ -818,6 +834,23 @@ func (a *workspaceState) settingsModal(c *ui.Context, pal uiPalette) {
 
 			ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
 
+			ui.Column(c).FillWidth().Gap(6).Children(func() {
+				ui.Text(c, i18n.T("settings.updateSection")).FontSize(12).Bold().TextColor(pal.sidebarText)
+				ui.Row(c).FillWidth().Gap(8).Children(func() {
+					ui.Text(c, i18n.TArgs("settings.currentVersion", brand.AppVersion())).FontSize(11).TextColor(t.TextMuted)
+					checkBtn := ui.Button(c, i18n.T("settings.checkUpdate")).Padding(3, 10).Radius(4).FontSize(11).Disabled(a.updateChecking)
+					checkBtn.OnClick(func() { a.checkForUpdates("") })
+				})
+				if a.updateStatus != "" {
+					ui.Text(c, a.updateStatus).FontSize(11).TextColor(pal.baseAccent)
+				}
+				if a.updateURL != "" {
+					ui.Text(c, i18n.TArgs("settings.downloadURL", a.updateURL)).FontSize(11).TextColor(t.TextMuted)
+				}
+			})
+
+			ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
+
 			ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
 				doneBtn := ui.PrimaryButton(c, i18n.T("settings.close")).Padding(5, 16).Radius(6).FontSize(12)
 				doneBtn.OnClick(func() { a.settingsOpen = false })
@@ -854,13 +887,13 @@ func (a *workspaceState) textView(c *ui.Context) {
 					statusPill(c, i18n.T("pane.blankIgnored"), pal.baseAccent, pal.baseBg)
 				}
 				saveLabel := []string{i18n.T("pane.saveLeft"), i18n.T("pane.saveRight")}[side]
-				saveBtn := ui.Button(c, "").Label(saveLabel).Shrink(0).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy || !isDirty)
+				saveBtn := ui.Button(c, "").Label(saveLabel).Shrink(0).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy || !isDirty || p.file.ReadOnly())
 				saveBtn.OnClick(func() { a.save(side) })
 				saveBtn.Children(func() {
 					ui.Icon(c, iconSave).Size(11, 11)
 					ui.Text(c, saveLabel).FontSize(11).SingleLine()
 				})
-				ui.Button(c, i18n.T("pane.saveAs")).Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy).OnClick(func() { a.saveAs(side) })
+				ui.Button(c, i18n.T("pane.saveAs")).Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy || p.file.ReadOnly()).OnClick(func() { a.saveAs(side) })
 			})
 		}
 	})
@@ -869,7 +902,7 @@ func (a *workspaceState) textView(c *ui.Context) {
 	} else {
 		p := a.panes[a.mode-1]
 		p.edit.SoftWrap = a.wrap
-		p.edit.ReadOnly = a.busy
+		p.edit.ReadOnly = a.busy || (p.file != nil && p.file.ReadOnly())
 		editor.View(c.Key(a.mode), &p.edit).Grow(1).FillWidth()
 	}
 	ui.Row(c).Height(26).Padding(0, 12).Gap(12).Background(pal.cardBg).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
@@ -1000,7 +1033,8 @@ func (a *workspaceState) comparisonView(c *ui.Context, key string) {
 		key += "_blank"
 	}
 	diff.Wrap = a.wrap
-	diff.Editable = editable
-	diff.OldEditable = editable
+	panes := a.activePanes()
+	diff.Editable = editable && (panes[1] == nil || panes[1].file == nil || !panes[1].file.ReadOnly())
+	diff.OldEditable = editable && (panes[0] == nil || panes[0].file == nil || !panes[0].file.ReadOnly())
 	editor.DiffView(c.Key(key), diff).Grow(1).FillWidth()
 }

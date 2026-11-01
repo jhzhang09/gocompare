@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Table Compare (F12): CSV, TSV, Excel (.xlsx) and HTML table comparison (`internal/table`). The CLI `table` command supports composite keys, column mapping and numeric tolerance; the Native GUI mode aligns by row number.
+- Directory Merge (F10): Two-way and three-way directory merge with text conflict markers (`internal/dirmerge`, CLI `dirmerge`, GUI preview panel). Binary and delete/modify conflicts are written as `<path>.left` / `<path>.right` instead of placeholder files.
+- Remote Storage Protocols (F17 & F18): FTP, FTPS (explicit TLS), WebDAV, AWS S3 SigV4, Dropbox, OneDrive and an SVN HTTP subset (`internal/remote`, CLI `remote [--timeout]`). `webdav+https`, `s3+https` and `svn+https` select HTTPS; WebDAV and SVN accept Basic credentials. `sftp://` and `smb://` URLs are rejected because SSH and NTLM/Kerberos authentication are not implemented.
+- Archive Management (F19): Zip read/write/pack, tar.gz read-only, archive content comparison (`internal/archive`, CLI `archive`). `pack` never overwrites an existing output file.
+- Contentless Directory Snapshot (F20): Fast snapshot creation and offline comparison (`internal/snapshot`, CLI `snapshot`). `create` never overwrites an existing snapshot file.
+- Document Text Extraction (F21): docx, RTF and PDF text extraction (`internal/doctext`, CLI `doctext`). PDF text comes only from text-showing operators in content streams, including FlateDecode streams; font, image and other non-content streams are skipped. File comparison opens docx and PDF as read-only extracted text; RTF stays editable source, and merges reject extracted documents.
+- Software Update Checker (F28): In-app and CLI update checks against GitHub Releases with SemVer precedence (pre-releases included) and whole-word platform asset matching that picks the desktop installer in the app and the CLI archive in the CLI (`internal/updater`, CLI `check-update`, Native GUI Settings). The in-app check runs alongside other work without interrupting it.
+- Permission Comparison (F30): Unix mode, owner and group inspection and diffing (`internal/acl`, CLI `acl`). Windows ACLs are reported as unsupported.
 - Homebrew tap: `brew install --cask jhzhang09/tap/gocompare` for the desktop app (also links a `gocompare` command) and `brew install jhzhang09/tap/gocompare-cli` for the CLI on macOS and Linux. Stable releases update the tap automatically.
 
 ### Fixed

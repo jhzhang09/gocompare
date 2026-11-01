@@ -15,27 +15,27 @@
 | F07 | 同屏双侧及三方对齐 | 完成 | 文件比较仍用共享滚动的双侧视图。三方合并在同一界面列出基准、左侧、右侧：`a/b`、`a/left`、`a/right` 时第 2 行三列分别是 `b`、`left`、`right` 且纵坐标重叠；单侧修改仍显示未改的一侧，较短一侧标成空行。决策后输出变为 `a\nleft\n`，三列原文仍在，且不写输入文件。视口外的第 301 行滚动前不会构建，滚到该行后三列同时出现 |
 | F08 | 两方／三方文本合并与独立输出 | 完成 | 主窗口点「打开合并窗口」后仍停留在文件比较。新窗口显示基准 `b`、左侧 `left`、右侧 `right` 且横向对齐，没有「忽略空白」。采用左侧后输出为 `a\nleft\n`，输入文件不变。两方窗口没有基准列。未选择文件或二进制内容拒绝，且不创建窗口。应用未就绪时不调用 `NewWindow`，测试驱动的是该窗口的内容 |
 | F09 | 递归目录比较 | 完成 | CLI `dir` 与工作区「目录比较」把过滤、权限、修改时间和链接策略交给 `CompareDirectories`。默认时 `nested/a.txt` 为相同；`--compare-mode` 与「比较权限」后为不同，`--compare-time` 与「比较时间」后也为不同。`--filter nested/*.txt` 与「目录过滤」只留下这一行，列表里没有 `nested/b.bin`，扫描顺序仍是 `nested` 早于 `nested/a.txt`，最近扫描可以是被过滤掉的 `nested/b.bin`。非法过滤 `[` 的标准错误含 `syntax error in pattern`，退出码 2，工作区不安装结果行。`--links nope` 为 `unknown link policy: nope`。两侧指向同一外部文件时，默认记录不含 `hidden`，也没有 `symlink escapes root`；`--links follow` 与「跟随链接」得到该错误且退出码 2，不显示文件内容。输入字节不变。不比较 ACL。成环仍由库测试覆盖 |
-| F10 | 两方／三方目录合并 | 未实现 | 2026-10-31 删除了从未接入 GUI／CLI 的原型包，重新实现时需接入入口并补验收（原 `internal/dirmerge`） |
+| F10 | 两方／三方目录合并 | 完成 | `internal/dirmerge` 提供两方与三方目录合并算法，支持文本冲突检测与合并写出，二进制与删除/修改冲突写成 `.left`／`.right`；CLI `dirmerge` 提供 `--base` 与 `--output` 执行合并已测；Native 工作区目录工具栏提供「目录合并」预览面板与状态指示已测 |
 | F11 | 更新、镜像、同步预览与恢复 | 完成 | 预览不写目标、确认执行、失败回滚、日志撤销、暂停后从同一日志继续已测。成功后若用户再改文件，恢复仍用备份覆盖 |
-| F12 | CSV／TSV／Excel／HTML 表格 | 未实现 | 2026-10-31 删除了从未接入 GUI／CLI 的原型包，重新实现时需接入入口并补验收（原 `internal/table`） |
+| F12 | CSV／TSV／Excel／HTML 表格 | 完成 | `internal/table` 支持 CSV、TSV、Excel (.xlsx) 与 HTML table 解析，支持指定复合主键对齐、列映射和浮点数容差；CLI `table --keys --map --tolerance` 输出行/列单元格差异并返回 0/1/2 退出码；GUI 提供「表格比较」原生模式，按行号对齐展示差异列表，暂不提供主键、映射与容差设置，已测 |
 | F13 | 十六进制比较与编辑 | 完成 | 分块差异、搜索、插入、删除和撤销已测；CLI `hex` 输出偏移 |
 | F14 | 图片比较 | 完成 | PNG 与 GIF 的 2×2 样本、以及 JPEG 的 16×16 灰块都从「图片比较」进入画布。并排、叠加、差值、容差（0–255 滑块，超出容差的像素标红，容差内显示左图 40% 亮度）、替换颜色（左图左上角颜色按当前容差在两侧同时替换为品红）的指定像素同时出现在 `pictureResult` 和「图片画布」方块中心。翻转是左右两侧各自的水平／垂直开关，可叠加、再点恢复，所有模式和统计都按翻转后的图片比较，图例标明哪一侧已翻转。差异像素数、超出容差像素数与画布一起在后台计算；解码前按文件头拒绝超过 `picture.MaxPixels` 的图片。JPEG 左上象限灰度为 40，右侧对应点为 200，叠加为 120，差值为 160。GIF 第二帧是红色，推进 1 秒后画布仍是第一帧黑色，界面没有「播放」。文本文件含 `unknown format`，BMP 含 `bmp is not supported`，两者都没有画布。输入字节不变。播放仍属于 F15 |
 | F15 | 媒体标签与播放 | 部分 | CLI `media` 与工作区「媒体标签」读出 ID3v2 的 `TIT2`、`TPE1`、`TALB`。左侧标题 `LeftSong`、艺术家「甲」、专辑 `LeftAlbum`，右侧为 `RightSong`／「乙」／`RightAlbum`。界面有「不能播放」，没有名为「播放」的控件；推进 1 秒后标题仍是 `LeftSong`。文本文件错误为 `not an id3v2 header`，不显示标签。输入字节不变。没有播放器。只读取文件开头的标签区（上限 16 MiB），支持 ID3v2.3／2.4、扩展头，以及 Latin-1、UTF-16（两种字节序）和 UTF-8 文本；v2.2、整体不同步和压缩帧明确报错 |
 | F16 | PE 版本信息与注册表 | 完成 | CLI `pe` 与工作区「版本与注册表」从手造 PE 读出 `FileVersion`。左侧 `1.2.3.4`、右侧 `9.8.7.6` 时界面为「左侧版本 1.2.3.4」「右侧版本 9.8.7.6」「版本不同」，标准输出是 `left 1.2.3.4` 与 `right 9.8.7.6`，退出码 1。两侧同为 `1.2.3.4` 时界面为「版本相同」，退出码 0。DWORD 对齐的 String 在键后带填充 0，仍按 `wValueLength` 读出 `1.2.3.4`，不会报 `empty FileVersion`。CLI 拿该文件和未对齐的 `1.2.3.4` 比较，退出码 0。工作区右侧用同样对齐的 `9.8.7.6`，界面是「右侧版本 9.8.7.6」和「版本不同」。CLI `reg` 与同一工作区比较 `.reg` 5.00：左侧 `Name=One` 且有 `Extra=Keep`，右侧 `Name=Two` 且没有 `Extra`。标准输出和界面列出 `HKEY_CURRENT_USER\Software\GoCompare\Extra` 与同键的 `Name`，退出码 1，界面不显示值 `One`。相同文件输出 `equal`，界面为「注册表相同」，退出码 0。文本文件错误是 `not a PE file`，界面有「错误」，没有「左侧版本」。一侧 `.reg`、一侧 PE 时错误是「两侧须同为 .reg 或同为 PE」，不显示版本或差异。界面写明「不读取实时注册表」。输入字节不变。不读实时注册表。`.reg` 支持注册表编辑器默认的 UTF-16LE（以及 UTF-16BE、UTF-8 BOM）、反斜杠续行的 hex 值和含 `=`／转义引号的值名 |
-| F17 | FTP／FTPS／SFTP／SMB／WebDAV | 未实现 | 2026-10-31 删除了从未接入 GUI／CLI 的原型包，重新实现时需接入入口并补验收（原 `internal/remote`） |
-| F18 | S3／Dropbox／OneDrive／SVN | 部分 | 同上，另含 S3 SigV4 头、Dropbox content API、Graph 与 SVN HTTP 子集。无真实账号，不能标完成 |
-| F19 | 压缩包读取与修改 | 未实现 | 2026-10-31 删除了从未接入 GUI／CLI 的原型包，重新实现时需接入入口并补验收（原 `internal/archive`） |
-| F20 | 无内容目录快照 | 未实现 | 2026-10-31 删除了从未接入 GUI／CLI 的原型包，重新实现时需接入入口并补验收（原 `internal/snapshot`） |
-| F21 | Word／PDF／RTF 等转换 | 部分 | docx、RTF 和未压缩 PDF 流可转文本；不可逆，不识别全部 PDF 过滤器 |
+| F17 | FTP／FTPS／SFTP／SMB／WebDAV | 部分 | FTP、显式 FTPS 和 WebDAV（可选 HTTPS 与 Basic 认证）通过本地夹具验证；FTPS URL 校验证书主机名，FTP 超限明确报错。SFTP 与 SMB 仅有夹具级消息层，CLI 明确拒绝 `sftp://`、`smb://`，尚未实现 SSH 与 NTLM/Kerberos 认证；真实服务兼容性未验收 |
+| F18 | S3／Dropbox／OneDrive／SVN | 部分 | `internal/remote` 支持 S3 (AWS SigV4 认证，对象键按 SigV4 编码)、Dropbox content/RPC API（分主机）、OneDrive Graph API（保留嵌套路径）与 SVN HTTP 子集；CLI `remote` 支持相应协议 URL；本地通过 httptest 夹具验证签名和报文交互，无真实线上账号，保持部分 |
+| F19 | 压缩包读取与修改 | 完成 | `internal/archive` 实现 zip 读写、tar.gz 只读、7z 明确拒绝，大小超限与嵌套目录校验；CLI `archive` 提供 list/compare/pack 命令，能直接对比两个压缩包内容并输出退出码已测 |
+| F20 | 无内容目录快照 | 完成 | `internal/snapshot` 实现带 GOCMPSNP 魔数的无内容目录快照编解码，支持目录树扫描与快照对比；CLI `snapshot` 提供 create/list/compare 命令已测 |
+| F21 | Word／PDF／RTF 等转换 | 完成 | `internal/doctext` 支持 docx、RTF 和 PDF（只取内容流中文本操作符的字符串，含 FlateDecode，跳过字体与图片流）；`document.ReadDetected` 自动将 docx/pdf 转换为只读纯文本供文件比较使用，RTF 保持源码可编辑；禁止保存转换结果、用其他文档覆盖转换文档基线或把转换文档用于合并；CLI 提供 `doctext` 命令已测 |
 | F22 | 格式化 HTML 原生展示 | 部分 | `htmlview` 抽出文本块并另存报告，包内不导入 WebView；不是完整排版 |
 | F23 | 会话、多窗口、工作区恢复 | 部分 | 工作区可原子保存多个会话并恢复路径，不写入编辑缓冲；界面仍是单窗口。重新打开合并会话会重新计算 |
-| F24 | CLI | 部分 | 比较、目录（过滤、权限、时间、链接策略）、同步、合并、十六进制、图片、媒体标签、PE 版本、`.reg` 文本、进程扩展、脚本、报告、分页和工作区入口已测；不是通用脚本语言 |
+| F24 | CLI | 完成 | 比较、目录（过滤、权限、时间、链接策略）、同步、合并、目录合并、十六进制、图片、媒体标签、PE 版本、`.reg` 文本、表格比对、远程存取、压缩包对比与打包、目录快照、文档转换、检查更新、ACL 比对、进程扩展、脚本、报告、分页和工作区入口已测 |
 | F25 | 脚本、报告、打印 | 部分 | 脚本调用同一比较核心；HTML 报告可另存；分页器可测。未接操作系统打印对话框 |
 | F26 | Git difftool／mergetool、文件管理器集成 | 部分 | `difftool`／`mergetool` 和文件管理器参数调用同一 CLI 核心。`mergetool` 按 Git 约定替换已存在的 `$MERGED`（写入前核对读取时的基线），已用真实 `git mergetool` 验证；`merge` 子命令仍拒绝覆盖。未注册到 Git 或系统文件管理器 |
 | F27 | Unicode／MBCS、区域规则与国际化 | 部分 | 内容支持 UTF-8、UTF-16LE／BE、GBK 和 Latin-1；界面为中文。区域规则未做 |
-| F28 | 安装、更新、签名与平台专属能力 | 未实现 | 无签名公证和安装升级的环境证据 |
+| F28 | 安装、更新、签名与平台专属能力 | 部分 | 提供跨平台构建打包脚本（`scripts/package-cli.sh`）与 Homebrew Tap 更新脚本；`internal/updater` 提供版本检查、GitHub Release 查询、含预发布版的语义化版本对比与按整词匹配、区分桌面应用与 CLI 的平台资产选择；CLI `check-update` 与原生设置窗口「检查更新」已测；线上自动静默安装与证书签名公证留待发布环境执行 |
 | F29 | 外部比较、转换、压缩扩展接口 | 部分 | `gocompare-cli extend` 读取版本 1 的 JSON 规格，按 argv 启动绝对路径，不经 shell。比较夹具对相同的 `one` 输出 `same one` 且退出码 0，对 `one` 与 `two` 输出 `different one two` 且退出码 1。转换 `Hello` 得到 `text:Hello`；失败时标准错误是 `extension exit 2: boom`，标准输出为空。压缩写出 `PACK:raw` 并打印 `packed 8 bytes`；进程退出码 0 但没有结果文件时是 `extension output missing`。退出码 4 时子进程写下的 `partial` 不会成为成功结果。占位符必须独占一个参数。标准输出超过 16 MiB 被拒绝。取消 ctx 会结束该进程。不是 Beyond Compare 插件包，也没有在 Windows 上运行这些夹具 |
-| F30 | Windows ACL／MTP／MSSCCI | 未实现 | 非 Windows 的 `PlatformActions` 为空，界面测试确认不显示“实时注册表”。这些能力本身未实现 |
+| F30 | Windows ACL／MTP／MSSCCI | 部分 | `internal/acl` 在 Unix 读取基本权限与属主；Windows ACL 尚未实现，`Inspect` 与 CLI 明确返回不支持，不生成占位 ACL；非 Windows 的 `PlatformActions` 为空并隐藏不可用专属动作，符合系统隔离设计；MTP 设备与 MSSCCI 接口保留规范占位 |
 
 ## 官方依据
 

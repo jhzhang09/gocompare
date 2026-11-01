@@ -264,3 +264,26 @@ func assertScanOrder(t *testing.T, seen []string) {
 		t.Fatalf("progress order: %v", seen)
 	}
 }
+
+func TestWorkspaceDirectoryMergePreview(t *testing.T) {
+	left, right := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(left, "a.txt"), []byte("left\n"), 0o600)
+	os.WriteFile(filepath.Join(right, "a.txt"), []byte("right\n"), 0o600)
+	os.WriteFile(filepath.Join(right, "b.txt"), []byte("right only\n"), 0o600)
+
+	a := &workspaceState{paths: [2]string{left, right}, directoryRoots: [2]string{left, right}}
+	a.previewDirMerge()
+
+	if len(a.dirMergeDecisions) != 2 {
+		t.Fatalf("expected 2 decisions, got %d", len(a.dirMergeDecisions))
+	}
+
+	tt := ui.NewTester(a.view, 1200, 800)
+	tt.Frame()
+
+	// 重新安装目录结果（例如换根目录重新比较）后不能继续显示旧的合并预览。
+	a.installDirectory([2]string{left, right}, nil)
+	if a.dirMergeDecisions != nil {
+		t.Fatal("stale directory merge preview survived a rescan")
+	}
+}

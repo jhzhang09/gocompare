@@ -109,6 +109,136 @@ var messages = map[string]map[Language]string{
 		ZhTW: "版本與登錄檔",
 		EnUS: "Version & Registry",
 	},
+	"mode.table": {
+		ZhCN: "表格比较",
+		ZhTW: "表格比較",
+		EnUS: "Table Compare",
+	},
+	"table.same": {
+		ZhCN: "表格相同",
+		ZhTW: "表格相同",
+		EnUS: "Tables Identical",
+	},
+	"table.diffCount": {
+		ZhCN: "%d 处差异",
+		ZhTW: "%d 處差異",
+		EnUS: "%d differences",
+	},
+	"dirmerge.action": {
+		ZhCN: "目录合并",
+		ZhTW: "目錄合併",
+		EnUS: "Merge Folders",
+	},
+	"dirmerge.previewDone": {
+		ZhCN: "目录合并预览：%d 个文件项",
+		ZhTW: "目錄合併預覽：%d 個檔案項",
+		EnUS: "Folder merge preview: %d items",
+	},
+	"dirmerge.items": {
+		ZhCN: "合并项：%d",
+		ZhTW: "合併項：%d",
+		EnUS: "Items: %d",
+	},
+	"dirmerge.conflicts": {
+		ZhCN: "冲突：%d",
+		ZhTW: "衝突：%d",
+		EnUS: "Conflicts: %d",
+	},
+	"dirmerge.clean": {
+		ZhCN: "可干净合并",
+		ZhTW: "可乾淨合併",
+		EnUS: "Merges cleanly",
+	},
+	"dirmerge.empty": {
+		ZhCN: "没有需要合并的文件",
+		ZhTW: "沒有需要合併的檔案",
+		EnUS: "Nothing to merge",
+	},
+	"dirmerge.kind.left": {
+		ZhCN: "采用左侧",
+		ZhTW: "採用左側",
+		EnUS: "Take left",
+	},
+	"dirmerge.kind.right": {
+		ZhCN: "采用右侧",
+		ZhTW: "採用右側",
+		EnUS: "Take right",
+	},
+	"dirmerge.kind.delete": {
+		ZhCN: "删除",
+		ZhTW: "刪除",
+		EnUS: "Delete",
+	},
+	"dirmerge.kind.merged": {
+		ZhCN: "已合并",
+		ZhTW: "已合併",
+		EnUS: "Merged",
+	},
+	"dirmerge.kind.conflict": {
+		ZhCN: "冲突",
+		ZhTW: "衝突",
+		EnUS: "Conflict",
+	},
+	"dirmerge.reason.binary": {
+		ZhCN: "二进制冲突，写出时保存为 .left / .right",
+		ZhTW: "二進位衝突，寫出時保存為 .left / .right",
+		EnUS: "Binary conflict, written as .left / .right",
+	},
+	"dirmerge.reason.deleteModify": {
+		ZhCN: "删除/修改冲突，写出时保存现存一侧",
+		ZhTW: "刪除/修改衝突，寫出時保存現存一側",
+		EnUS: "Delete/modify conflict, surviving side written as .left / .right",
+	},
+	"table.sheetCount": {
+		ZhCN: "工作表：左侧 %d 张，右侧 %d 张",
+		ZhTW: "工作表：左側 %d 張，右側 %d 張",
+		EnUS: "Sheets: %d left, %d right",
+	},
+	"table.details": {
+		ZhCN: "差异明细",
+		ZhTW: "差異明細",
+		EnUS: "Differences",
+	},
+	"table.cell": {
+		ZhCN: "行 %s 列 %d",
+		ZhTW: "列 %s 欄 %d",
+		EnUS: "Row %s, column %d",
+	},
+	"table.more": {
+		ZhCN: "… 以及其他 %d 处差异",
+		ZhTW: "… 以及其他 %d 處差異",
+		EnUS: "… and %d more differences",
+	},
+	"table.kind.left_only": {
+		ZhCN: "仅左侧",
+		ZhTW: "僅左側",
+		EnUS: "Left only",
+	},
+	"table.kind.right_only": {
+		ZhCN: "仅右侧",
+		ZhTW: "僅右側",
+		EnUS: "Right only",
+	},
+	"table.kind.duplicate": {
+		ZhCN: "重复键",
+		ZhTW: "重複鍵",
+		EnUS: "Duplicate key",
+	},
+	"table.kind.sheet_left_only": {
+		ZhCN: "仅左侧工作表",
+		ZhTW: "僅左側工作表",
+		EnUS: "Left-only sheet",
+	},
+	"table.kind.sheet_right_only": {
+		ZhCN: "仅右侧工作表",
+		ZhTW: "僅右側工作表",
+		EnUS: "Right-only sheet",
+	},
+	"settings.downloadURL": {
+		ZhCN: "下载地址：%s",
+		ZhTW: "下載位址：%s",
+		EnUS: "Download: %s",
+	},
 
 	// Actions & Buttons
 	"action.compare": {
@@ -945,6 +1075,52 @@ var messages = map[string]map[Language]string{
 		EnUS: "Offline static file parsing without querying or modifying live host registry",
 	},
 
+	"intro.tableTag": {
+		ZhCN: "CSV / TSV / Excel / HTML",
+		ZhTW: "CSV / TSV / Excel / HTML",
+		EnUS: "CSV / TSV / Excel / HTML",
+	},
+	"intro.tableTitle": {
+		ZhCN: "结构化数据表格对齐与单元格级比对",
+		ZhTW: "結構化資料表格對齊與儲存格級比對",
+		EnUS: "Structured Table Alignment & Cell-level Diff",
+	},
+	"intro.tableDesc": {
+		ZhCN: "按行号对齐比较工作表，精准定位行列与单元格差异；命令行另支持主键对齐、列映射与数值容差。",
+		ZhTW: "按列號對齊比較工作表，精準定位行列與儲存格差異；命令列另支援主鍵對齊、欄映射與數值容差。",
+		EnUS: "Compare CSV, TSV, XLSX, and HTML tables row by row; the CLI adds key-based alignment, column mapping, and numeric tolerance.",
+	},
+	"intro.tableFeat1Title": {
+		ZhCN: "多格式支持",
+		ZhTW: "多格式支援",
+		EnUS: "Multi-Format Support",
+	},
+	"intro.tableFeat1Desc": {
+		ZhCN: "开箱即用解析 CSV、TSV、Excel (.xlsx) 工作表与 HTML <table> 节点。",
+		ZhTW: "開箱即用解析 CSV、TSV、Excel (.xlsx) 工作表與 HTML <table> 節點。",
+		EnUS: "Parse and compare CSV, TSV, Excel sheets, and HTML table elements out of the box.",
+	},
+	"intro.tableFeat2Title": {
+		ZhCN: "复合主键对齐",
+		ZhTW: "複合主鍵對齊",
+		EnUS: "Key-Based Alignment",
+	},
+	"intro.tableFeat2Desc": {
+		ZhCN: "命令行 --keys 可指定一列或多列作为主键，自动匹配对应记录，识别增删与重复。",
+		ZhTW: "命令列 --keys 可指定一欄或多欄作為主鍵，自動匹配對應記錄，識別增刪與重複。",
+		EnUS: "With the CLI --keys option, align records on one or more key columns to detect added, removed, and duplicate rows.",
+	},
+	"intro.tableFeat3Title": {
+		ZhCN: "数值公差与列映射",
+		ZhTW: "數值容差與欄映射",
+		EnUS: "Tolerance & Mapping",
+	},
+	"intro.tableFeat3Desc": {
+		ZhCN: "命令行 --tolerance 忽略数值微小扰动，--map 可映射排布不同的列。",
+		ZhTW: "命令列 --tolerance 忽略數值微小擾動，--map 可映射排布不同的欄。",
+		EnUS: "Use the CLI --tolerance option to ignore small numeric differences and --map to align differently ordered columns.",
+	},
+
 	// Settings Dialog
 	"settings.title": {
 		ZhCN: "首选项设置",
@@ -1005,6 +1181,41 @@ var messages = map[string]map[Language]string{
 		ZhCN: "关闭",
 		ZhTW: "關閉",
 		EnUS: "Close",
+	},
+	"settings.updateSection": {
+		ZhCN: "软件更新",
+		ZhTW: "軟體更新",
+		EnUS: "Software Update",
+	},
+	"settings.currentVersion": {
+		ZhCN: "当前版本：%s",
+		ZhTW: "目前版本：%s",
+		EnUS: "Current version: %s",
+	},
+	"settings.checkUpdate": {
+		ZhCN: "检查更新",
+		ZhTW: "檢查更新",
+		EnUS: "Check for Updates",
+	},
+	"settings.checkingUpdate": {
+		ZhCN: "正在检查更新...",
+		ZhTW: "正在檢查更新...",
+		EnUS: "Checking for updates...",
+	},
+	"settings.updateLatest": {
+		ZhCN: "当前已是最新版本",
+		ZhTW: "目前已是最新版本",
+		EnUS: "You're up to date",
+	},
+	"settings.updateAvailable": {
+		ZhCN: "发现新版本：%s",
+		ZhTW: "發現新版本：%s",
+		EnUS: "New version available: %s",
+	},
+	"settings.updateFailed": {
+		ZhCN: "检查更新失败",
+		ZhTW: "檢查更新失敗",
+		EnUS: "Update check failed",
 	},
 
 	// Dialogs

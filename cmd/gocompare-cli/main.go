@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"gocompare/internal/acl"
+	"gocompare/internal/archive"
 	"gocompare/internal/brand"
 	"gocompare/internal/compare"
+	"gocompare/internal/dirmerge"
+	"gocompare/internal/doctext"
 	"gocompare/internal/document"
 	"gocompare/internal/extend"
 	"gocompare/internal/hex"
@@ -18,10 +23,18 @@ import (
 	"gocompare/internal/pever"
 	"gocompare/internal/picture"
 	"gocompare/internal/regfile"
+	"gocompare/internal/remote"
 	"gocompare/internal/script"
+	"gocompare/internal/snapshot"
+	"gocompare/internal/table"
+	"gocompare/internal/updater"
 	"gocompare/internal/workspace"
 	"io"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // run 返回 0 相同、1 不同、2 参数或读取失败。
@@ -31,8 +44,32 @@ func run(args []string, out, stderr io.Writer) int {
 		return 0
 	}
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Fprintln(out, "Usage: gocompare-cli <left-file> <right-file>\nDirectory report: gocompare-cli dir [--filter pattern] [--compare-mode] [--compare-time] [--links record|follow] <left-dir> <right-dir>\nSync preview: gocompare-cli preview <mode> <left-dir> <right-dir>\nSync: gocompare-cli sync [--mode mode] [--apply --backup-dir path] <left-dir> <right-dir>\nRestore: gocompare-cli restore <journal.json>\nMerge: gocompare-cli merge [--base file] [--output file] <left-file> <right-file>\nHex: gocompare-cli hex <left-file> <right-file>\nPicture: gocompare-cli picture <left-image> <right-image>\nMedia: gocompare-cli media <file>\nPE: gocompare-cli pe <left-file> <right-file>\nRegistry: gocompare-cli reg <left.reg> <right.reg>\nExtend: gocompare-cli extend <spec.json> <path> [path]\nGit: gocompare-cli difftool <left-file> <right-file> | mergetool [--base file] [--output file] <left-file> <right-file>\nScript: gocompare-cli script <file>\nReport: gocompare-cli report --title text --input file --output file\nPaginate: gocompare-cli paginate --width N --rows N --input file\nWorkspace: gocompare-cli workspace save <bundle> <session>...\nVersion: gocompare-cli --version\nExit codes: 0 equal or clean, 1 different or conflicts, 2 error")
+		fmt.Fprintln(out, "Usage: gocompare-cli <left-file> <right-file>\nDirectory report: gocompare-cli dir [--filter pattern] [--compare-mode] [--compare-time] [--links record|follow] <left-dir> <right-dir>\nSync preview: gocompare-cli preview <mode> <left-dir> <right-dir>\nSync: gocompare-cli sync [--mode mode] [--apply --backup-dir path] <left-dir> <right-dir>\nRestore: gocompare-cli restore <journal.json>\nMerge: gocompare-cli merge [--base file] [--output file] <left-file> <right-file>\nDirMerge: gocompare-cli dirmerge [--base dir] [--output dir] <left-dir> <right-dir>\nTable: gocompare-cli table [--keys cols] [--map cols] [--tolerance tol] <left-file> <right-file>\nRemote: gocompare-cli remote [--timeout 2m] <read|write|delete|compare> <url> [local-file-or-url2]\nArchive: gocompare-cli archive <list|compare|pack> ...\nSnapshot: gocompare-cli snapshot <create|list|compare> ...\nDocText: gocompare-cli doctext <file>\nCheckUpdate: gocompare-cli check-update [--url custom-url]\nHex: gocompare-cli hex <left-file> <right-file>\nPicture: gocompare-cli picture <left-image> <right-image>\nMedia: gocompare-cli media <file>\nPE: gocompare-cli pe <left-file> <right-file>\nRegistry: gocompare-cli reg <left.reg> <right.reg>\nExtend: gocompare-cli extend <spec.json> <path> [path]\nGit: gocompare-cli difftool <left-file> <right-file> | mergetool [--base file] [--output file] <left-file> <right-file>\nScript: gocompare-cli script <file>\nReport: gocompare-cli report --title text --input file --output file\nPaginate: gocompare-cli paginate --width N --rows N --input file\nWorkspace: gocompare-cli workspace save <bundle> <session>...\nVersion: gocompare-cli --version\nExit codes: 0 equal or clean, 1 different or conflicts, 2 error")
 		return 0
+	}
+	if len(args) > 0 && (args[0] == "check-update" || args[0] == "update") {
+		return checkUpdateCmd(args[1:], out, stderr)
+	}
+	if len(args) > 0 && args[0] == "acl" {
+		return aclCmd(args[1:], out, stderr)
+	}
+	if len(args) > 0 && args[0] == "table" {
+		return tableFiles(args[1:], out, stderr)
+	}
+	if len(args) > 0 && args[0] == "remote" {
+		return remoteCmd(args[1:], out, stderr)
+	}
+	if len(args) > 0 && args[0] == "archive" {
+		return archiveCmd(args[1:], out, stderr)
+	}
+	if len(args) > 0 && args[0] == "snapshot" {
+		return snapshotCmd(args[1:], out, stderr)
+	}
+	if len(args) > 0 && args[0] == "doctext" {
+		return doctextCmd(args[1:], out, stderr)
+	}
+	if len(args) > 0 && args[0] == "dirmerge" {
+		return dirMergeCmd(args[1:], out, stderr)
 	}
 	if len(args) > 0 && args[0] == "hex" {
 		return hexFiles(args[1:], out, stderr)
@@ -184,12 +221,12 @@ func mergeFiles(args []string, out, stderr io.Writer, replaceOutput bool) int {
 		return 2
 	}
 	ctx := context.Background()
-	left, err := document.ReadDetected(ctx, flags.Arg(0))
+	left, err := document.ReadMergeable(ctx, flags.Arg(0))
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	right, err := document.ReadDetected(ctx, flags.Arg(1))
+	right, err := document.ReadMergeable(ctx, flags.Arg(1))
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
@@ -198,7 +235,7 @@ func mergeFiles(args []string, out, stderr io.Writer, replaceOutput bool) int {
 	if *base == "" {
 		result, err = merge.MergeTwo(left.Text, right.Text)
 	} else {
-		ancestor, readErr := document.ReadDetected(ctx, *base)
+		ancestor, readErr := document.ReadMergeable(ctx, *base)
 		if readErr != nil {
 			fmt.Fprintln(stderr, readErr)
 			return 2
@@ -613,6 +650,521 @@ func readLimitedFile(path string) ([]byte, error) {
 		return nil, fmt.Errorf("%s exceeds 16 MiB", path)
 	}
 	return data, nil
+}
+
+func tableFiles(args []string, out, stderr io.Writer) int {
+	flags := flag.NewFlagSet("table", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	keysStr := flags.String("keys", "", "comma-separated key column indexes, e.g. 0,1")
+	mapStr := flags.String("map", "", "right column index for each left column, -1 skips, e.g. 0,2,-1")
+	tol := flags.Float64("tolerance", 0.0, "numeric comparison tolerance")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 2 {
+		fmt.Fprintln(stderr, "Usage: gocompare-cli table [--keys cols] [--map cols] [--tolerance tol] <left-file> <right-file>")
+		return 2
+	}
+	leftData, err := readLimitedFile(flags.Arg(0))
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	rightData, err := readLimitedFile(flags.Arg(1))
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	leftSheets, err := table.ParseFile(flags.Arg(0), leftData)
+	if err != nil {
+		fmt.Fprintln(stderr, "left table:", err)
+		return 2
+	}
+	rightSheets, err := table.ParseFile(flags.Arg(1), rightData)
+	if err != nil {
+		fmt.Fprintln(stderr, "right table:", err)
+		return 2
+	}
+	keys, err := parseColumns(*keysStr, 0)
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid --keys:", err)
+		return 2
+	}
+	mapping, err := parseColumns(*mapStr, -1)
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid --map:", err)
+		return 2
+	}
+	if *tol < 0 {
+		fmt.Fprintln(stderr, "invalid --tolerance: must not be negative")
+		return 2
+	}
+	diffs := table.CompareSheets(leftSheets, rightSheets, table.Options{
+		Keys:      keys,
+		Map:       mapping,
+		Tolerance: *tol,
+	})
+	if len(diffs) == 0 {
+		fmt.Fprintln(out, "equal")
+		return 0
+	}
+	for _, d := range diffs {
+		if d.Kind == "changed" {
+			fmt.Fprintf(out, "sheet %s row %s col %d: %s != %s\n", d.Sheet, d.Key, d.Column, d.Left, d.Right)
+		} else {
+			fmt.Fprintf(out, "sheet %s %s: %s\n", d.Sheet, d.Kind, d.Key)
+		}
+	}
+	return 1
+}
+
+// parseColumns 解析逗号分隔的列下标，下标不得小于 min（-1 用于列映射里的“跳过”）。
+func parseColumns(text string, min int) ([]int, error) {
+	if text == "" {
+		return nil, nil
+	}
+	var cols []int
+	for _, part := range strings.Split(text, ",") {
+		n, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || n < min {
+			return nil, fmt.Errorf("column index %q", part)
+		}
+		cols = append(cols, n)
+	}
+	return cols, nil
+}
+
+func remoteCmd(args []string, out, stderr io.Writer) int {
+	flags := flag.NewFlagSet("remote", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	timeout := flags.Duration("timeout", 2*time.Minute, "overall timeout for the remote operation")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	args = flags.Args()
+	if len(args) < 2 || *timeout <= 0 {
+		fmt.Fprintln(stderr, "Usage: gocompare-cli remote [--timeout 2m] <read|write|delete|compare> <url> [local-file-or-url2]")
+		return 2
+	}
+	// 远程服务无响应时不能无限挂起；超时覆盖连接、传输和整个操作。
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	switch args[0] {
+	case "read":
+		store, path, err := remote.ParseURL(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		data, err := store.Read(ctx, path)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		if _, err = out.Write(data); err != nil {
+			return 2
+		}
+		return 0
+	case "write":
+		if len(args) != 3 {
+			fmt.Fprintln(stderr, "Usage: gocompare-cli remote write <url> <local-file>")
+			return 2
+		}
+		store, path, err := remote.ParseURL(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		data, err := readLimitedFile(args[2])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		if err = store.Write(ctx, path, data); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		fmt.Fprintf(out, "uploaded %d bytes to %s\n", len(data), args[1])
+		return 0
+	case "delete":
+		store, path, err := remote.ParseURL(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		if err = store.Delete(ctx, path); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		fmt.Fprintf(out, "deleted %s\n", args[1])
+		return 0
+	case "compare":
+		if len(args) != 3 {
+			fmt.Fprintln(stderr, "Usage: gocompare-cli remote compare <url1> <url2>")
+			return 2
+		}
+		store1, path1, err := remote.ParseURL(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		store2, path2, err := remote.ParseURL(args[2])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		data1, err := store1.Read(ctx, path1)
+		if err != nil {
+			fmt.Fprintln(stderr, "left:", err)
+			return 2
+		}
+		data2, err := store2.Read(ctx, path2)
+		if err != nil {
+			fmt.Fprintln(stderr, "right:", err)
+			return 2
+		}
+		if bytes.Equal(data1, data2) {
+			fmt.Fprintln(out, "equal")
+			return 0
+		}
+		fmt.Fprintln(out, "different")
+		return 1
+	default:
+		fmt.Fprintln(stderr, "unknown remote action:", args[0])
+		return 2
+	}
+}
+
+func archiveCmd(args []string, out, stderr io.Writer) int {
+	if len(args) < 2 {
+		fmt.Fprintln(stderr, "Usage: gocompare-cli archive <list|compare|pack> ...")
+		return 2
+	}
+	switch args[0] {
+	case "list":
+		data, err := readLimitedFile(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		format := archive.DetectFormat(args[1], data)
+		entries, err := archive.Read(format, data)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		for _, e := range entries {
+			tag := "file"
+			if e.Dir {
+				tag = "dir"
+			}
+			fmt.Fprintf(out, "%s\t%d\t%s\n", tag, len(e.Data), e.Name)
+		}
+		return 0
+	case "compare":
+		if len(args) != 3 {
+			fmt.Fprintln(stderr, "Usage: gocompare-cli archive compare <left-archive> <right-archive>")
+			return 2
+		}
+		ldata, err := readLimitedFile(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		rdata, err := readLimitedFile(args[2])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		lfmt := archive.DetectFormat(args[1], ldata)
+		rfmt := archive.DetectFormat(args[2], rdata)
+		leftEntries, err := archive.Read(lfmt, ldata)
+		if err != nil {
+			fmt.Fprintln(stderr, "left:", err)
+			return 2
+		}
+		rightEntries, err := archive.Read(rfmt, rdata)
+		if err != nil {
+			fmt.Fprintln(stderr, "right:", err)
+			return 2
+		}
+		diffs := archive.Compare(leftEntries, rightEntries)
+		hasDiff := false
+		for _, d := range diffs {
+			if d.Status != "same" {
+				hasDiff = true
+				fmt.Fprintf(out, "%s: %s (left: %d, right: %d)\n", d.Status, d.Name, d.Left, d.Right)
+			}
+		}
+		if !hasDiff {
+			fmt.Fprintln(out, "equal")
+			return 0
+		}
+		return 1
+	case "pack":
+		if len(args) < 4 {
+			fmt.Fprintln(stderr, "Usage: gocompare-cli archive pack <zip> <output-file> <files...>")
+			return 2
+		}
+		format := args[1]
+		outFile := args[2]
+		var entries []archive.Entry
+		seen := map[string]string{}
+		for _, file := range args[3:] {
+			name := filepath.Base(file)
+			if prev, ok := seen[name]; ok {
+				fmt.Fprintf(stderr, "duplicate entry name %s: %s and %s\n", name, prev, file)
+				return 2
+			}
+			seen[name] = file
+			data, err := readLimitedFile(file)
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return 2
+			}
+			entries = append(entries, archive.Entry{
+				Name: name,
+				Data: data,
+			})
+		}
+		packed, err := archive.Write(format, entries)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		if err = writeNewFile(outFile, packed); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		fmt.Fprintf(out, "packed %d entries (%d bytes) to %s\n", len(entries), len(packed), outFile)
+		return 0
+	default:
+		fmt.Fprintln(stderr, "unknown archive action:", args[0])
+		return 2
+	}
+}
+
+func snapshotCmd(args []string, out, stderr io.Writer) int {
+	if len(args) < 2 {
+		fmt.Fprintln(stderr, "Usage: gocompare-cli snapshot <create|list|compare> ...")
+		return 2
+	}
+	switch args[0] {
+	case "create":
+		if len(args) != 3 {
+			fmt.Fprintln(stderr, "Usage: gocompare-cli snapshot create <dir> <snapshot-file>")
+			return 2
+		}
+		nodes, err := snapshot.Create(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		encoded, err := snapshot.Encode(nodes)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		if err = writeNewFile(args[2], encoded); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		fmt.Fprintf(out, "created snapshot with %d entries (%d bytes)\n", len(nodes), len(encoded))
+		return 0
+	case "list":
+		data, err := readLimitedFile(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		nodes, err := snapshot.Decode(data)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		for _, n := range nodes {
+			tag := "file"
+			if n.Dir {
+				tag = "dir"
+			}
+			fmt.Fprintf(out, "%s\t%d\t%s\n", tag, n.Size, n.Path)
+		}
+		return 0
+	case "compare":
+		if len(args) != 3 {
+			fmt.Fprintln(stderr, "Usage: gocompare-cli snapshot compare <left-snapshot> <right-snapshot>")
+			return 2
+		}
+		ldata, err := readLimitedFile(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		rdata, err := readLimitedFile(args[2])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		leftNodes, err := snapshot.Decode(ldata)
+		if err != nil {
+			fmt.Fprintln(stderr, "left:", err)
+			return 2
+		}
+		rightNodes, err := snapshot.Decode(rdata)
+		if err != nil {
+			fmt.Fprintln(stderr, "right:", err)
+			return 2
+		}
+		diffs := snapshot.Compare(leftNodes, rightNodes)
+		hasDiff := false
+		for _, d := range diffs {
+			if d.Status != "same" {
+				hasDiff = true
+				fmt.Fprintf(out, "%s: %s (left: %d, right: %d)\n", d.Status, d.Path, d.Left, d.Right)
+			}
+		}
+		if !hasDiff {
+			fmt.Fprintln(out, "equal")
+			return 0
+		}
+		return 1
+	default:
+		fmt.Fprintln(stderr, "unknown snapshot action:", args[0])
+		return 2
+	}
+}
+
+// writeNewFile 只创建新文件；目标已存在时返回 os.ErrExist，不静默覆盖。
+// 写入失败时删除半成品，避免留下截断的输出。
+func writeNewFile(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		os.Remove(path)
+	}
+	return err
+}
+
+func doctextCmd(args []string, out, stderr io.Writer) int {
+	if len(args) != 1 {
+		fmt.Fprintln(stderr, "Usage: gocompare-cli doctext <file>")
+		return 2
+	}
+	data, err := readLimitedFile(args[0])
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	text, err := doctext.Convert(args[0], data)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	fmt.Fprint(out, text)
+	return 0
+}
+
+func dirMergeCmd(args []string, out, stderr io.Writer) int {
+	flags := flag.NewFlagSet("dirmerge", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	base := flags.String("base", "", "common ancestor directory")
+	output := flags.String("output", "", "target output directory")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 2 {
+		fmt.Fprintln(stderr, "Usage: gocompare-cli dirmerge [--base dir] [--output dir] <left-dir> <right-dir>")
+		return 2
+	}
+	ctx := context.Background()
+	var decisions []dirmerge.Decision
+	var err error
+	if *base == "" {
+		decisions, err = dirmerge.Two(ctx, flags.Arg(0), flags.Arg(1))
+	} else {
+		decisions, err = dirmerge.Three(ctx, *base, flags.Arg(0), flags.Arg(1))
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	hasConflict := false
+	for _, d := range decisions {
+		if d.Reason != "" {
+			fmt.Fprintf(out, "%s\t%s\t%s\n", d.Kind, d.Path, d.Reason)
+		} else {
+			fmt.Fprintf(out, "%s\t%s\n", d.Kind, d.Path)
+		}
+		if d.Kind == dirmerge.KindConflict {
+			hasConflict = true
+		}
+	}
+	if *output != "" {
+		if err = dirmerge.Write(ctx, *output, decisions); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		fmt.Fprintf(out, "wrote %d decisions to %s\n", len(decisions), *output)
+	}
+	if hasConflict {
+		return 1
+	}
+	return 0
+}
+
+func checkUpdateCmd(args []string, out, stderr io.Writer) int {
+	flags := flag.NewFlagSet("check-update", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	customURL := flags.String("url", "", "custom update api url")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	res, err := updater.Check(context.Background(), *customURL, brand.AppVersion(), updater.ProductCLI)
+	if err != nil {
+		fmt.Fprintf(stderr, "update check failed: %v\n", err)
+		return 2
+	}
+	if !res.HasUpdate {
+		fmt.Fprintf(out, "Current version %s is up to date.\n", res.CurrentVersion)
+		return 0
+	}
+	fmt.Fprintf(out, "New version available: %s (current: %s)\nDownload: %s\n", res.LatestVersion, res.CurrentVersion, res.DownloadURL)
+	if res.ReleaseNotes != "" {
+		fmt.Fprintf(out, "Release notes:\n%s\n", res.ReleaseNotes)
+	}
+	return 1
+}
+
+func aclCmd(args []string, out, stderr io.Writer) int {
+	if len(args) != 2 {
+		fmt.Fprintln(stderr, "Usage: gocompare-cli acl <left-file> <right-file>")
+		return 2
+	}
+	leftInfo, err := acl.Inspect(args[0])
+	if err != nil {
+		fmt.Fprintf(stderr, "left acl: %v\n", err)
+		return 2
+	}
+	rightInfo, err := acl.Inspect(args[1])
+	if err != nil {
+		fmt.Fprintf(stderr, "right acl: %v\n", err)
+		return 2
+	}
+	diffs := acl.Compare(leftInfo, rightInfo)
+	if len(diffs) == 0 {
+		fmt.Fprintln(out, "ACL and permissions match")
+		return 0
+	}
+	for _, d := range diffs {
+		fmt.Fprintln(out, d)
+	}
+	return 1
 }
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }

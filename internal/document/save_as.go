@@ -13,6 +13,9 @@ import (
 
 // encoded 校验编辑文本，并恢复原文档的编码标记和换行。
 func (d *File) encoded(text string) ([]byte, error) {
+	if d.ReadOnly() {
+		return nil, ErrReadOnly
+	}
 	if !utf8.ValidString(text) || strings.ContainsRune(text, 0) || strings.ContainsRune(text, '\r') {
 		return nil, errors.New("text must be UTF-8 with LF line endings")
 	}
@@ -29,7 +32,8 @@ func (d *File) encoded(text string) ([]byte, error) {
 	return data, nil
 }
 
-// SaveAs 创建新的文件，保留源文档格式。目标存在时返回 os.ErrExist，绝不静默覆盖。
+// SaveAs 创建新的文件，保留源文档格式。转换文档返回 ErrReadOnly。
+// 目标存在时返回 os.ErrExist，绝不静默覆盖。
 func (d *File) SaveAs(ctx context.Context, path, text string) (*File, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -91,6 +95,9 @@ func (d *File) SaveAs(ctx context.Context, path, text string) (*File, error) {
 // 目标不存在时 baseline 必须为 nil，并创建文件。
 // 目标已存在时必须提供该目标的读取基线；磁盘内容或身份与基线不符时返回 ErrChanged，且不覆盖。
 func (d *File) SaveAsOverwrite(ctx context.Context, path, text string, destBaseline *File) (*File, error) {
+	if d.ReadOnly() || (destBaseline != nil && destBaseline.ReadOnly()) {
+		return nil, ErrReadOnly
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

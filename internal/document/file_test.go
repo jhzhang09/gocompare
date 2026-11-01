@@ -181,3 +181,34 @@ func TestSaveAsFallsBackWithoutHardLinks(t *testing.T) {
 		t.Fatalf("fallback must not overwrite, got %v", err)
 	}
 }
+
+func TestReadDetectedDocxAndRTF(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	docxPath := filepath.Join(dir, "test.docx")
+	writeTestDOCX(t, docxPath, "Hello World")
+	f, err := ReadDetected(ctx, docxPath)
+	if err != nil {
+		t.Fatalf("ReadDetected docx failed: %v", err)
+	}
+	if f.Text != "Hello World" || !f.ReadOnly() {
+		t.Fatalf("docx text = %q readOnly=%v", f.Text, f.ReadOnly())
+	}
+
+	// RTF 是文本格式，保持按源码读取、可编辑可保存。
+	rtfPath := filepath.Join(dir, "test.rtf")
+	source := "{\\rtf1 Hello \\par World}"
+	if err := os.WriteFile(rtfPath, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err = ReadDetected(ctx, rtfPath)
+	if err != nil {
+		t.Fatalf("ReadDetected rtf failed: %v", err)
+	}
+	if f.Text != source || f.ReadOnly() {
+		t.Fatalf("rtf text = %q readOnly=%v", f.Text, f.ReadOnly())
+	}
+	if _, err = f.Save(ctx, source+"\n"); err != nil {
+		t.Fatalf("rtf source must stay editable: %v", err)
+	}
+}
