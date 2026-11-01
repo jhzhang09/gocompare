@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-01
+
 ### Added
 
 - Table Compare (F12): CSV, TSV, Excel (.xlsx) and HTML table comparison (`internal/table`). The CLI `table` command supports composite keys, column mapping and numeric tolerance; the Native GUI mode aligns by row number.
@@ -41,5 +43,6 @@ First public release.
 - Merges treat a missing final newline as a change; merge output can be saved repeatedly.
 - `.reg` exports in UTF-16 with continued hex lines and ID3v2.4 tags are parsed correctly.
 
-[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jhzhang09/gocompare/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jhzhang09/gocompare/releases/tag/v0.1.0
