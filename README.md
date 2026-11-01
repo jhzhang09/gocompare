@@ -24,6 +24,7 @@ Compare text, files, folders, tables and images — locally or on SFTP, SMB, FTP
 
 - **Native, not a web view.** Built with [MyGo](https://github.com/egoist/mygo): pure Go, no Electron, WebView, Node.js or cgo. One small binary per platform, cross-compiled from any machine.
 - **Safe by default.** Saves never overwrite a file that changed on disk, folder sync always previews first, backs up before overwriting or deleting, and rolls back on failure.
+- **Local or remote, same workflow.** Compare a file or a whole folder on your machine against one on an SFTP, SMB, FTP or WebDAV server — pick it in a dialog, edit, and save back safely.
 - **GUI and CLI share one core.** Everything you can do in the window you can script, with stable exit codes for CI and Git.
 
 > [!NOTE]
@@ -55,6 +56,27 @@ Compare text, files, folders, tables and images — locally or on SFTP, SMB, FTP
     <td align="center">Picture compare (tolerance map)</td>
   </tr>
 </table>
+
+## Remote files and folders
+
+Both **File compare** and **Folder compare** can work with servers. Either side — or both — can be remote.
+
+1. Click **Remote…** next to the left or right path.
+2. Choose the protocol and enter the host and user name. For SFTP you can also import a host from `~/.ssh/config`.
+3. Enter a password, or choose a private key (fill in its passphrase if it has one). Leave both empty to use ssh-agent or your default keys.
+4. Click **Connect**, browse the server, and pick a file (**Open**) or a folder (**Choose this folder**). If the other side is already set, the comparison starts right away.
+
+| Protocol | Browse in the dialog | Sign-in |
+|---|---|---|
+| SFTP (SSH) | Yes | Password, private key (+ passphrase), ssh-agent, `~/.ssh/id_*` |
+| SMB (Windows share / NAS) | Yes, including the list of shares | User, password, optional domain (NTLMv2) |
+| FTP / FTPS | Yes (servers with MLSD) | User and password |
+| WebDAV / WebDAV over HTTPS | Yes | User and password (Basic) |
+| S3, Dropbox, OneDrive, SVN | Type the URL into the path field | Credentials in the URL |
+
+- **In folder compare**, files that exist only locally open an empty remote side that is created when you save. Sync and folder merge stay local-only and are disabled while a side is remote.
+- **Host keys are verified.** The first connection to an SFTP server shows its fingerprint and adds it to `~/.ssh/known_hosts` only after you trust it; a changed key is refused.
+- **Secrets stay in memory.** Passwords and key passphrases are never written to disk, sessions or settings. Recent connections are remembered without them.
 
 ## Installation
 
