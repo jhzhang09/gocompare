@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-01
+
+### Added
+
+- **Table Compare Sheet Tabs & Pagination**: Multi-sheet workbooks now render an interactive sheet selector tab bar with per-sheet difference counts and an "All sheets" overview. Large diff lists support page-by-page navigation (50 diffs/page) with Previous/Next controls.
+- **Side-by-Side Cell Diff Cards**: Changed cells display side-by-side in Left and Right cards with natural multiline wrapping and explicit empty indicators, replacing unreadable escaped single-line text dumps.
+- **Excel Cell Coordinates**: Cell positions are reported in standard notation (e.g. `Cell B1 (Row 1, Col 2)`) rather than 0-based index strings.
+
+### Fixed
+
+- **Table Compare Sheet Alignment**: Multi-sheet files now match sheets by name rather than physical index, preventing cascaded misalignments and false differences when sheet ordering differs or sheets are added/deleted. Single-sheet comparisons retain flexible cross-name comparison.
+
 ## [0.3.1] - 2026-11-01
 
 ### Changed
@@ -60,7 +72,8 @@ First public release.
 - Merges treat a missing final newline as a change; merge output can be saved repeatedly.
 - `.reg` exports in UTF-16 with continued hex lines and ID3v2.4 tags are parsed correctly.
 
-[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/jhzhang09/gocompare/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/jhzhang09/gocompare/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/jhzhang09/gocompare/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jhzhang09/gocompare/compare/v0.1.0...v0.2.0

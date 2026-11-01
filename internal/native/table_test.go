@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"gocompare/internal/table"
 )
 
 func TestWorkspaceTableCompare(t *testing.T) {
@@ -43,11 +44,67 @@ func TestWorkspaceTableCompare(t *testing.T) {
 
 	// Re-render with diffs
 	tt.Frame()
+	tt.SetDark(true)
+	tt.Frame()
 
 	// Reset mode
 	a.resetCurrentMode()
 	if a.tableReady || len(a.tableDiffs) != 0 || a.paths[0] != "" {
 		t.Fatalf("reset failed: ready=%v diffs=%v paths=%v", a.tableReady, a.tableDiffs, a.paths)
+	}
+}
+
+func TestTableMultiSheetTabsAndPagination(t *testing.T) {
+	a := &workspaceState{}
+	a.selectKind(kindTable)
+	a.tableReady = true
+	a.tableSheets = [2][]table.Sheet{
+		{
+			{Name: "SheetA"},
+			{Name: "SheetB"},
+		},
+		{
+			{Name: "SheetB"},
+			{Name: "SheetC"},
+		},
+	}
+
+	// 构造 60 个差异以验证分页
+	var diffs []table.Diff
+	for i := 0; i < 55; i++ {
+		diffs = append(diffs, table.Diff{
+			Sheet:  "SheetB",
+			Key:    string(rune('0' + (i % 10))),
+			Column: i % 5,
+			Left:   "left",
+			Right:  "right",
+			Kind:   "changed",
+		})
+	}
+	diffs = append(diffs, table.Diff{Sheet: "SheetA", Kind: "sheet_left_only"})
+	diffs = append(diffs, table.Diff{Sheet: "SheetC", Kind: "sheet_right_only"})
+	a.tableDiffs = diffs
+
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+
+	// 切换到 SheetA
+	a.tableSelectedSheet = "SheetA"
+	tt.Frame()
+
+	// 切换到 SheetB 并翻页
+	a.tableSelectedSheet = "SheetB"
+	tt.Frame()
+	if a.tablePage != 0 {
+		t.Fatalf("expected page 0, got %d", a.tablePage)
+	}
+	a.tablePage = 1
+	tt.Frame()
+
+	// 格式化单元格测试
+	coord := formatCellCoord("0", 0)
+	if coord == "" {
+		t.Fatal("empty formatCellCoord")
 	}
 }
 

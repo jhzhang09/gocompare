@@ -105,3 +105,50 @@ func TestXLSXAbsoluteRelationshipTarget(t *testing.T) {
 		t.Fatalf("absolute target: %+v %v", sheets, err)
 	}
 }
+
+func TestColLetter(t *testing.T) {
+	cases := []struct {
+		col  int
+		want string
+	}{
+		{-1, ""},
+		{0, "A"},
+		{1, "B"},
+		{25, "Z"},
+		{26, "AA"},
+		{27, "AB"},
+		{51, "AZ"},
+		{52, "BA"},
+		{701, "ZZ"},
+		{702, "AAA"},
+	}
+	for _, tc := range cases {
+		if got := ColLetter(tc.col); got != tc.want {
+			t.Errorf("ColLetter(%d) = %q, want %q", tc.col, got, tc.want)
+		}
+	}
+}
+
+func TestCompareSheetsMultiSheetByName(t *testing.T) {
+	left := []Sheet{
+		{Name: "Summary", Rows: [][]string{{"a", "1"}}},
+		{Name: "LeftOnly", Rows: [][]string{{"x"}}},
+	}
+	right := []Sheet{
+		{Name: "RightOnly", Rows: [][]string{{"y"}}},
+		{Name: "Summary", Rows: [][]string{{"a", "2"}}},
+	}
+
+	diffs := CompareSheets(left, right, Options{})
+	kinds := map[string]int{}
+	for _, d := range diffs {
+		kinds[d.Kind]++
+	}
+
+	if kinds["changed"] != 1 {
+		t.Errorf("expected 1 changed diff in Summary, got %d (diffs: %+v)", kinds["changed"], diffs)
+	}
+	if kinds["sheet_left_only"] != 1 || kinds["sheet_right_only"] != 1 {
+		t.Errorf("expected 1 sheet_left_only and 1 sheet_right_only, got %+v", kinds)
+	}
+}

@@ -159,23 +159,49 @@ func ParseFile(path string, data []byte) ([]Sheet, error) {
 	}
 }
 
-// CompareSheets 比较两组工作表。
-func CompareSheets(left, right []Sheet, opt Options) []Diff {
-	var diffs []Diff
-	n := len(left)
-	if len(right) > n {
-		n = len(right)
+// ColLetter 把 0-based 列下标转换为 Excel 风格字母标号（0 -> A, 1 -> B, 25 -> Z, 26 -> AA）。
+func ColLetter(col int) string {
+	if col < 0 {
+		return ""
 	}
-	for i := 0; i < n; i++ {
-		if i >= len(left) {
-			diffs = append(diffs, Diff{Sheet: right[i].Name, Kind: "sheet_right_only"})
-			continue
+	col++
+	var b []byte
+	for col > 0 {
+		col--
+		b = append([]byte{byte('A' + (col % 26))}, b...)
+		col /= 26
+	}
+	return string(b)
+}
+
+// CompareSheets 比较两组工作表。
+// 若两边均只有 1 张表，则直接按表内容对齐比较（兼容 CSV/TSV 等单表文件的跨文件名比较）；
+// 若至少一侧包含多张表，则优先按工作表名称匹配对齐；未匹配的表作为单侧独有表报告。
+func CompareSheets(left, right []Sheet, opt Options) []Diff {
+	if len(left) == 1 && len(right) == 1 {
+		return Compare(left[0], right[0], opt)
+	}
+
+	var diffs []Diff
+	rightMap := make(map[string]Sheet, len(right))
+	for _, s := range right {
+		rightMap[s.Name] = s
+	}
+
+	usedRight := make(map[string]bool, len(right))
+	for _, ls := range left {
+		if rs, ok := rightMap[ls.Name]; ok {
+			usedRight[ls.Name] = true
+			diffs = append(diffs, Compare(ls, rs, opt)...)
+		} else {
+			diffs = append(diffs, Diff{Sheet: ls.Name, Kind: "sheet_left_only"})
 		}
-		if i >= len(right) {
-			diffs = append(diffs, Diff{Sheet: left[i].Name, Kind: "sheet_left_only"})
-			continue
+	}
+
+	for _, rs := range right {
+		if !usedRight[rs.Name] {
+			diffs = append(diffs, Diff{Sheet: rs.Name, Kind: "sheet_right_only"})
 		}
-		diffs = append(diffs, Compare(left[i], right[i], opt)...)
 	}
 	return diffs
 }

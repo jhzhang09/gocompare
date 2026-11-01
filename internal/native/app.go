@@ -107,9 +107,11 @@ type modeSession struct {
 	infoDiffs []string
 	infoReady bool
 
-	tableSheets [2][]table.Sheet
-	tableDiffs  []table.Diff
-	tableReady  bool
+	tableSheets        [2][]table.Sheet
+	tableDiffs         []table.Diff
+	tableReady         bool
+	tableSelectedSheet string
+	tablePage          int
 
 	message string
 }
@@ -200,10 +202,12 @@ type workspaceState struct {
 	infoDiffs []string
 	infoReady bool
 
-	tableGen    uint64
-	tableSheets [2][]table.Sheet
-	tableDiffs  []table.Diff
-	tableReady  bool
+	tableGen           uint64
+	tableSheets        [2][]table.Sheet
+	tableDiffs         []table.Diff
+	tableReady         bool
+	tableSelectedSheet string
+	tablePage          int
 
 	// hunkFocus 是上一/下一差异定位到的差异块序号（从 1 开始），0 表示尚未定位；零值即可用。
 	hunkFocus int
@@ -829,57 +833,59 @@ func (a *workspaceState) saveModeSession(kind int) {
 	}
 	anchors := append([]textcompare.Anchor(nil), a.anchors...)
 	a.modeSessions[kind] = &modeSession{
-		paths:             a.paths,
-		panes:             a.panes,
-		diff:              a.diff,
-		anchors:           anchors,
-		anchorLeft:        a.anchorLeft,
-		anchorRight:       a.anchorRight,
-		anchorLeftSet:     a.anchorLeftSet,
-		anchorRightSet:    a.anchorRightSet,
-		mode:              a.mode,
-		directoryRoots:    a.directoryRoots,
-		directoryRows:     a.directoryRows,
-		directoryList:     a.directoryList,
-		syncPlan:          a.syncPlan,
-		dirMergeDecisions: a.dirMergeDecisions,
-		dirFilter:         a.dirFilter,
-		compareMode:       a.compareMode,
-		compareTime:       a.compareTime,
-		followLinks:       a.followLinks,
-		closedDirs:        closed,
-		directoryOptions:  a.directoryOptions,
-		mergeBase:         a.mergeBase,
-		mergeOutput:       a.mergeOutput,
-		mergeResult:       a.mergeResult,
-		mergeRows:         a.mergeRows,
-		mergeAlign:        a.mergeAlign,
-		mergeBuffer:       a.mergeBuffer,
-		mergeEdit:         a.mergeEdit,
-		mergeLeft:         a.mergeLeft,
-		mergeSaved:        a.mergeSaved,
-		pictureLeft:       a.pictureLeft,
-		pictureRight:      a.pictureRight,
-		pictureResult:     a.pictureResult,
-		pictureBitmap:     a.pictureBitmap,
-		pictureMode:       a.pictureMode,
-		pictureTol:        a.pictureTol,
-		pictureZoom:       a.pictureZoom,
-		pictureNote:       a.pictureNote,
-		pictureSummary:    a.pictureSummary,
-		pictureFlips:      a.pictureFlips,
-		mediaLeft:         a.mediaLeft,
-		mediaRight:        a.mediaRight,
-		mediaReady:        a.mediaReady,
-		infoKind:          a.infoKind,
-		infoLeft:          a.infoLeft,
-		infoRight:         a.infoRight,
-		infoDiffs:         append([]string(nil), a.infoDiffs...),
-		infoReady:         a.infoReady,
-		tableSheets:       a.tableSheets,
-		tableDiffs:        a.tableDiffs,
-		tableReady:        a.tableReady,
-		message:           a.message,
+		paths:              a.paths,
+		panes:              a.panes,
+		diff:               a.diff,
+		anchors:            anchors,
+		anchorLeft:         a.anchorLeft,
+		anchorRight:        a.anchorRight,
+		anchorLeftSet:      a.anchorLeftSet,
+		anchorRightSet:     a.anchorRightSet,
+		mode:               a.mode,
+		directoryRoots:     a.directoryRoots,
+		directoryRows:      a.directoryRows,
+		directoryList:      a.directoryList,
+		syncPlan:           a.syncPlan,
+		dirMergeDecisions:  a.dirMergeDecisions,
+		dirFilter:          a.dirFilter,
+		compareMode:        a.compareMode,
+		compareTime:        a.compareTime,
+		followLinks:        a.followLinks,
+		closedDirs:         closed,
+		directoryOptions:   a.directoryOptions,
+		mergeBase:          a.mergeBase,
+		mergeOutput:        a.mergeOutput,
+		mergeResult:        a.mergeResult,
+		mergeRows:          a.mergeRows,
+		mergeAlign:         a.mergeAlign,
+		mergeBuffer:        a.mergeBuffer,
+		mergeEdit:          a.mergeEdit,
+		mergeLeft:          a.mergeLeft,
+		mergeSaved:         a.mergeSaved,
+		pictureLeft:        a.pictureLeft,
+		pictureRight:       a.pictureRight,
+		pictureResult:      a.pictureResult,
+		pictureBitmap:      a.pictureBitmap,
+		pictureMode:        a.pictureMode,
+		pictureTol:         a.pictureTol,
+		pictureZoom:        a.pictureZoom,
+		pictureNote:        a.pictureNote,
+		pictureSummary:     a.pictureSummary,
+		pictureFlips:       a.pictureFlips,
+		mediaLeft:          a.mediaLeft,
+		mediaRight:         a.mediaRight,
+		mediaReady:         a.mediaReady,
+		infoKind:           a.infoKind,
+		infoLeft:           a.infoLeft,
+		infoRight:          a.infoRight,
+		infoDiffs:          append([]string(nil), a.infoDiffs...),
+		infoReady:          a.infoReady,
+		tableSheets:        a.tableSheets,
+		tableDiffs:         a.tableDiffs,
+		tableReady:         a.tableReady,
+		tableSelectedSheet: a.tableSelectedSheet,
+		tablePage:          a.tablePage,
+		message:            a.message,
 	}
 }
 
@@ -939,6 +945,8 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.tableSheets = sess.tableSheets
 	a.tableDiffs = sess.tableDiffs
 	a.tableReady = sess.tableReady
+	a.tableSelectedSheet = sess.tableSelectedSheet
+	a.tablePage = sess.tablePage
 	if sess.message != "" {
 		a.message = sess.message
 	}

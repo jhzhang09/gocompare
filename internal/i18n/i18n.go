@@ -234,6 +234,66 @@ var messages = map[string]map[Language]string{
 		ZhTW: "僅右側工作表",
 		EnUS: "Right-only sheet",
 	},
+	"table.allSheets": {
+		ZhCN: "全部工作表 (%d)",
+		ZhTW: "全部工作表 (%d)",
+		EnUS: "All sheets (%d)",
+	},
+	"table.sheetNoDiff": {
+		ZhCN: "无差异",
+		ZhTW: "無差異",
+		EnUS: "Identical",
+	},
+	"table.pagePrev": {
+		ZhCN: "上一页",
+		ZhTW: "上一頁",
+		EnUS: "Previous",
+	},
+	"table.pageNext": {
+		ZhCN: "下一页",
+		ZhTW: "下一頁",
+		EnUS: "Next",
+	},
+	"table.pageInfo": {
+		ZhCN: "第 %d / %d 页 (共 %d 处)",
+		ZhTW: "第 %d / %d 頁 (共 %d 處)",
+		EnUS: "Page %d of %d (%d diffs)",
+	},
+	"table.cellCoord": {
+		ZhCN: "单元格 %s (第 %d 行, 第 %d 列)",
+		ZhTW: "儲存格 %s (第 %d 列, 第 %d 欄)",
+		EnUS: "Cell %s (Row %d, Col %d)",
+	},
+	"table.cellKey": {
+		ZhCN: "主键 %s · 第 %d 列 (%s)",
+		ZhTW: "主鍵 %s · 第 %d 欄 (%s)",
+		EnUS: "Key %s · Col %d (%s)",
+	},
+	"table.leftVal": {
+		ZhCN: "左侧",
+		ZhTW: "左側",
+		EnUS: "Left",
+	},
+	"table.rightVal": {
+		ZhCN: "右侧",
+		ZhTW: "右側",
+		EnUS: "Right",
+	},
+	"table.valEmpty": {
+		ZhCN: "(空)",
+		ZhTW: "(空)",
+		EnUS: "(empty)",
+	},
+	"table.sheetMissingRight": {
+		ZhCN: "右侧缺少该工作表",
+		ZhTW: "右側缺少該工作表",
+		EnUS: "Missing on right",
+	},
+	"table.sheetMissingLeft": {
+		ZhCN: "左侧缺少该工作表",
+		ZhTW: "左側缺少該工作表",
+		EnUS: "Missing on left",
+	},
 	"settings.downloadURL": {
 		ZhCN: "下载地址：%s",
 		ZhTW: "下載位址：%s",
