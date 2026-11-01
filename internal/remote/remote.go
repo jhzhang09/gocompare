@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,6 +24,17 @@ type Store interface {
 // ParseURL 解析 URL 并返回对应的 Store 及路径。
 // webdav、s3、svn 默认走 http；使用 webdav+https、s3+https、svn+https 走 https。
 func ParseURL(rawURL string) (Store, string, error) {
+	return parse(rawURL, true)
+}
+
+// ParseBrowseURL 解析只指向服务端（或 SMB 共享）的地址，用于浏览目录；不要求文件路径，
+// SMB 未写共享名时返回的存储可以列出共享。
+func ParseBrowseURL(rawURL string) (Store, error) {
+	s, _, err := parse(rawURL, false)
+	return s, err
+}
+
+func parse(rawURL string, needPath bool) (Store, string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, "", err
@@ -45,14 +57,14 @@ func ParseURL(rawURL string) (Store, string, error) {
 		if strings.HasPrefix(p, "/~/") {
 			p = p[3:]
 		}
-		if p == "" || p == "/" {
+		if needPath && (p == "" || p == "/") {
 			return nil, "", fmt.Errorf("sftp URL needs a file path")
 		}
 		return &SFTP{Addr: hostPort(u, "22"), User: user, Pass: pass}, p, nil
 	case "smb":
 		// smb://[domain;]user:pass@host[:port]/share/path，域也可写成 domain\user（需编码为 %5C）。
 		share, rel, _ := strings.Cut(path, "/")
-		if share == "" || rel == "" {
+		if needPath && (share == "" || rel == "") {
 			return nil, "", fmt.Errorf("smb URL must be smb://host/share/path")
 		}
 		domain, name := "", user
@@ -139,7 +151,15 @@ func statusError(kind, path string, code int, body []byte) error {
 	if len(body) > 180 {
 		body = body[:180]
 	}
-	return fmt.Errorf("%s %s: %d %s", kind, path, code, bytesTrim(body))
+	err := fmt.Errorf("%s %s: %d %s", kind, path, code, bytesTrim(body))
+	switch code {
+	case http.StatusUnauthorized:
+		return authError(err)
+	case http.StatusNotFound:
+		// 与本地文件和 SFTP 一致，调用方可以用 errors.Is(err, fs.ErrNotExist) 判断。
+		return fmt.Errorf("%w: %v", fs.ErrNotExist, err)
+	}
+	return err
 }
 
 func bytesTrim(b []byte) string {

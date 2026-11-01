@@ -2,9 +2,11 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 
 	"github.com/hirochachacha/go-smb2"
@@ -60,24 +62,57 @@ func (s *SMB) Delete(ctx context.Context, path string) error {
 }
 
 func (s *SMB) withShare(ctx context.Context, fn func(*smb2.Share) error) error {
-	if err := ctx.Err(); err != nil {
+	share, done, err := s.connectShare(ctx)
+	if err != nil {
 		return err
 	}
-	if s.Share == "" {
-		return fmt.Errorf("smb share name is required")
-	}
-	host, _, err := net.SplitHostPort(s.Addr)
+	defer done()
+	return ctxErr(ctx, fn(share))
+}
+
+// withSession 建立已认证的会话；认证失败包装为 ErrAuth。
+func (s *SMB) withSession(ctx context.Context, fn func(*smb2.Session) error) error {
+	session, done, err := s.connectSession(ctx)
 	if err != nil {
-		return fmt.Errorf("smb address %q: %w", s.Addr, err)
+		return err
+	}
+	defer done()
+	return ctxErr(ctx, fn(session))
+}
+
+// connectShare 在已认证的会话上挂载共享，返回绑定 ctx 的共享与释放函数。
+func (s *SMB) connectShare(ctx context.Context) (*smb2.Share, func(), error) {
+	if s.Share == "" {
+		return nil, nil, fmt.Errorf("smb share name is required")
+	}
+	session, done, err := s.connectSession(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	host, _, _ := net.SplitHostPort(s.Addr)
+	// 挂载路径只用主机名：库会把带端口的地址拼进 \\server\share，导致路径非法。
+	share, err := session.WithContext(ctx).Mount(`\\` + host + `\` + s.Share)
+	if err != nil {
+		done()
+		return nil, nil, ctxErr(ctx, fmt.Errorf("smb mount %s: %w", s.Share, err))
+	}
+	return share.WithContext(ctx), func() { share.Umount(); done() }, nil
+}
+
+// connectSession 建立 TCP 连接并完成 NTLM 认证；连接在 ctx 取消时关闭。
+func (s *SMB) connectSession(ctx context.Context) (*smb2.Session, func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	if _, _, err := net.SplitHostPort(s.Addr); err != nil {
+		return nil, nil, fmt.Errorf("smb address %q: %w", s.Addr, err)
 	}
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", s.Addr)
 	if err != nil {
-		return ctxErr(ctx, err)
+		return nil, nil, ctxErr(ctx, err)
 	}
-	defer conn.Close()
 	// 库在等待响应时会检查 context；这里再兜底关闭连接，保证取消时阻塞的读写也能返回。
 	stop := make(chan struct{})
-	defer close(stop)
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -85,20 +120,23 @@ func (s *SMB) withShare(ctx context.Context, fn func(*smb2.Share) error) error {
 		case <-stop:
 		}
 	}()
+	closeConn := func() { close(stop); conn.Close() }
 	d := &smb2.Dialer{Initiator: &smb2.NTLMInitiator{User: s.User, Password: s.Pass, Domain: s.Domain}}
 	session, err := d.DialContext(ctx, conn)
 	if err != nil {
-		return ctxErr(ctx, fmt.Errorf("smb %s: %w", s.Addr, err))
+		closeConn()
+		var resp *smb2.ResponseError
+		// STATUS_LOGON_FAILURE 或拒绝访问出现在会话建立阶段，都是凭据问题。
+		if (errors.As(err, &resp) && resp.Code == statusLogonFailure) || errors.Is(err, os.ErrPermission) {
+			return nil, nil, ctxErr(ctx, authError(fmt.Errorf("smb %s: %v", s.Addr, err)))
+		}
+		return nil, nil, ctxErr(ctx, fmt.Errorf("smb %s: %w", s.Addr, err))
 	}
-	defer session.Logoff()
-	// 挂载路径只用主机名：库会把带端口的地址拼进 \\server\share，导致路径非法。
-	share, err := session.WithContext(ctx).Mount(`\\` + host + `\` + s.Share)
-	if err != nil {
-		return ctxErr(ctx, fmt.Errorf("smb mount %s: %w", s.Share, err))
-	}
-	defer share.Umount()
-	return ctxErr(ctx, fn(share.WithContext(ctx)))
+	return session, func() { session.Logoff(); closeConn() }, nil
 }
+
+// statusLogonFailure 是 NTSTATUS STATUS_LOGON_FAILURE，用户名或密码错误。
+const statusLogonFailure = 0xC000006D
 
 // smbPath 把 URL 风格路径转成共享内的相对路径；库要求不带前导分隔符。
 func smbPath(path string) string {

@@ -739,7 +739,7 @@ func remoteCmd(args []string, out, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	timeout := flags.Duration("timeout", 2*time.Minute, "overall timeout for the remote operation")
 	knownHosts := flags.String("known-hosts", "", "SFTP known_hosts file (default ~/.ssh/known_hosts)")
-	identity := flags.String("identity", "", "SFTP private key file (default: ssh-agent, then ~/.ssh/id_*)")
+	identity := flags.String("identity", "", "SFTP private key file (default: ssh-agent, then ~/.ssh/id_*); set GOCOMPARE_SSH_KEY_PASSPHRASE for an encrypted key")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -753,6 +753,8 @@ func remoteCmd(args []string, out, stderr io.Writer) int {
 			if *identity != "" {
 				s.IdentityFiles = []string{*identity}
 			}
+			// 私钥口令只从环境变量读取，避免出现在命令行参数和 shell 历史里。
+			s.Passphrase = os.Getenv("GOCOMPARE_SSH_KEY_PASSPHRASE")
 		}
 		return store, path, err
 	}

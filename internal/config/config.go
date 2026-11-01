@@ -75,3 +75,54 @@ func Current() Settings {
 	defer configMu.Unlock()
 	return currentSettings
 }
+
+// RemoteBookmark 是最近使用的远程连接，用于连接对话框一键填写。绝不保存密码。
+type RemoteBookmark struct {
+	Scheme       string `json:"scheme"`
+	Host         string `json:"host"`
+	Port         string `json:"port,omitempty"`
+	User         string `json:"user,omitempty"`
+	Domain       string `json:"domain,omitempty"`
+	Share        string `json:"share,omitempty"`
+	Dir          string `json:"dir,omitempty"`
+	IdentityFile string `json:"identityFile,omitempty"`
+}
+
+// maxRemoteBookmarks 限制最近连接的条数。
+const maxRemoteBookmarks = 10
+
+// LoadRemotes 读取最近连接；文件不存在或损坏时返回空列表。
+func LoadRemotes(path string) []RemoteBookmark {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var list []RemoteBookmark
+	if json.Unmarshal(data, &list) != nil {
+		return nil
+	}
+	return list
+}
+
+// AddRemote 把连接放到最前面（同一协议、用户、主机、端口、共享只保留一条）并写回文件。
+// 文件只允许本人读写，因为其中包含主机与用户名。
+func AddRemote(path string, b RemoteBookmark) ([]RemoteBookmark, error) {
+	list := []RemoteBookmark{b}
+	for _, old := range LoadRemotes(path) {
+		if old.Scheme == b.Scheme && old.Host == b.Host && old.Port == b.Port && old.User == b.User && old.Domain == b.Domain && old.Share == b.Share {
+			continue
+		}
+		list = append(list, old)
+	}
+	if len(list) > maxRemoteBookmarks {
+		list = list[:maxRemoteBookmarks]
+	}
+	data, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	return list, os.WriteFile(path, data, 0o600)
+}

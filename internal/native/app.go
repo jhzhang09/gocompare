@@ -205,6 +205,9 @@ type workspaceState struct {
 	tableDiffs  []table.Diff
 	tableReady  bool
 
+	// hunkFocus 是上一/下一差异定位到的差异块序号（从 1 开始），0 表示尚未定位；零值即可用。
+	hunkFocus int
+
 	compareGeneration uint64
 	compareRequested  bool
 	compareBuffers    [2]*editor.Buffer
@@ -229,6 +232,18 @@ type workspaceState struct {
 	updateChecking bool
 	updateStatus   string
 	updateURL      string
+
+	// remoteSecrets 只在内存中保存远程密码，键为 remote.CredentialKey；不写入会话或设置。
+	remoteSecrets map[string]string
+	// remoteIdentities 记录连接对话框里为 SFTP 选的私钥文件，同样只在内存中。
+	remoteIdentities map[string]string
+	// remotePassphrases 是 SFTP 私钥口令，只在内存中。
+	remotePassphrases map[string]string
+	passwordPrompt    *passwordPrompt
+	hostKeyPrompt     *hostKeyPrompt
+	remoteDialog      *remoteDialog
+	// remotesFile 是最近连接的保存位置；为空时不读写（测试默认如此）。
+	remotesFile string
 
 	diff    editor.DiffState
 	mode    int
@@ -311,6 +326,7 @@ func Run(args []string) error {
 			settingsTheme: themeIdx,
 			message:       i18n.T("status.selectSource"),
 			backupDir:     filepath.Join(configDir, "GoCompare", "backups"),
+			remotesFile:   filepath.Join(configDir, "GoCompare", "remotes.json"),
 		}
 		a.win = mygo.NewWindow(mygo.WindowOptions{Title: "GoCompare", Width: 1380, Height: 880, MinWidth: 900, MinHeight: 600, Content: ui.View(a.view)})
 		a.win.OnClose(func(e *mygo.CloseEvent) {
@@ -463,6 +479,7 @@ func (a *workspaceState) load() {
 	if a.busy {
 		return
 	}
+	auth := a.takeURLPasswords()
 	paths := a.paths
 	allowMissing := a.allowMissing
 	a.allowMissing = false
@@ -501,15 +518,17 @@ func (a *workspaceState) load() {
 			a.publish(func() { a.busy = false; a.kind = kindDirectory; a.loadDirectory(paths) })
 			return
 		}
-		left, err := readInput(ctx, paths[0], allowMissing)
+		left, err := openInput(ctx, paths[0], allowMissing, auth)
 		var right *document.File
 		if err == nil {
-			right, err = readInput(ctx, paths[1], allowMissing)
+			right, err = openInput(ctx, paths[1], allowMissing, auth)
 		}
 		a.publish(func() {
 			a.busy = false
 			if err != nil {
-				a.err = err.Error()
+				if !a.handleRemoteError(err, a.load) {
+					a.err = err.Error()
+				}
 				return
 			}
 			a.install(left, right)
@@ -526,6 +545,7 @@ func (a *workspaceState) install(left, right *document.File) {
 	a.diff = editor.DiffState{Old: a.panes[0].buffer, New: a.panes[1].buffer, ExpandUnchanged: true, Editable: true, OldEditable: true, ExternalComparison: true}
 	a.anchors = nil
 	a.anchorLeftSet, a.anchorRightSet = false, false
+	a.hunkFocus = 0
 	a.stopComparison()
 	a.compareRequested = false
 	a.refreshComparison()

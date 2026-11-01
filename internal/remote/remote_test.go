@@ -3,7 +3,9 @@ package remote
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -228,5 +230,43 @@ func TestParseSMBURL(t *testing.T) {
 func TestSMBPath(t *testing.T) {
 	if got := smbPath("/dir/sub/a.txt"); got != `dir\sub\a.txt` {
 		t.Fatalf("smbPath = %q", got)
+	}
+}
+
+func TestURLHelpers(t *testing.T) {
+	raw := "sftp://alice:s3cret@Host:2222/srv/a.txt"
+	if !IsURL(raw) || IsURL(`C:\data\a.txt`) || IsURL("/tmp/a.txt") || IsURL("http://example.com/a") {
+		t.Fatal("IsURL misclassified input")
+	}
+	if got := Redact(raw); got != "sftp://alice@Host:2222/srv/a.txt" {
+		t.Fatalf("Redact = %q", got)
+	}
+	if PasswordOf(raw) != "s3cret" || PasswordOf("sftp://alice@h/x") != "" {
+		t.Fatal("PasswordOf")
+	}
+	if CredentialKey(raw) != CredentialKey("sftp://alice@host:2222/other") {
+		t.Fatal("credential key must ignore path and password")
+	}
+	store, _, _ := ParseURL("s3://k:s@h/b/k")
+	if AcceptsPassword(store) || SetPassword(store, "x") {
+		t.Fatal("S3 credentials come only from the URL")
+	}
+}
+
+func TestHTTPUnauthorizedIsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "auth", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	if _, err := (&WebDAV{Base: srv.URL}).Read(context.Background(), "a"); !errors.Is(err, ErrAuth) {
+		t.Fatalf("401 must wrap ErrAuth: %v", err)
+	}
+}
+
+func TestHTTPNotFoundIsNotExist(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	if _, err := (&WebDAV{Base: srv.URL}).Read(context.Background(), "a"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("404 must wrap fs.ErrNotExist: %v", err)
 	}
 }

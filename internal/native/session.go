@@ -59,6 +59,7 @@ func (a *workspaceState) openSession(path string) {
 	if a.busy {
 		return
 	}
+	auth := a.takeURLPasswords()
 	a.job(func(ctx context.Context) {
 		s, err := workspace.Read(path)
 		var left, right *document.File
@@ -98,15 +99,17 @@ func (a *workspaceState) openSession(path string) {
 			return
 		}
 		if err == nil {
-			left, err = document.ReadDetected(ctx, s.Left)
+			left, err = openInput(ctx, s.Left, false, auth)
 		}
 		if err == nil {
-			right, err = document.ReadDetected(ctx, s.Right)
+			right, err = openInput(ctx, s.Right, false, auth)
 		}
 		a.publish(func() {
 			a.busy = false
 			if err != nil {
-				a.err = err.Error()
+				if !a.handleRemoteError(err, func() { a.openSession(path) }) {
+					a.err = err.Error()
+				}
 				return
 			}
 			a.ignoreSpace = s.IgnoreSpace
@@ -139,7 +142,12 @@ func (a *workspaceState) saveAs(side int) {
 	if a.busy || a.panes[side] == nil {
 		return
 	}
-	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: a.win, Title: i18n.T("dialog.saveAsTitle"), DefaultPath: a.panes[side].file.Path})
+	defaultPath := a.panes[side].file.Path
+	if a.panes[side].file.IsRemote() {
+		// 远程文件另存为只写本地，默认只给出文件名。
+		defaultPath = filepath.Base(defaultPath)
+	}
+	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: a.win, Title: i18n.T("dialog.saveAsTitle"), DefaultPath: defaultPath})
 	if err != nil {
 		a.err = err.Error()
 		return

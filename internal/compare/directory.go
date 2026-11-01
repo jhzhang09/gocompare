@@ -71,17 +71,22 @@ func Directories(ctx context.Context, left, right string) ([]Entry, error) {
 
 // CompareDirectories 在 Directories 的结果上应用过滤、链接策略和属性规则。
 func CompareDirectories(ctx context.Context, left, right string, opt ScanOptions) ([]Entry, error) {
+	return CompareSources(ctx, LocalSource(left), LocalSource(right), opt)
+}
+
+// CompareSources 比较两个目录来源（本地或远程），规则与 CompareDirectories 相同。
+func CompareSources(ctx context.Context, left, right Source, opt ScanOptions) ([]Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if opt.Links != "" && opt.Links != LinkRecord && opt.Links != LinkFollow {
 		return nil, fmt.Errorf("unknown link policy: %s", opt.Links)
 	}
-	a, err := scan(ctx, left, opt)
+	a, err := left.Scan(ctx, opt)
 	if err != nil {
 		return nil, err
 	}
-	b, err := scan(ctx, right, opt)
+	b, err := right.Scan(ctx, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -121,9 +126,9 @@ func CompareDirectories(ctx context.Context, left, right string, opt ScanOptions
 			}
 		case x.Symlink:
 			var aa, bb string
-			aa, err = os.Readlink(filepath.Join(left, filepath.FromSlash(path)))
+			aa, err = left.Readlink(ctx, path)
 			if err == nil {
-				bb, err = os.Readlink(filepath.Join(right, filepath.FromSlash(path)))
+				bb, err = right.Readlink(ctx, path)
 			}
 			if err == nil && aa != bb {
 				row.Status = Different
@@ -134,7 +139,7 @@ func CompareDirectories(ctx context.Context, left, right string, opt ScanOptions
 			row.Status = Different
 		default:
 			var equal bool
-			equal, err = EqualFiles(ctx, filepath.Join(left, filepath.FromSlash(path)), filepath.Join(right, filepath.FromSlash(path)))
+			equal, err = equalSources(ctx, left, right, path)
 			if err == nil && !equal {
 				row.Status = Different
 			}
@@ -175,6 +180,18 @@ func CompareDirectories(ctx context.Context, left, right string, opt ScanOptions
 		}
 	}
 	return result, nil
+}
+
+// include 判断条目是否通过过滤：不含 "/" 的模式只匹配名称，否则匹配相对路径。
+func (opt ScanOptions) include(name, rel string) (bool, error) {
+	if opt.Filter == "" {
+		return true, nil
+	}
+	matchPath := rel
+	if !strings.Contains(opt.Filter, "/") {
+		matchPath = name
+	}
+	return path.Match(opt.Filter, matchPath)
 }
 
 func attributeDiffers(opt ScanOptions, x, y *Metadata) bool {
@@ -223,16 +240,9 @@ func scan(ctx context.Context, root string, opt ScanOptions) (map[string]*Metada
 			if err = ctx.Err(); err != nil {
 				return err
 			}
-			include := true
-			if opt.Filter != "" {
-				matchPath := childRel
-				if !strings.Contains(opt.Filter, "/") {
-					matchPath = name
-				}
-				include, err = path.Match(opt.Filter, matchPath)
-				if err != nil {
-					return err
-				}
+			include, err := opt.include(name, childRel)
+			if err != nil {
+				return err
 			}
 			info, infoErr := os.Lstat(full)
 			m := &Metadata{}

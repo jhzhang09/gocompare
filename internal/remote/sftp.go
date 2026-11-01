@@ -2,6 +2,9 @@ package remote
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -19,14 +22,15 @@ import (
 
 // SFTP 通过 SSH 连接读写远程文件。
 // 主机密钥必须已在 known_hosts 中登记：不做首次连接自动信任，未知或不匹配的密钥都拒绝连接。
-// 认证顺序：Pass 非空时只用密码（含 keyboard-interactive）；否则依次尝试 ssh-agent 和私钥文件。
+// 认证顺序见 authMethods。
 type SFTP struct {
 	Addr string // host:port
 	User string // 为空时使用当前系统用户
 	Pass string
 	// IdentityFiles 是私钥文件；为空时尝试 ~/.ssh/id_ed25519、id_ecdsa、id_rsa。
-	// 带口令的私钥需先加入 ssh-agent。
 	IdentityFiles []string
+	// Passphrase 解密受口令保护的私钥；为空时这类私钥只能经 ssh-agent 使用。
+	Passphrase string
 	// KnownHosts 是 known_hosts 文件；为空时使用 ~/.ssh/known_hosts。
 	KnownHosts []string
 	// HostKeyCallback 非空时代替 KnownHosts，供嵌入方自行校验主机密钥。
@@ -80,22 +84,31 @@ func (s *SFTP) Delete(ctx context.Context, path string) error {
 }
 
 func (s *SFTP) withClient(ctx context.Context, fn func(*sftp.Client) error) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	config, release, err := s.clientConfig()
+	client, done, err := s.connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer done()
+	return ctxErr(ctx, fn(client))
+}
+
+// connect 建立 SSH 连接并打开 SFTP 子系统；done 按相反顺序释放全部资源。
+// 连接在 ctx 取消时被关闭，因此 ctx 必须覆盖连接的整个使用期。
+func (s *SFTP) connect(ctx context.Context) (*sftp.Client, func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	config, known, release, pending, err := s.clientConfig()
+	if err != nil {
+		return nil, nil, err
+	}
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", s.Addr)
 	if err != nil {
-		return ctxErr(ctx, err)
+		release()
+		return nil, nil, ctxErr(ctx, err)
 	}
-	defer conn.Close()
 	// SSH 握手和 SFTP 请求都不接受 context；取消时关闭底层连接让阻塞调用返回。
 	stop := make(chan struct{})
-	defer close(stop)
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -103,77 +116,193 @@ func (s *SFTP) withClient(ctx context.Context, fn func(*sftp.Client) error) erro
 		case <-stop:
 		}
 	}()
+	var closers []func()
+	done := func() {
+		for i := len(closers) - 1; i >= 0; i-- {
+			closers[i]()
+		}
+	}
+	closers = append(closers, release, func() { conn.Close() }, func() { close(stop) })
+	if known != nil {
+		config.HostKeyAlgorithms = knownAlgorithms(known, s.Addr, conn.RemoteAddr())
+	}
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, s.Addr, config)
 	if err != nil {
-		return ctxErr(ctx, fmt.Errorf("ssh %s: %w", s.Addr, err))
+		done()
+		if strings.Contains(err.Error(), "unable to authenticate") {
+			if pending != nil {
+				return nil, nil, ctxErr(ctx, pending)
+			}
+			return nil, nil, ctxErr(ctx, authError(fmt.Errorf("ssh %s: %v", s.Addr, err)))
+		}
+		return nil, nil, ctxErr(ctx, fmt.Errorf("ssh %s: %w", s.Addr, err))
 	}
 	sshClient := ssh.NewClient(sshConn, chans, reqs)
-	defer sshClient.Close()
+	closers = append(closers, func() { sshClient.Close() })
 	client, err := sftp.NewClient(sshClient)
 	if err != nil {
-		return ctxErr(ctx, fmt.Errorf("sftp %s: %w", s.Addr, err))
+		done()
+		return nil, nil, ctxErr(ctx, fmt.Errorf("sftp %s: %w", s.Addr, err))
 	}
-	defer client.Close()
-	return ctxErr(ctx, fn(client))
+	closers = append(closers, func() { client.Close() })
+	return client, done, nil
 }
 
-// clientConfig 返回 SSH 配置和释放 ssh-agent 连接的函数。
-func (s *SFTP) clientConfig() (*ssh.ClientConfig, func(), error) {
+// clientConfig 返回 SSH 配置、原始 known_hosts 校验函数（自定义 HostKeyCallback 时为 nil）、
+// 释放 ssh-agent 连接的函数，以及认证失败时应报告的口令问题。
+func (s *SFTP) clientConfig() (*ssh.ClientConfig, ssh.HostKeyCallback, func(), error, error) {
 	name := s.User
 	if name == "" {
 		u, err := user.Current()
 		if err != nil {
-			return nil, nil, fmt.Errorf("sftp user is required: %w", err)
+			return nil, nil, nil, nil, fmt.Errorf("sftp user is required: %w", err)
 		}
 		// Windows 返回 DOMAIN\user，SSH 登录名只取用户部分。
 		name = u.Username[strings.LastIndex(u.Username, `\`)+1:]
 	}
 	hostKey := s.HostKeyCallback
+	var known ssh.HostKeyCallback
 	if hostKey == nil {
 		var err error
-		if hostKey, err = s.knownHostsCallback(); err != nil {
-			return nil, nil, err
+		if hostKey, known, err = s.knownHostsCallback(); err != nil {
+			return nil, nil, nil, nil, err
 		}
 	}
-	auth, release, err := s.authMethods()
+	auth, release, pending, err := s.authMethods()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	return &ssh.ClientConfig{User: name, Auth: auth, HostKeyCallback: hostKey}, release, nil
+	return &ssh.ClientConfig{User: name, Auth: auth, HostKeyCallback: hostKey}, known, release, pending, nil
 }
 
 // knownHostsCallback 包装 knownhosts 的错误，给出可执行的处理方法。
-func (s *SFTP) knownHostsCallback() (ssh.HostKeyCallback, error) {
+// knownHostsCallback 返回包装后的校验函数，以及未包装的原始校验函数（供 knownAlgorithms 探测已登记的密钥类型）。
+func (s *SFTP) knownHostsCallback() (ssh.HostKeyCallback, ssh.HostKeyCallback, error) {
 	files := s.KnownHosts
 	if len(files) == 0 {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return nil, fmt.Errorf("locate known_hosts: %w", err)
+			return nil, nil, fmt.Errorf("locate known_hosts: %w", err)
 		}
 		files = []string{filepath.Join(home, ".ssh", "known_hosts")}
 	}
-	cb, err := knownhosts.New(files...)
-	if err != nil {
-		return nil, fmt.Errorf("load known_hosts %v: %w; add the server key first, e.g. ssh-keyscan -p <port> <host> >> ~/.ssh/known_hosts", files, err)
+	// 不存在的文件视为空登记表：新机器常常还没有 known_hosts，此时所有主机都是未知主机，
+	// 由调用方确认指纹后经 HostKeyError.Trust 创建文件。
+	var existing []string
+	for _, f := range files {
+		if _, err := os.Stat(f); err == nil {
+			existing = append(existing, f)
+		}
+	}
+	cb := func(string, net.Addr, ssh.PublicKey) error { return &knownhosts.KeyError{} }
+	if len(existing) > 0 {
+		var err error
+		if cb, err = knownhosts.New(existing...); err != nil {
+			return nil, nil, fmt.Errorf("load known_hosts %v: %w", existing, err)
+		}
 	}
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		err := cb(hostname, remote, key)
 		var keyErr *knownhosts.KeyError
 		if errors.As(err, &keyErr) {
 			if len(keyErr.Want) == 0 {
-				return fmt.Errorf("unknown SSH host key for %s (%s %s); verify the fingerprint with the server owner and add it to %v", hostname, key.Type(), ssh.FingerprintSHA256(key), files)
+				// 登记到第一个 known_hosts 文件；Error() 文案保持原样，供 CLI 直接输出。
+				return &HostKeyError{Host: knownhosts.Normalize(hostname), Fingerprint: ssh.FingerprintSHA256(key), KeyType: key.Type(), KnownHosts: files[0], key: key}
 			}
-			return fmt.Errorf("SSH host key for %s does not match known_hosts (got %s %s); the server key changed or the connection is being intercepted", hostname, key.Type(), ssh.FingerprintSHA256(key))
+			return fmt.Errorf("%w: %s (got %s %s); the server key changed or the connection is being intercepted", ErrHostKeyChanged, hostname, key.Type(), ssh.FingerprintSHA256(key))
 		}
 		return err
-	}, nil
+	}, cb, nil
 }
 
-func (s *SFTP) authMethods() ([]ssh.AuthMethod, func(), error) {
-	release := func() {}
+// knownAlgorithms 返回 known_hosts 中该主机已登记密钥对应的主机密钥算法。
+// 与 OpenSSH 一致：优先协商已登记的类型，否则服务端同时有 ed25519 与 ECDSA 时，
+// 库默认选 ECDSA，而只登记了 ed25519 的主机会被误判为密钥不一致。没有登记时返回 nil，使用默认顺序。
+func knownAlgorithms(cb ssh.HostKeyCallback, hostname string, remote net.Addr) []string {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil
+	}
+	probe, err := ssh.NewPublicKey(priv.Public())
+	if err != nil {
+		return nil
+	}
+	var keyErr *knownhosts.KeyError
+	if !errors.As(cb(hostname, remote, probe), &keyErr) {
+		return nil
+	}
+	var algos []string
+	seen := map[string]bool{}
+	for _, k := range keyErr.Want {
+		types := []string{k.Key.Type()}
+		if types[0] == ssh.KeyAlgoRSA {
+			// RSA 密钥可以用三种签名算法验证，新服务端多半已禁用 SHA-1 的 ssh-rsa。
+			types = []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}
+		}
+		for _, t := range types {
+			if !seen[t] {
+				seen[t] = true
+				algos = append(algos, t)
+			}
+		}
+	}
+	return algos
+}
+
+// authMethods 按"用户明确指定的私钥 → 密码 → ssh-agent → 默认私钥"的顺序组装认证方式。
+// 密码排在 agent 之前：agent 里密钥较多时会先耗尽服务端的尝试次数（MaxAuthTries）。
+// pending 是延后报告的口令问题：受口令保护的私钥没给口令时仍会尝试 agent（可能已 ssh-add），
+// 只有最终认证失败才把它作为原因返回。
+func (s *SFTP) authMethods() (methods []ssh.AuthMethod, release func(), pending error, err error) {
+	release = func() {}
+	fail := func(e error) ([]ssh.AuthMethod, func(), error, error) {
+		release()
+		return nil, nil, nil, e
+	}
+	parse := func(file string, explicit bool) (ssh.Signer, error) {
+		pem, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("read identity %s: %w", file, err)
+		}
+		signer, err := ssh.ParsePrivateKey(pem)
+		var missing *ssh.PassphraseMissingError
+		if errors.As(err, &missing) {
+			if s.Passphrase == "" {
+				if explicit {
+					pending = fmt.Errorf("%w: %s", ErrKeyPassphrase, file)
+				}
+				return nil, nil
+			}
+			signer, err = ssh.ParsePrivateKeyWithPassphrase(pem, []byte(s.Passphrase))
+			if errors.Is(err, x509.IncorrectPasswordError) {
+				if explicit {
+					return nil, fmt.Errorf("%w: %s", ErrKeyPassphraseWrong, file)
+				}
+				return nil, nil
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("parse identity %s: %w", file, err)
+		}
+		return signer, nil
+	}
+
+	var signers []ssh.Signer
+	for _, file := range s.IdentityFiles {
+		signer, err := parse(file, true)
+		if err != nil {
+			return fail(err)
+		}
+		if signer != nil {
+			signers = append(signers, signer)
+		}
+	}
+	if len(signers) > 0 {
+		methods = append(methods, ssh.PublicKeys(signers...))
+	}
 	if s.Pass != "" {
 		pass := s.Pass
-		return []ssh.AuthMethod{
+		methods = append(methods,
 			ssh.Password(pass),
 			// 部分服务端只开放 keyboard-interactive，提示一律用同一个密码回答。
 			ssh.KeyboardInteractive(func(_, _ string, questions []string, _ []bool) ([]string, error) {
@@ -182,56 +311,33 @@ func (s *SFTP) authMethods() ([]ssh.AuthMethod, func(), error) {
 					answers[i] = pass
 				}
 				return answers, nil
-			}),
-		}, release, nil
+			}))
 	}
-	var methods []ssh.AuthMethod
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
 		if conn, err := net.Dial("unix", sock); err == nil {
 			release = func() { conn.Close() }
 			methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
 		}
 	}
-	fail := func(err error) ([]ssh.AuthMethod, func(), error) {
-		release()
-		return nil, nil, err
-	}
-	files := s.IdentityFiles
-	explicit := len(files) > 0
-	if !explicit {
+	if len(s.IdentityFiles) == 0 {
+		var defaults []ssh.Signer
 		if home, err := os.UserHomeDir(); err == nil {
 			for _, name := range []string{"id_ed25519", "id_ecdsa", "id_rsa"} {
-				files = append(files, filepath.Join(home, ".ssh", name))
+				// 默认私钥只是尝试：不存在、读不了或口令不对都跳过。
+				if signer, err := parse(filepath.Join(home, ".ssh", name), false); err == nil && signer != nil {
+					defaults = append(defaults, signer)
+				}
 			}
 		}
-	}
-	var signers []ssh.Signer
-	for _, file := range files {
-		pem, err := os.ReadFile(file)
-		if err != nil {
-			if explicit {
-				return fail(fmt.Errorf("read identity %s: %w", file, err))
-			}
-			continue
+		if len(defaults) > 0 {
+			methods = append(methods, ssh.PublicKeys(defaults...))
 		}
-		signer, err := ssh.ParsePrivateKey(pem)
-		if err != nil {
-			var missing *ssh.PassphraseMissingError
-			if explicit && errors.As(err, &missing) {
-				return fail(fmt.Errorf("identity %s is passphrase-protected; add it to ssh-agent instead", file))
-			}
-			if explicit {
-				return fail(fmt.Errorf("parse identity %s: %w", file, err))
-			}
-			continue
-		}
-		signers = append(signers, signer)
-	}
-	if len(signers) > 0 {
-		methods = append(methods, ssh.PublicKeys(signers...))
 	}
 	if len(methods) == 0 {
-		return fail(errors.New("no SSH credentials: put a password in the URL, start ssh-agent, or pass an identity file"))
+		if pending != nil {
+			return fail(pending)
+		}
+		return fail(authError(errors.New("no SSH credentials: enter a password, start ssh-agent, or choose a private key")))
 	}
-	return methods, release, nil
+	return methods, release, pending, nil
 }

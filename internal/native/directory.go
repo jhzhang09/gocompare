@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -13,46 +14,63 @@ import (
 	"gocompare/internal/dirmerge"
 	"gocompare/internal/i18n"
 	"gocompare/internal/operations"
+	"gocompare/internal/remote"
 )
 
 func (a *workspaceState) loadDirectory(paths [2]string) {
 	a.scanSeen = nil
 	a.scanPath = ""
 	filter, mode, mtime, follow := a.dirFilter, a.compareMode, a.compareTime, a.followLinks
+	auth := a.takeURLPasswords()
+	paths = a.paths // 密码已从地址中移出
 	a.job(func(ctx context.Context) {
 		lastProgress := time.Time{}
 		links := compare.LinkRecord
 		if follow {
 			links = compare.LinkFollow
 		}
-		rows, err := compare.CompareDirectories(ctx, paths[0], paths[1], compare.ScanOptions{
-			Filter:      filter,
-			KeepParents: true,
-			Links:       links,
-			CompareMode: mode,
-			CompareTime: mtime,
-			Progress: func(rel string) error {
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				if a.win != nil && time.Since(lastProgress) < 50*time.Millisecond {
-					return nil
-				}
-				lastProgress = time.Now()
-				// 进度限流，避免扫描大目录淹没 UI 队列。
-				a.publish(func() {
-					a.scanPath = rel
-					if a.win == nil {
-						a.scanSeen = append(a.scanSeen, rel)
+		var sources [2]compare.Source
+		var err error
+		for i := range paths {
+			var done func()
+			if sources[i], done, err = openSource(ctx, paths[i], auth); err != nil {
+				break
+			}
+			defer done()
+		}
+		var rows []compare.Entry
+		if err == nil {
+			rows, err = compare.CompareSources(ctx, sources[0], sources[1], compare.ScanOptions{
+				Filter:      filter,
+				KeepParents: true,
+				Links:       links,
+				CompareMode: mode,
+				CompareTime: mtime,
+				Progress: func(rel string) error {
+					if err := ctx.Err(); err != nil {
+						return err
 					}
-				})
-				return nil
-			},
-		})
+					if a.win != nil && time.Since(lastProgress) < 50*time.Millisecond {
+						return nil
+					}
+					lastProgress = time.Now()
+					// 进度限流，避免扫描大目录淹没 UI 队列。
+					a.publish(func() {
+						a.scanPath = rel
+						if a.win == nil {
+							a.scanSeen = append(a.scanSeen, rel)
+						}
+					})
+					return nil
+				},
+			})
+		}
 		a.publish(func() {
 			a.busy = false
 			if err != nil {
-				a.err = err.Error()
+				if !a.handleRemoteError(err, a.load) {
+					a.err = err.Error()
+				}
 				return
 			}
 			a.installDirectory(paths, rows)
@@ -110,7 +128,13 @@ func (a *workspaceState) openDirectoryEntry(entry compare.Entry) {
 		return
 	}
 	a.saveModeSession(kindDirectory)
-	a.paths = [2]string{filepath.Join(a.directoryRoots[0], filepath.FromSlash(entry.Path)), filepath.Join(a.directoryRoots[1], filepath.FromSlash(entry.Path))}
+	for i, root := range a.directoryRoots {
+		if remote.IsURL(root) {
+			a.paths[i] = remote.JoinPath(root, entry.Path)
+		} else {
+			a.paths[i] = filepath.Join(root, filepath.FromSlash(entry.Path))
+		}
+	}
 	a.allowMissing = true
 	a.kind = kindFile
 	a.load()
@@ -173,22 +197,28 @@ func (a *workspaceState) directoryView(c *ui.Context) {
 		}
 
 		ui.Divider(c).Height(16)
+		// 同步、目录合并与撤销直接读写本地文件系统，任一侧是远程目录时不可用。
+		localOnly := a.busy || a.remoteDirectory()
+		localTip := ""
+		if a.remoteDirectory() {
+			localTip = i18n.T("dir.remoteLocalOnly")
+		}
 		a.normalizeSyncChoice()
-		ui.Select(c, &a.syncChoice, syncOptions()).Disabled(a.busy)
-		syncBtn := ui.Button(c, "").Label(i18n.T("sync.preview")).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
+		ui.Select(c, &a.syncChoice, syncOptions()).Disabled(localOnly)
+		syncBtn := ui.Button(c, "").Label(i18n.T("sync.preview")).Padding(3, 8).Gap(4).Radius(5).Disabled(localOnly).Tooltip(localTip)
 		syncBtn.OnClick(a.previewSync)
 		syncBtn.Children(func() {
 			ui.Icon(c, iconSync).Size(11, 11)
 			ui.Text(c, i18n.T("sync.preview")).FontSize(11).SingleLine()
 		})
-		dirMergeBtn := ui.Button(c, "").Label(i18n.T("dirmerge.action")).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
+		dirMergeBtn := ui.Button(c, "").Label(i18n.T("dirmerge.action")).Padding(3, 8).Gap(4).Radius(5).Disabled(localOnly).Tooltip(localTip)
 		dirMergeBtn.OnClick(a.previewDirMerge)
 		dirMergeBtn.Children(func() {
 			ui.Icon(c, iconGitMerge).Size(11, 11)
 			ui.Text(c, i18n.T("dirmerge.action")).FontSize(11).SingleLine()
 		})
 		if a.lastJournal != "" && !a.syncRolledBack {
-			undoBtn := ui.Button(c, "").Label(i18n.T("sync.undo")).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
+			undoBtn := ui.Button(c, "").Label(i18n.T("sync.undo")).Padding(3, 8).Gap(4).Radius(5).Disabled(localOnly)
 			undoBtn.OnClick(a.undoSync)
 			undoBtn.Children(func() {
 				ui.Icon(c, iconUndo).Size(11, 11)
@@ -349,7 +379,7 @@ func (a *workspaceState) normalizeSyncChoice() {
 }
 
 func (a *workspaceState) previewSync() {
-	if a.busy {
+	if a.busy || a.remoteDirectory() {
 		return
 	}
 	if a.directoryOptions.Filter != "" || a.directoryOptions.CompareMode || a.directoryOptions.CompareTime || a.directoryOptions.Links == compare.LinkFollow {
@@ -475,7 +505,7 @@ func (a *workspaceState) executeSync() {
 }
 
 func (a *workspaceState) previewDirMerge() {
-	if a.busy {
+	if a.busy || a.remoteDirectory() {
 		return
 	}
 	roots := a.directoryRoots
@@ -563,4 +593,42 @@ func dirMergeReason(reason string) string {
 		return i18n.T("dirmerge.reason.deleteModify")
 	}
 	return reason
+}
+
+// remoteDirectory 报告当前目录比较是否有一侧是远程目录。
+func (a *workspaceState) remoteDirectory() bool {
+	return remote.IsURL(a.directoryRoots[0]) || remote.IsURL(a.directoryRoots[1])
+}
+
+// openSource 打开目录比较的一侧：远程地址建立一条可复用的连接，done 负责关闭它。
+// 连接错误包装为 remoteInputError，以便界面询问密码或确认主机密钥后重试。
+func openSource(ctx context.Context, p string, auth remoteAuth) (compare.Source, func(), error) {
+	if !remote.IsURL(p) {
+		return compare.LocalSource(p), func() {}, nil
+	}
+	store, dir, err := remote.ParseDirURL(p)
+	if err != nil {
+		return nil, nil, err
+	}
+	auth.apply(p, store)
+	conn, err := remote.Connect(ctx, store)
+	if err != nil {
+		return nil, nil, &remoteInputError{raw: p, err: err}
+	}
+	return taggedSource{Source: compare.RemoteSource(conn, dir), raw: p}, func() { conn.Close() }, nil
+}
+
+// taggedSource 给扫描错误标上远程地址：WebDAV 等无状态协议直到扫描时才发出第一个请求，
+// 认证与主机问题也在这时才出现，需要同样能触发密码询问。
+type taggedSource struct {
+	compare.Source
+	raw string
+}
+
+func (s taggedSource) Scan(ctx context.Context, opt compare.ScanOptions) (map[string]*compare.Metadata, error) {
+	m, err := s.Source.Scan(ctx, opt)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		return nil, &remoteInputError{raw: s.raw, err: err}
+	}
+	return m, err
 }

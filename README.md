@@ -6,7 +6,7 @@
 
 **A native, cross-platform file and folder comparison tool written in Go.**
 
-Compare text, folders, images and binary metadata, merge three-way, and sync directories safely — in a fast native window or from the command line.
+Compare text, files, folders, tables and images — locally or on SFTP, SMB, FTP and WebDAV servers — merge three-way, and sync directories safely, in a fast native window or from the command line.
 
 [![Checks](https://github.com/jhzhang09/gocompare/actions/workflows/check.yml/badge.svg)](https://github.com/jhzhang09/gocompare/actions/workflows/check.yml)
 [![Release](https://img.shields.io/github/v/release/jhzhang09/gocompare?include_prereleases&sort=semver)](https://github.com/jhzhang09/gocompare/releases)
@@ -34,14 +34,16 @@ Compare text, folders, images and binary metadata, merge three-way, and sync dir
 | Mode | What it does |
 |---|---|
 | **Text compare** | Paste or type into two panes and see differences instantly, with word-level highlights. Swap, copy, clear and save either side. |
-| **File compare** | Side-by-side diff with **both sides editable**, undo/redo, find & replace, manual alignment anchors, ignore whitespace / blank lines. Detects UTF-8, UTF-16 (BOM) and GBK and preserves encoding, BOM and line endings on save. |
-| **Folder compare** | Recursive tree with collapse, filter and "only differences". Optionally compares permissions and modification times and follows symlinks safely. |
+| **File compare** | Side-by-side diff with **both sides editable**, undo/redo, find & replace, manual alignment anchors, ignore whitespace / blank lines. Previous / Next Difference highlights the change and shows where you are ("2 / 7"). Detects UTF-8, UTF-16 (BOM) and GBK and preserves encoding, BOM and line endings on save. Word (.docx) and PDF files open as read-only extracted text. |
+| **Folder compare** | Recursive tree with collapse, filter and "only differences". Optionally compares permissions and modification times and follows symlinks safely. Either side can be a remote folder. |
+| **Remote files & folders** | Click **Remote…** next to a path to connect to **SFTP, SMB, FTP/FTPS or WebDAV**, then browse and pick a file or folder — no URLs to type. SFTP hosts can be imported from `~/.ssh/config` and sign in with a password, a private key (with passphrase), ssh-agent or your default keys; unknown host keys are shown for you to verify. Recent connections are remembered without passwords. S3, Dropbox, OneDrive and SVN work through URLs. |
 | **Folder sync** | Update left/right/both or mirror. Always previews a plan; executes with backups, a journal, automatic rollback on failure and one-click undo. |
+| **Table compare** | CSV, TSV, Excel (.xlsx) and HTML tables, cell by cell. The CLI adds key columns, column mapping and numeric tolerance. |
 | **Three-way merge** | Base / left / right aligned columns, take left / right / both / base per conflict, edit the output freely. Also works as a Git `mergetool`. |
 | **Picture compare** | PNG, JPEG, GIF: side by side, overlay, pixel difference, a 0–255 tolerance map that marks real changes in red, background color replacement and per-side flipping. |
 | **Media tags** | Compares ID3v2.3 / v2.4 title, artist and album without decoding audio. |
 | **Version & registry** | Compares PE `FileVersion` resources and Windows `.reg` exports (UTF-16 or UTF-8) without touching the live registry. |
-| **Sessions & i18n** | Save and reopen comparison sessions. UI in English, 简体中文 and 繁體中文; light, dark or system theme. |
+| **Sessions & i18n** | Save and reopen comparison sessions. UI in English, 简体中文 and 繁體中文; light, dark or system theme. Checks GitHub for new releases from Settings. |
 
 <table>
   <tr>
@@ -150,7 +152,20 @@ gocompare-cli merge --base base.txt --output merged.txt left.txt right.txt
 gocompare-cli picture before.png after.png
 ```
 
-Sync modes: `update-right`, `update-left`, `update-both`, `mirror-right`, `mirror-left`. Run `gocompare-cli --help` for every command, including `hex`, `media`, `pe`, `reg`, `script`, `report` and `extend`.
+Sync modes: `update-right`, `update-left`, `update-both`, `mirror-right`, `mirror-left`.
+
+More commands for remote files, tables, archives and snapshots:
+
+```bash
+gocompare-cli remote compare sftp://deploy@web1/etc/app.conf sftp://deploy@web2/etc/app.conf
+gocompare-cli remote read "smb://CORP;bob@nas/docs/report.txt" > report.txt
+gocompare-cli table --keys 0 --tolerance 0.01 before.csv after.xlsx
+gocompare-cli archive compare release-1.zip release-2.zip
+gocompare-cli snapshot create ./build build.snapshot        # later: snapshot compare a.snapshot b.snapshot
+gocompare-cli dirmerge --base ./base --output ./merged ./left ./right
+```
+
+SFTP uses `~/.ssh/known_hosts` (or `--known-hosts`) and never trusts an unknown host silently; pass `--identity` for a key and set `GOCOMPARE_SSH_KEY_PASSPHRASE` if it has a passphrase. Run `gocompare-cli --help` for every command, including `hex`, `media`, `pe`, `reg`, `doctext`, `acl`, `check-update`, `script`, `report` and `extend`.
 
 ### Git integration
 
@@ -168,6 +183,7 @@ git config --global mergetool.gocompare.trustExitCode true
 
 - **Saves are atomic and conflict-aware.** Files are written to a temporary file in the same folder and renamed into place only if the file on disk still matches what was loaded. "Save as" never overwrites an existing file.
 - **Folder sync is plan → confirm → execute.** Every action records the size, SHA-256, mode and time it expects. Execution re-checks them, backs up files before overwriting or deleting, journals each step and rolls back completed steps on any error or cancellation.
+- **Remote saves are checked too.** Saving a remote file re-reads it first and refuses to overwrite changes someone else made since you opened it. Passwords and key passphrases stay in memory only and are stripped from paths, window titles and saved sessions.
 - **Undo never destroys newer work.** Undoing a sync refuses to touch files that changed after the sync, and plans are refused when names collide only by letter case on case-insensitive file systems.
 
 The full contract is in [docs/operations.md](docs/operations.md) (Chinese).

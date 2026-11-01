@@ -42,6 +42,11 @@ func EqualFiles(ctx context.Context, left, right string) (bool, error) {
 			return false, fmt.Errorf("not a regular file: %s", f.Name())
 		}
 	}
+	return equalReaders(ctx, a, b)
+}
+
+// equalReaders 分块比较两个字节流，读到相同长度且内容一致才算相同；读取错误不会被视为相同。
+func equalReaders(ctx context.Context, a, b io.Reader) (bool, error) {
 	x, y := make([]byte, 64<<10), make([]byte, 64<<10)
 	for {
 		if err := ctx.Err(); err != nil {

@@ -431,10 +431,346 @@ var messages = map[string]map[Language]string{
 		EnUS: "Right Path",
 	},
 	"pane.pathPlaceholder": {
-		ZhCN: "输入路径或浏览选择…",
-		ZhTW: "輸入路徑或瀏覽選擇…",
-		EnUS: "Enter path or browse…",
+		ZhCN: "输入路径、sftp:// smb:// 等远程地址，或浏览选择…",
+		ZhTW: "輸入路徑、sftp:// smb:// 等遠端位址，或瀏覽選擇…",
+		EnUS: "Enter a path, a remote URL such as sftp:// or smb://, or browse…",
 	},
+	"remote.open": {
+		ZhCN: "远程…",
+		ZhTW: "遠端…",
+		EnUS: "Remote…",
+	},
+	"remote.openTooltip": {
+		ZhCN: "连接 SFTP、SMB、FTP 或 WebDAV 服务器并选择文件",
+		ZhTW: "連線 SFTP、SMB、FTP 或 WebDAV 伺服器並選擇檔案",
+		EnUS: "Connect to an SFTP, SMB, FTP or WebDAV server and pick a file",
+	},
+	"remote.badge": {
+		ZhCN: "远程",
+		ZhTW: "遠端",
+		EnUS: "Remote",
+	},
+	"remote.dialogTitleLeft": {
+		ZhCN: "选择左侧远程文件",
+		ZhTW: "選擇左側遠端檔案",
+		EnUS: "Choose remote file (left)",
+	},
+	"remote.dialogTitleRight": {
+		ZhCN: "选择右侧远程文件",
+		ZhTW: "選擇右側遠端檔案",
+		EnUS: "Choose remote file (right)",
+	},
+	"remote.recent": {
+		ZhCN: "最近连接",
+		ZhTW: "最近連線",
+		EnUS: "Recent",
+	},
+	"remote.protocol": {
+		ZhCN: "协议",
+		ZhTW: "協定",
+		EnUS: "Protocol",
+	},
+	"remote.proto.sftp": {
+		ZhCN: "SFTP（SSH）",
+		ZhTW: "SFTP（SSH）",
+		EnUS: "SFTP (SSH)",
+	},
+	"remote.proto.smb": {
+		ZhCN: "SMB（Windows 共享 / NAS）",
+		ZhTW: "SMB（Windows 共用 / NAS）",
+		EnUS: "SMB (Windows share / NAS)",
+	},
+	"remote.proto.ftp": {
+		ZhCN: "FTP",
+		ZhTW: "FTP",
+		EnUS: "FTP",
+	},
+	"remote.proto.ftps": {
+		ZhCN: "FTPS（FTP over TLS）",
+		ZhTW: "FTPS（FTP over TLS）",
+		EnUS: "FTPS (FTP over TLS)",
+	},
+	"remote.proto.webdav": {
+		ZhCN: "WebDAV",
+		ZhTW: "WebDAV",
+		EnUS: "WebDAV",
+	},
+	"remote.proto.webdavs": {
+		ZhCN: "WebDAV（HTTPS）",
+		ZhTW: "WebDAV（HTTPS）",
+		EnUS: "WebDAV (HTTPS)",
+	},
+	"remote.sshConfig": {
+		ZhCN: "导入配置",
+		ZhTW: "匯入設定",
+		EnUS: "Import",
+	},
+	"remote.sshConfigNone": {
+		ZhCN: "可选：从 ~/.ssh/config 导入主机…",
+		ZhTW: "選填：從 ~/.ssh/config 匯入主機…",
+		EnUS: "Optional: import a host from ~/.ssh/config…",
+	},
+	"remote.host": {
+		ZhCN: "主机",
+		ZhTW: "主機",
+		EnUS: "Host",
+	},
+	"remote.hostPlaceholder": {
+		ZhCN: "域名或 IP，例如 web1.example.com",
+		ZhTW: "網域或 IP，例如 web1.example.com",
+		EnUS: "Name or IP, e.g. web1.example.com",
+	},
+	"remote.port": {
+		ZhCN: "端口",
+		ZhTW: "連接埠",
+		EnUS: "Port",
+	},
+	"remote.user": {
+		ZhCN: "用户名",
+		ZhTW: "使用者名稱",
+		EnUS: "User",
+	},
+	"remote.userPlaceholder": {
+		ZhCN: "留空使用当前系统用户",
+		ZhTW: "留空使用目前系統使用者",
+		EnUS: "Leave empty for your system user",
+	},
+	"remote.domain": {
+		ZhCN: "域",
+		ZhTW: "網域",
+		EnUS: "Domain",
+	},
+	"remote.domainPlaceholder": {
+		ZhCN: "可选，例如 CORP",
+		ZhTW: "選填，例如 CORP",
+		EnUS: "Optional, e.g. CORP",
+	},
+	"remote.share": {
+		ZhCN: "共享名",
+		ZhTW: "共用名稱",
+		EnUS: "Share",
+	},
+	"remote.sharePlaceholder": {
+		ZhCN: "可留空，连接后从列表中选择",
+		ZhTW: "可留空，連線後從清單中選擇",
+		EnUS: "Optional: pick from the list after connecting",
+	},
+	"remote.sftpPasswordPlaceholder": {
+		ZhCN: "服务器登录密码；用私钥登录可留空",
+		ZhTW: "伺服器登入密碼；用私鑰登入可留空",
+		EnUS: "Server password; leave empty when using a key",
+	},
+	"remote.identity": {
+		ZhCN: "私钥文件",
+		ZhTW: "私鑰檔案",
+		EnUS: "Private key",
+	},
+	"remote.identityPlaceholder": {
+		ZhCN: "可选；留空时自动尝试 ssh-agent 和 ~/.ssh/id_*",
+		ZhTW: "選填；留空時自動嘗試 ssh-agent 與 ~/.ssh/id_*",
+		EnUS: "Optional; ssh-agent and ~/.ssh/id_* are tried when empty",
+	},
+	"remote.sftpHint": {
+		ZhCN: "只需主机和用户名，再填密码或选私钥；私钥有密码时填「私钥密码」。密码仅保存在内存中。",
+		ZhTW: "只需主機與使用者名稱，再填密碼或選私鑰；私鑰有密碼時填「私鑰密碼」。密碼僅保存在記憶體中。",
+		EnUS: "Host and user are enough; add a password or a key, plus its passphrase if it has one. Secrets stay in memory only.",
+	},
+	"remote.connecting": {
+		ZhCN: "正在连接…",
+		ZhTW: "正在連線…",
+		EnUS: "Connecting…",
+	},
+	"remote.errHost": {
+		ZhCN: "请填写主机。",
+		ZhTW: "請填寫主機。",
+		EnUS: "Enter a host.",
+	},
+	"remote.errAuth": {
+		ZhCN: "登录失败：用户名或密码不正确。",
+		ZhTW: "登入失敗：使用者名稱或密碼不正確。",
+		EnUS: "Sign-in failed: wrong user name or password.",
+	},
+	"remote.errSSHAuth": {
+		ZhCN: "登录失败：服务器没有接受这个私钥或 ssh-agent。请填写密码，或选择正确的私钥文件。",
+		ZhTW: "登入失敗：伺服器未接受此私鑰或 ssh-agent。請填寫密碼，或選擇正確的私鑰檔案。",
+		EnUS: "Sign-in failed: the server accepted neither the key nor ssh-agent. Enter a password or choose the right key file.",
+	},
+	"remote.errTimeout": {
+		ZhCN: "连接超时，请检查主机、端口和网络。",
+		ZhTW: "連線逾時，請檢查主機、連接埠與網路。",
+		EnUS: "Connection timed out. Check the host, port and network.",
+	},
+	"remote.changeConnection": {
+		ZhCN: "更换连接",
+		ZhTW: "更換連線",
+		EnUS: "Change connection",
+	},
+	"remote.up": {
+		ZhCN: "上一级",
+		ZhTW: "上一層",
+		EnUS: "Up one level",
+	},
+	"remote.location": {
+		ZhCN: "当前位置",
+		ZhTW: "目前位置",
+		EnUS: "Location",
+	},
+	"remote.emptyDir": {
+		ZhCN: "此目录为空",
+		ZhTW: "此目錄為空",
+		EnUS: "This folder is empty",
+	},
+	"remote.noList": {
+		ZhCN: "该服务器不支持浏览目录，请直接输入文件路径。",
+		ZhTW: "此伺服器不支援瀏覽目錄，請直接輸入檔案路徑。",
+		EnUS: "This server can't list folders. Enter the file path.",
+	},
+	"remote.manualPlaceholder": {
+		ZhCN: "文件路径，例如 /etc/app.conf",
+		ZhTW: "檔案路徑，例如 /etc/app.conf",
+		EnUS: "File path, e.g. /etc/app.conf",
+	},
+	"remote.selectHint": {
+		ZhCN: "单击文件选中，双击直接打开",
+		ZhTW: "按一下檔案選取，按兩下直接開啟",
+		EnUS: "Click a file to select it, double-click to open",
+	},
+	"remote.choose": {
+		ZhCN: "打开",
+		ZhTW: "開啟",
+		EnUS: "Open",
+	},
+	"remote.passphrase": {
+		ZhCN: "私钥密码",
+		ZhTW: "私鑰密碼",
+		EnUS: "Key passphrase",
+	},
+	"remote.passphrasePlaceholder": {
+		ZhCN: "私钥设置过密码时填写",
+		ZhTW: "私鑰設定過密碼時填寫",
+		EnUS: "Only if the key has a passphrase",
+	},
+	"remote.passphraseTitle": {
+		ZhCN: "需要私钥密码",
+		ZhTW: "需要私鑰密碼",
+		EnUS: "Key passphrase required",
+	},
+	"remote.errKeyPassphrase": {
+		ZhCN: "这个私钥设置了密码，请在「私钥密码」中填写。",
+		ZhTW: "此私鑰設定了密碼，請在「私鑰密碼」中填寫。",
+		EnUS: "This key has a passphrase. Enter it in Key passphrase.",
+	},
+	"remote.errKeyPassphraseWrong": {
+		ZhCN: "私钥密码不正确，请重新输入。",
+		ZhTW: "私鑰密碼不正確，請重新輸入。",
+		EnUS: "The key passphrase is wrong. Try again.",
+	},
+	"remote.errKeyMissing": {
+		ZhCN: "找不到私钥文件，请检查路径。",
+		ZhTW: "找不到私鑰檔案，請檢查路徑。",
+		EnUS: "The private key file was not found. Check the path.",
+	},
+	"remote.errKeyInvalid": {
+		ZhCN: "无法识别这个私钥文件，请确认选的是私钥（不是 .pub 公钥）。",
+		ZhTW: "無法識別此私鑰檔案，請確認選的是私鑰（不是 .pub 公鑰）。",
+		EnUS: "This file isn't a usable private key. Make sure it's the private key, not the .pub file.",
+	},
+	"remote.errRefused": {
+		ZhCN: "连接被拒绝：请检查主机和端口，确认服务已开启。",
+		ZhTW: "連線被拒絕：請檢查主機與連接埠，確認服務已開啟。",
+		EnUS: "Connection refused. Check the host and port, and that the service is running.",
+	},
+	"remote.errNoHost": {
+		ZhCN: "找不到这个主机，请检查主机名。",
+		ZhTW: "找不到此主機，請檢查主機名稱。",
+		EnUS: "Host not found. Check the host name.",
+	},
+	"remote.errHostKeyChanged": {
+		ZhCN: "服务器的主机密钥与 ~/.ssh/known_hosts 中登记的不一致，已拒绝连接。可能是服务器重装或更换了密钥，也可能连接被拦截。请先与管理员核对下面的指纹，确认无误后从 known_hosts 删除该主机的旧记录（ssh-keygen -R 主机）再连接。",
+		ZhTW: "伺服器的主機金鑰與 ~/.ssh/known_hosts 中登記的不一致，已拒絕連線。可能是伺服器重裝或更換了金鑰，也可能連線遭攔截。請先與管理員核對下方指紋，確認無誤後從 known_hosts 刪除該主機的舊記錄（ssh-keygen -R 主機）再連線。",
+		EnUS: "The server's host key doesn't match ~/.ssh/known_hosts, so the connection was refused. The server may have been reinstalled or rekeyed, or the connection may be intercepted. Check the fingerprint below with the server owner, then remove the old entry (ssh-keygen -R host) and connect again.",
+	},
+	"remote.errNotFound": {
+		ZhCN: "远程路径不存在。",
+		ZhTW: "遠端路徑不存在。",
+		EnUS: "The remote path doesn't exist.",
+	},
+	"status.hunkPosition": {
+		ZhCN: "第 %d 处差异，共 %d 处",
+		ZhTW: "第 %d 處差異，共 %d 處",
+		EnUS: "Difference %d of %d",
+	},
+	"diff.hunkTotal": {
+		ZhCN: "共 %d 处",
+		ZhTW: "共 %d 處",
+		EnUS: "%d total",
+	},
+	"dir.remoteLocalOnly": {
+		ZhCN: "同步与目录合并只支持本地目录",
+		ZhTW: "同步與目錄合併只支援本機目錄",
+		EnUS: "Sync and folder merge work on local folders only",
+	},
+	"remote.dirTitleLeft": {
+		ZhCN: "选择左侧远程目录",
+		ZhTW: "選擇左側遠端目錄",
+		EnUS: "Choose remote folder (left)",
+	},
+	"remote.dirTitleRight": {
+		ZhCN: "选择右侧远程目录",
+		ZhTW: "選擇右側遠端目錄",
+		EnUS: "Choose remote folder (right)",
+	},
+	"remote.chooseDir": {
+		ZhCN: "选择此目录",
+		ZhTW: "選擇此目錄",
+		EnUS: "Choose this folder",
+	},
+	"remote.passwordTitle": {
+		ZhCN: "需要密码",
+		ZhTW: "需要密碼",
+		EnUS: "Password required",
+	},
+	"remote.passwordRejected": {
+		ZhCN: "密码被拒绝，请重新输入。",
+		ZhTW: "密碼被拒絕，請重新輸入。",
+		EnUS: "The password was rejected. Try again.",
+	},
+	"remote.passwordPlaceholder": {
+		ZhCN: "密码",
+		ZhTW: "密碼",
+		EnUS: "Password",
+	},
+	"remote.passwordHint": {
+		ZhCN: "密码只保存在本次运行的内存中，不会写入会话或设置。",
+		ZhTW: "密碼只保存在本次執行的記憶體中，不會寫入工作階段或設定。",
+		EnUS: "The password stays in memory for this run and is never written to sessions or settings.",
+	},
+	"remote.connect": {
+		ZhCN: "连接",
+		ZhTW: "連線",
+		EnUS: "Connect",
+	},
+	"remote.hostKeyTitle": {
+		ZhCN: "未知的 SSH 主机",
+		ZhTW: "未知的 SSH 主機",
+		EnUS: "Unknown SSH host",
+	},
+	"remote.hostKeyDesc": {
+		ZhCN: "首次连接 %s。请先与服务器管理员核对下面的指纹，确认一致后再信任；指纹不符说明连接可能被拦截。",
+		ZhTW: "首次連線 %s。請先與伺服器管理員核對下方指紋，確認一致後再信任；指紋不符表示連線可能遭攔截。",
+		EnUS: "This is the first connection to %s. Check the fingerprint below with the server owner before trusting it; a different fingerprint means the connection may be intercepted.",
+	},
+	"remote.hostKeyFile": {
+		ZhCN: "信任后将写入 %s",
+		ZhTW: "信任後將寫入 %s",
+		EnUS: "Trusting adds the key to %s",
+	},
+	"remote.trustConnect": {
+		ZhCN: "信任并连接",
+		ZhTW: "信任並連線",
+		EnUS: "Trust and connect",
+	},
+
 	"pane.leftText": {
 		ZhCN: "左侧文本",
 		ZhTW: "左側文本",

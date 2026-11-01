@@ -6,7 +6,7 @@
 
 **用 Go 编写的原生跨平台文件与目录比较工具。**
 
-比较文本、目录、图片和二进制元数据，进行三方合并，安全地同步目录——既有快速的原生窗口，也有可脚本化的命令行。
+比较文本、文件、目录、表格和图片——本地或 SFTP、SMB、FTP、WebDAV 服务器上的都可以——进行三方合并，安全地同步目录；既有快速的原生窗口，也有可脚本化的命令行。
 
 [![Checks](https://github.com/jhzhang09/gocompare/actions/workflows/check.yml/badge.svg)](https://github.com/jhzhang09/gocompare/actions/workflows/check.yml)
 [![Release](https://img.shields.io/github/v/release/jhzhang09/gocompare?include_prereleases&sort=semver)](https://github.com/jhzhang09/gocompare/releases)
@@ -34,14 +34,16 @@
 | 模式 | 说明 |
 |---|---|
 | **文本比较** | 直接在左右两栏粘贴或输入文本，实时显示差异并按词高亮；可交换、复制、清空、另存为任一侧。 |
-| **文件比较** | 左右分栏对比，**两侧都可编辑**，支持撤销重做、查找替换、手动对齐锚点、忽略空白和空行。自动识别 UTF-8、UTF-16（带 BOM）和 GBK，保存时保留原编码、BOM 和换行符。 |
-| **目录比较** | 递归树形视图，可折叠、过滤、只看差异；可选比较权限和修改时间，安全地跟随符号链接。 |
+| **文件比较** | 左右分栏对比，**两侧都可编辑**，支持撤销重做、查找替换、手动对齐锚点、忽略空白和空行。上一差异／下一差异会高亮当前差异并显示位置（如「2 / 7」）。自动识别 UTF-8、UTF-16（带 BOM）和 GBK，保存时保留原编码、BOM 和换行符。Word（.docx）和 PDF 以只读的提取文本参与比较。 |
+| **目录比较** | 递归树形视图，可折叠、过滤、只看差异；可选比较权限和修改时间，安全地跟随符号链接。任一侧都可以是远程目录。 |
+| **远程文件与目录** | 点路径框旁的「远程…」即可连接 **SFTP、SMB、FTP/FTPS 或 WebDAV**，浏览并点选文件或目录，不用手输地址。SFTP 可从 `~/.ssh/config` 导入主机，支持密码、私钥（含私钥密码）、ssh-agent 和默认私钥登录；首次连接会显示主机指纹供你核对。最近连接会被记住（不含密码）。S3、Dropbox、OneDrive 和 SVN 可直接输入地址。 |
 | **目录同步** | 向左、向右、双向更新或镜像。总是先生成预览计划；执行时备份、写日志，失败自动回滚，可一键撤销。 |
+| **表格比较** | CSV、TSV、Excel（.xlsx）和 HTML 表格逐单元格比较；命令行另支持主键列、列映射和数值容差。 |
 | **三方合并** | 基准、左侧、右侧三栏对齐，每个冲突可选采用左侧、右侧、双方或基准，输出可自由编辑；也可作为 Git 的 `mergetool` 使用。 |
 | **图片比较** | 支持 PNG、JPEG、GIF：并排、叠加、像素差值、0–255 容差图（真实差异标红）、背景色替换，以及左右两侧分别翻转。 |
 | **媒体标签** | 比较 ID3v2.3／2.4 的标题、艺术家和专辑，不解码音频。 |
 | **版本与注册表** | 比较 PE 文件的 `FileVersion` 资源和 Windows `.reg` 导出文件（UTF-16 或 UTF-8），不读取实时注册表。 |
-| **会话与多语言** | 保存和重新打开比较会话。界面支持简体中文、繁體中文和英文，可选浅色、深色或跟随系统。 |
+| **会话与多语言** | 保存和重新打开比较会话。界面支持简体中文、繁體中文和英文，可选浅色、深色或跟随系统。可在设置中检查 GitHub 上的新版本。 |
 
 <table>
   <tr>
@@ -150,7 +152,20 @@ gocompare-cli merge --base base.txt --output merged.txt left.txt right.txt
 gocompare-cli picture before.png after.png
 ```
 
-同步模式：`update-right`、`update-left`、`update-both`、`mirror-right`、`mirror-left`。运行 `gocompare-cli --help` 查看全部命令，包括 `hex`、`media`、`pe`、`reg`、`script`、`report` 和 `extend`。
+同步模式：`update-right`、`update-left`、`update-both`、`mirror-right`、`mirror-left`。
+
+远程文件、表格、压缩包和快照等命令：
+
+```bash
+gocompare-cli remote compare sftp://deploy@web1/etc/app.conf sftp://deploy@web2/etc/app.conf
+gocompare-cli remote read "smb://CORP;bob@nas/docs/report.txt" > report.txt
+gocompare-cli table --keys 0 --tolerance 0.01 before.csv after.xlsx
+gocompare-cli archive compare release-1.zip release-2.zip
+gocompare-cli snapshot create ./build build.snapshot        # 之后：snapshot compare a.snapshot b.snapshot
+gocompare-cli dirmerge --base ./base --output ./merged ./left ./right
+```
+
+SFTP 使用 `~/.ssh/known_hosts`（或 `--known-hosts` 指定），绝不静默信任未知主机；用 `--identity` 指定私钥，私钥有密码时设置环境变量 `GOCOMPARE_SSH_KEY_PASSPHRASE`。运行 `gocompare-cli --help` 查看全部命令，包括 `hex`、`media`、`pe`、`reg`、`doctext`、`acl`、`check-update`、`script`、`report` 和 `extend`。
 
 ### 集成到 Git
 
@@ -168,6 +183,7 @@ git config --global mergetool.gocompare.trustExitCode true
 
 - **保存是原子的，并能感知冲突。** 先写入同目录的临时文件，只有磁盘上的文件仍与加载时一致才替换原文件；"另存为"绝不覆盖已有文件。
 - **目录同步遵循"计划 → 确认 → 执行"。** 每个操作都记录预期的大小、SHA-256、权限和时间；执行时重新核对，覆盖或删除前先备份，每一步写入日志，任何错误或取消都会回滚已完成的步骤。
+- **远程保存同样会核对。** 保存远程文件前先重新读取，打开后被别人改过就拒绝覆盖。密码和私钥密码只保存在内存中，并会从路径、窗口标题和保存的会话中去掉。
 - **撤销不会破坏更新的内容。** 撤销同步时，同步之后被修改过的文件一律不动；在大小写不敏感的文件系统上，只差大小写的文件名冲突会直接拒绝生成计划。
 
 完整约定见 [docs/operations.md](docs/operations.md)。

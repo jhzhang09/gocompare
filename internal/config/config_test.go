@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -36,5 +38,33 @@ func TestConfigLoadSave(t *testing.T) {
 	loaded := Load()
 	if loaded.Language != "en" || loaded.Theme != "dark" {
 		t.Fatalf("unexpected loaded config: %+v", loaded)
+	}
+}
+
+func TestRemoteBookmarks(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "remotes.json")
+	if LoadRemotes(p) != nil {
+		t.Fatal("missing file must give an empty list")
+	}
+	a := RemoteBookmark{Scheme: "sftp", Host: "web1", User: "alice", Dir: "/srv"}
+	b := RemoteBookmark{Scheme: "smb", Host: "nas", Share: "docs"}
+	AddRemote(p, a)
+	AddRemote(p, b)
+	a.Dir = "/etc"
+	list, err := AddRemote(p, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].Dir != "/etc" || list[1].Host != "nas" {
+		t.Fatalf("list %+v", list)
+	}
+	for i := 0; i < 15; i++ {
+		AddRemote(p, RemoteBookmark{Scheme: "ftp", Host: fmt.Sprintf("h%d", i)})
+	}
+	if got := LoadRemotes(p); len(got) != maxRemoteBookmarks {
+		t.Fatalf("len %d", len(got))
+	}
+	if info, _ := os.Stat(p); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v", info.Mode())
 	}
 }

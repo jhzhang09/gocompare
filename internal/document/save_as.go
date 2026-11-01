@@ -98,6 +98,9 @@ func (d *File) SaveAsOverwrite(ctx context.Context, path, text string, destBasel
 	if d.ReadOnly() || (destBaseline != nil && destBaseline.ReadOnly()) {
 		return nil, ErrReadOnly
 	}
+	if destBaseline != nil && destBaseline.IsRemote() {
+		return nil, errors.New("save as only writes local files")
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

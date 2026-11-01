@@ -3,7 +3,9 @@ package remote
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/pem"
 	"errors"
@@ -39,7 +41,7 @@ func newSigner(t *testing.T) (ssh.Signer, ed25519.PrivateKey) {
 	return signer, priv
 }
 
-func startSSHServer(t *testing.T, clientKey ssh.PublicKey) *sshServer {
+func startSSHServer(t *testing.T, clientKey ssh.PublicKey, extraHostKeys ...ssh.Signer) *sshServer {
 	t.Helper()
 	hostKey, _ := newSigner(t)
 	config := &ssh.ServerConfig{
@@ -57,6 +59,9 @@ func startSSHServer(t *testing.T, clientKey ssh.PublicKey) *sshServer {
 		},
 	}
 	config.AddHostKey(hostKey)
+	for _, k := range extraHostKeys {
+		config.AddHostKey(k)
+	}
 	root := t.TempDir()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -232,5 +237,90 @@ func TestSFTPCancelDuringHandshake(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("handshake ignored context cancellation")
+	}
+}
+
+func TestSFTPTrustUnknownHostKey(t *testing.T) {
+	srv := startSSHServer(t, nil)
+	knownHosts := filepath.Join(t.TempDir(), "ssh", "known_hosts")
+	client := &SFTP{Addr: srv.addr, User: "u", Pass: "p", KnownHosts: []string{knownHosts}}
+	// known_hosts 及其目录都不存在：按未知主机处理，信任时创建。
+	err := client.Write(context.Background(), "t.txt", []byte("x"))
+	var hostKey *HostKeyError
+	if !errors.As(err, &hostKey) || hostKey.Fingerprint != ssh.FingerprintSHA256(srv.hostKey.PublicKey()) {
+		t.Fatalf("want HostKeyError with server fingerprint, got %v", err)
+	}
+	if err = hostKey.Trust(); err != nil {
+		t.Fatal(err)
+	}
+	if err = client.Write(context.Background(), "t.txt", []byte("x")); err != nil {
+		t.Fatalf("trusted host still rejected: %v", err)
+	}
+}
+
+func TestSFTPAuthErrorsAreClassified(t *testing.T) {
+	srv := startSSHServer(t, nil)
+	client := &SFTP{Addr: srv.addr, User: "u", Pass: "wrong", KnownHosts: []string{knownHostsFile(t, srv.addr, srv.hostKey.PublicKey())}}
+	if _, err := client.Read(context.Background(), "x"); !errors.Is(err, ErrAuth) {
+		t.Fatalf("wrong password must wrap ErrAuth: %v", err)
+	}
+}
+
+func TestSFTPEncryptedIdentity(t *testing.T) {
+	signer, priv := newSigner(t)
+	srv := startSSHServer(t, signer.PublicKey())
+	block, err := ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte("open sesame"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyFile := filepath.Join(t.TempDir(), "id_ed25519")
+	os.WriteFile(keyFile, pem.EncodeToMemory(block), 0o600)
+	t.Setenv("SSH_AUTH_SOCK", "")
+	kh := []string{knownHostsFile(t, srv.addr, srv.hostKey.PublicKey())}
+	ctx := context.Background()
+
+	missing := &SFTP{Addr: srv.addr, User: "u", IdentityFiles: []string{keyFile}, KnownHosts: kh}
+	if _, err = missing.Read(ctx, "x"); !errors.Is(err, ErrKeyPassphrase) {
+		t.Fatalf("missing passphrase: %v", err)
+	}
+	wrong := &SFTP{Addr: srv.addr, User: "u", IdentityFiles: []string{keyFile}, Passphrase: "nope", KnownHosts: kh}
+	if _, err = wrong.Read(ctx, "x"); !errors.Is(err, ErrKeyPassphraseWrong) {
+		t.Fatalf("wrong passphrase: %v", err)
+	}
+	ok := &SFTP{Addr: srv.addr, User: "u", IdentityFiles: []string{keyFile}, Passphrase: "open sesame", KnownHosts: kh}
+	if err = ok.Write(ctx, "enc.txt", []byte("ok")); err != nil {
+		t.Fatalf("correct passphrase: %v", err)
+	}
+	// 私钥被拒时仍可用密码登录：密码排在私钥之后作为后备。
+	_, otherPriv := newSigner(t)
+	block2, _ := ssh.MarshalPrivateKey(otherPriv, "")
+	otherFile := filepath.Join(t.TempDir(), "other")
+	os.WriteFile(otherFile, pem.EncodeToMemory(block2), 0o600)
+	fallback := &SFTP{Addr: srv.addr, User: "u", Pass: "p", IdentityFiles: []string{otherFile}, KnownHosts: kh}
+	if err = fallback.Write(ctx, "fb.txt", []byte("ok")); err != nil {
+		t.Fatalf("password fallback: %v", err)
+	}
+}
+
+func TestSFTPPrefersRegisteredHostKeyType(t *testing.T) {
+	// 服务端同时有 ed25519 与 ECDSA 主机密钥，known_hosts 只登记 ed25519：
+	// 必须协商 ed25519 并连接成功，而不是拿到 ECDSA 后误报密钥不一致。
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecSigner, err := ssh.NewSignerFromKey(ecKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := startSSHServer(t, nil, ecSigner)
+	client := &SFTP{Addr: srv.addr, User: "u", Pass: "p", KnownHosts: []string{knownHostsFile(t, srv.addr, srv.hostKey.PublicKey())}}
+	if err = client.Write(context.Background(), "k.txt", []byte("ok")); err != nil {
+		t.Fatalf("registered ed25519 key not preferred: %v", err)
+	}
+	// 只登记了 ECDSA 时同样只协商 ECDSA。
+	onlyEC := &SFTP{Addr: srv.addr, User: "u", Pass: "p", KnownHosts: []string{knownHostsFile(t, srv.addr, ecSigner.PublicKey())}}
+	if err = onlyEC.Write(context.Background(), "k.txt", []byte("ok")); err != nil {
+		t.Fatalf("registered ECDSA key not used: %v", err)
 	}
 }

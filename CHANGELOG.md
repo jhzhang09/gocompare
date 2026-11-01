@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-01
+
+### Added
+
+- Remote files in File Compare: the new **Remote…** button next to each path opens a connection dialog for SFTP, SMB, FTP/FTPS and WebDAV. Type in host and user, or optionally import an SFTP host from `~/.ssh/config`; SMB shares can be picked from a list. SFTP signs in with a password, a private key (passphrase-protected keys are supported), ssh-agent or the default `~/.ssh/id_*` keys, and connection errors are explained in plain language. Host key algorithms are negotiated from the key types already in known_hosts, as OpenSSH does, so a host registered only with ed25519 no longer fails as "key mismatch" when the server also offers ECDSA, connect, then browse folders and double-click a file; with the other side filled, the comparison loads right away. Recent connections are remembered without passwords; a remembered folder is reused only for the same connection, and the dialog falls back to the start folder if it no longer exists. Remote URLs typed into the path field keep working, including S3, Dropbox, OneDrive and SVN. Passwords stay in memory only and are removed from the field, title and saved sessions. Unknown SSH host keys open a fingerprint dialog and are added to `~/.ssh/known_hosts` only after you trust them. Saving re-reads the remote file and refuses to overwrite changes made by someone else; Save As writes local files.
+- Remote folders in Folder Compare: **Remote…** also appears in folder mode and picks a folder over SFTP, SMB, FTP/FTPS or WebDAV; either side, or both, can be remote. SFTP and SMB reuse one connection for the whole scan, and only same-size files are downloaded to compare contents. Opening a file from the result opens the remote file; a file present only on the local side opens an empty remote buffer that is created on save. Sync, folder merge and undo stay local-only and are disabled while a side is remote.
+- Previous/Next Difference now highlight the whole change and show "2 / 7" in the toolbar and the status bar, so the jump is easy to follow.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added
@@ -43,6 +51,7 @@ First public release.
 - Merges treat a missing final newline as a change; merge output can be saved repeatedly.
 - `.reg` exports in UTF-16 with continued hex lines and ID3v2.4 tags are parsed correctly.
 
-[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/jhzhang09/gocompare/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jhzhang09/gocompare/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jhzhang09/gocompare/releases/tag/v0.1.0

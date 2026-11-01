@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"gocompare/internal/brand"
 	"gocompare/internal/document"
 	"gocompare/internal/i18n"
+	"gocompare/internal/remote"
 )
 
 func readInput(ctx context.Context, path string, missing bool) (*document.File, error) {
@@ -28,6 +30,7 @@ func (a *workspaceState) selectKind(kind int) {
 	a.guard(func() {
 		a.ensureModeSessions()
 		a.stopComparison()
+		a.hunkFocus = 0
 		a.compareRequested = false
 		currentPaths := a.paths
 		hadResult := a.panes[0] != nil || a.directoryRows != nil || a.mergeResult != nil || a.pictureResult != nil || a.mediaReady || a.infoReady || a.tableReady
@@ -79,7 +82,8 @@ func (a *workspaceState) navigateDiff(step int) {
 	if panes[0] == nil || a.compareRunning || a.compareErr != nil || !diff.ComparisonReady() {
 		return
 	}
-	n := len(diff.Hunks())
+	hunks := diff.Hunks()
+	n := len(hunks)
 	if n == 0 {
 		return
 	}
@@ -94,6 +98,32 @@ func (a *workspaceState) navigateDiff(step int) {
 		i = (i + step + n) % n
 	}
 	diff.GoToHunk(i)
+	focusHunk(diff, hunks[i])
+	a.hunkFocus = i + 1
+	a.message = i18n.TArgs("status.hunkPosition", i+1, n)
+}
+
+// focusHunk 高亮差异块的全部行，让跳转位置一眼可见；光标只是一条细线，编辑器失焦时还不显示。
+// 高亮只能落在一侧：优先新文本，纯删除的块在新文本里没有行，改为高亮旧文本。
+func focusHunk(diff *editor.DiffState, h editor.DiffHunk) {
+	r := editor.DiffLineRange{Side: editor.DiffNew, Start: h.NewStart, End: h.NewEnd - 1}
+	if h.NewEnd <= h.NewStart {
+		r = editor.DiffLineRange{Side: editor.DiffOld, Start: h.OldStart, End: h.OldEnd - 1}
+	}
+	diff.SetSelectedLines(r, r.End >= r.Start)
+}
+
+// hunkCounter 显示当前位置：跳转后为"第几处 / 共几处"，未跳转时只显示总数，没有差异时不显示。
+func (a *workspaceState) hunkCounter(c *ui.Context, pal uiPalette) {
+	total := len(a.activeDiff().Hunks())
+	if total == 0 {
+		return
+	}
+	label := i18n.TArgs("diff.hunkTotal", total)
+	if a.hunkFocus > 0 && a.hunkFocus <= total {
+		label = fmt.Sprintf("%d / %d", a.hunkFocus, total)
+	}
+	statusPill(c, label, pal.diffFg, pal.diffBg)
 }
 
 func (a *workspaceState) diffPrev() { a.navigateDiff(-1) }
@@ -283,8 +313,20 @@ func (a *workspaceState) view(c *ui.Context) {
 						sideLabels := []string{i18n.T("pane.leftPath"), i18n.T("pane.rightPath")}
 						ui.Row(c).Grow(1).Basis(0).MinWidth(0).Height(34).Padding(0, 8).Gap(6).Radius(7).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
 							sideBadge(c, side, pal)
+							if remote.IsURL(a.paths[side]) {
+								statusPill(c, i18n.T("remote.badge"), pal.baseAccent, pal.baseBg)
+							}
 							ui.TextInput(c.Key(side), &a.paths[side]).Grow(1).MinWidth(0).Placeholder(i18n.T("pane.pathPlaceholder")).Label(sideLabels[side]).Disabled(a.busy).OnSubmit(func() { a.guard(a.load) })
 							ui.Button(c, i18n.T("action.browse")).Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy).OnClick(func() { a.browse(side) })
+							// 文件比较与目录比较支持远程来源：打开连接对话框选择，不必手输地址。
+							if a.kind == kindFile || a.kind == kindDirectory {
+								remoteBtn := ui.Button(c, "").Label(i18n.T("remote.open")).Tooltip(i18n.T("remote.openTooltip")).Shrink(0).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
+								remoteBtn.OnClick(func() { a.openRemoteDialog(side) })
+								remoteBtn.Children(func() {
+									ui.Icon(c, iconRemote).Size(11, 11)
+									ui.Text(c, i18n.T("remote.open")).FontSize(11).SingleLine()
+								})
+							}
 						})
 					}
 				})
@@ -357,6 +399,8 @@ func (a *workspaceState) view(c *ui.Context) {
 	if a.settingsOpen {
 		a.settingsModal(c, pal)
 	}
+	a.remoteDialogView(c, pal)
+	a.remoteDialogs(c, pal)
 
 	if a.confirmSync {
 		choice := ui.AlertDialog(c, &a.confirmSync, i18n.T("dialog.syncTitle"), i18n.T("dialog.syncDesc"), i18n.T("dialog.cancel"), i18n.T("dialog.execute"))
@@ -644,6 +688,9 @@ func (a *workspaceState) actionToolbar(c *ui.Context, pal uiPalette) {
 		if a.kind == kindFile && a.panes[0] != nil {
 			ui.Divider(c).Height(16).Margin(0, 2)
 			ready := a.activeDiff().ComparisonReady() && !a.busy && !a.compareRunning && a.compareErr == nil
+			if ready {
+				a.hunkCounter(c, pal)
+			}
 			prevBtn := ui.Button(c, "").Label(i18n.T("action.prevDiff")).Padding(4, 8).Gap(3).Radius(6).Disabled(!ready)
 			prevBtn.OnClick(func() { a.navigateDiff(-1) })
 			prevBtn.Children(func() {
@@ -725,6 +772,9 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 		ready := diff.ComparisonReady() && !a.busy && !a.compareRunning && a.compareErr == nil
 		hasHunks := ready && len(diff.Hunks()) > 0
 
+		if hasHunks {
+			a.hunkCounter(c, pal)
+		}
 		prevBtn := ui.Button(c, "").Label(i18n.T("action.prevDiff")).Padding(4, 8).Gap(3).Radius(6).Disabled(!hasHunks)
 		prevBtn.OnClick(a.diffPrev)
 		prevBtn.Children(func() {

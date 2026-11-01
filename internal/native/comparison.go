@@ -73,6 +73,9 @@ func (a *workspaceState) refreshComparison() {
 			if !activeDiff.ApplyComparison(result) {
 				return
 			}
+			// 差异块已重新计算，旧的定位与高亮不再对应。
+			a.hunkFocus = 0
+			activeDiff.SetSelectedLines(editor.DiffLineRange{}, false)
 			a.compareAnchors = anchors
 			a.err = ""
 			n := len(result.Hunks())

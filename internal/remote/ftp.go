@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"strconv"
 	"strings"
@@ -74,7 +75,11 @@ func (f *FTP) transfer(ctx context.Context, verb, path string, upload []byte) ([
 			case <-stopData:
 			}
 		}()
-		if err = c.writeLine(verb + " " + path); err != nil {
+		line := verb
+		if path != "" {
+			line += " " + path
+		}
+		if err = c.writeLine(line); err != nil {
 			return err
 		}
 		raw := dc
@@ -88,6 +93,10 @@ func (f *FTP) transfer(ctx context.Context, verb, path string, upload []byte) ([
 		code, reply, err := c.readReply()
 		if err != nil {
 			return err
+		}
+		if code == 550 && upload == nil {
+			// 550 表示文件不可用（通常不存在），与其他协议一样可用 errors.Is(err, fs.ErrNotExist) 判断。
+			return fmt.Errorf("ftp %s %s: %s: %w", verb, path, strings.TrimSpace(reply), fs.ErrNotExist)
 		}
 		if code >= 400 {
 			return fmt.Errorf("ftp %s %s: %s", verb, path, strings.TrimSpace(reply))
@@ -166,11 +175,11 @@ func (f *FTP) withCtrl(ctx context.Context, fn func(*ftpCtrl) error) error {
 	}
 	code, _, err := c.expect("USER "+f.User, func(code int) bool { return ftpPositive(code) || (code >= 300 && code < 400) })
 	if err != nil {
-		return err
+		return loginError(code, err)
 	}
 	if code >= 300 && code < 400 {
-		if _, _, err = c.expect("PASS "+f.Pass, ftpPositive); err != nil {
-			return err
+		if code, _, err = c.expect("PASS "+f.Pass, ftpPositive); err != nil {
+			return loginError(code, err)
 		}
 	}
 	if _, _, err = c.expect("TYPE I", ftpPositive); err != nil {
@@ -235,6 +244,14 @@ func (c *ftpCtrl) readReply() (int, string, error) {
 		}
 	}
 	return code, line, nil
+}
+
+// loginError 把 530（未登录）归为认证失败。
+func loginError(code int, err error) error {
+	if code == 530 {
+		return authError(err)
+	}
+	return err
 }
 
 func ftpPositive(code int) bool { return code >= 200 && code < 300 }
