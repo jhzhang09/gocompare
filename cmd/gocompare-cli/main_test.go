@@ -1094,3 +1094,20 @@ func TestCLIRemoteTimeout(t *testing.T) {
 		t.Fatal("remote read ignored --timeout")
 	}
 }
+
+func TestCLIRemoteSFTPFlags(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no_known_hosts")
+	var out, stderr bytes.Buffer
+	code := run([]string{"remote", "--known-hosts", missing, "read", "sftp://u:p@127.0.0.1:1/x"}, &out, &stderr)
+	if code != 2 || !strings.Contains(stderr.String(), missing) {
+		t.Fatalf("--known-hosts not applied: %d %s", code, stderr.String())
+	}
+	stderr.Reset()
+	empty := filepath.Join(t.TempDir(), "known_hosts")
+	os.WriteFile(empty, nil, 0o600)
+	badKey := filepath.Join(t.TempDir(), "id")
+	code = run([]string{"remote", "--known-hosts", empty, "--identity", badKey, "read", "sftp://u@127.0.0.1:1/x"}, &out, &stderr)
+	if code != 2 || !strings.Contains(stderr.String(), "read identity") {
+		t.Fatalf("--identity not applied: %d %s", code, stderr.String())
+	}
+}

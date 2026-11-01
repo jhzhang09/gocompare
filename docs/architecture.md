@@ -60,7 +60,7 @@ MyGo v0.7.3 的 `DiffView` 左侧固定只读，视图中的 `ensure` 会更新�
 ## 表格、远程、压缩包、快照与文档转换
 
 - `table`：解析 CSV、TSV、Excel (.xlsx) 工作表与 HTML `<table>` 节点，支持复合主键对齐、列映射和浮点数容差比较；CLI `table` 通过 `--keys`、`--map`、`--tolerance` 暴露这些选项，GUI `kindTable`「表格比较」模式按行号对齐呈现单元格级差异。
-- `remote`：实现 `Store` 抽象，覆盖 FTP、FTPS、WebDAV、S3 (AWS SigV4)、Dropbox、OneDrive 与 SVN HTTP 子集；SFTP 与 SMB2 只有夹具级消息层，`ParseURL` 明确拒绝 `sftp://`、`smb://`。`webdav+https`、`s3+https`、`svn+https` 走 HTTPS。CLI `remote [--timeout]` 提供 read、write、delete 与 compare 操作。
+- `remote`：实现 `Store` 抽象，覆盖 FTP、FTPS、SFTP、SMB2/3、WebDAV、S3 (AWS SigV4)、Dropbox、OneDrive 与 SVN HTTP 子集。SFTP 基于 `golang.org/x/crypto/ssh` 与 `github.com/pkg/sftp`，主机密钥必须已在 known_hosts 登记（不自动信任首次连接），认证依次使用 URL 密码、ssh-agent、私钥文件；SMB 基于 `github.com/hirochachacha/go-smb2`，使用 NTLMv2，协议版本、签名与加密由服务端协商。`webdav+https`、`s3+https`、`svn+https` 走 HTTPS。CLI `remote [--timeout] [--known-hosts] [--identity]` 提供 read、write、delete 与 compare 操作。
 - `archive`：支持 zip（读写与 Deflate/Store 压缩）、tar.gz（只读）与 7z（明确拒绝）；CLI `archive` 提供 list、compare 与 pack 跨归档差异对比与打包。
 - `snapshot`：带有 `GOCMPSNP` 头部的无内容目录快照，序列化记录路径、是否目录与文件大小；支持扫描目录构建快照并在脱机环境下进行结构与文件大小对比。
 - `doctext`：将 Word (.docx)、RTF 与 PDF 文档提取为纯文本；PDF 只取内容流（含 FlateDecode）中 Tj/TJ/'/" 操作符的字符串，跳过字体、图片、XRef 等非内容流。`document.ReadDetected` 自动把 docx、PDF 转为只读文本参与比较，RTF 保持按源码编辑；合并入口（CLI、GUI、脚本）通过 `document.ReadMergeable` 拒绝转换文档。
@@ -73,8 +73,8 @@ MyGo v0.7.3 的 `DiffView` 左侧固定只读，视图中的 `ensure` 会更新�
 - 文档转换不可逆：`document.File.ReadOnly()` 标识转换结果，编辑器只读，保存接口拒绝写入；普通文本仍保留原有保存行为。
 - 目录合并只接受空输出目录，通过 `os.Root` 限制写入范围并排他创建文件，拒绝已有内容及目标目录符号链接。
 - Excel 按行列坐标恢复稀疏单元格；HTML 使用锁定版本 `golang.org/x/net/html` 解析嵌套文本和实体。
-- HTTP、FTP 远程读取与原生表格输入、xlsx 单个部件超过 32 MiB 明确失败，不返回截断内容；SMB 按偏移分块读取至 EOF，写入使用 `FILE_OVERWRITE_IF` 截断旧内容，帧长度超过 24 位上限时拒绝。
+- HTTP、FTP 远程读取与原生表格输入、xlsx 单个部件超过 32 MiB 明确失败，不返回截断内容；SFTP、SMB 读取同样受 32 MiB 上限约束，写入会截断已有文件。
 - FTP 数据连接只采用 PASV 返回的端口，主机沿用控制连接对端；路径与凭据中的 CR/LF 被拒绝。
 - 快照解码先验证节点数量与输入长度一致，再分配内存。
-- FTPS URL 使用主机名校验证书；SFTP 尚未建立 SSH 通道、SMB 尚未实现 NTLM/Kerberos、Windows ACL 尚未读取安全描述符，三者明确返回不支持。
+- FTPS URL 使用主机名校验证书；SFTP 遇到未知或变化的主机密钥直接拒绝并给出 SHA256 指纹；Windows ACL 尚未读取安全描述符，明确返回不支持。
 - CLI `archive pack`、`snapshot create` 以排他方式创建输出文件，目标已存在时报错。

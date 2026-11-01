@@ -1,142 +1,101 @@
 package remote
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strings"
+
+	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-// SFTP 是用于受控原始 TCP 夹具的 SSH_FXP 消息层，不实现 SSH 握手和认证。
-// 不能直接连接真实 SFTP 服务；ParseURL 会拒绝 sftp URL。
+// SFTP 通过 SSH 连接读写远程文件。
+// 主机密钥必须已在 known_hosts 中登记：不做首次连接自动信任，未知或不匹配的密钥都拒绝连接。
+// 认证顺序：Pass 非空时只用密码（含 keyboard-interactive）；否则依次尝试 ssh-agent 和私钥文件。
 type SFTP struct {
-	Addr string
+	Addr string // host:port
+	User string // 为空时使用当前系统用户
+	Pass string
+	// IdentityFiles 是私钥文件；为空时尝试 ~/.ssh/id_ed25519、id_ecdsa、id_rsa。
+	// 带口令的私钥需先加入 ssh-agent。
+	IdentityFiles []string
+	// KnownHosts 是 known_hosts 文件；为空时使用 ~/.ssh/known_hosts。
+	KnownHosts []string
+	// HostKeyCallback 非空时代替 KnownHosts，供嵌入方自行校验主机密钥。
+	HostKeyCallback ssh.HostKeyCallback
 }
 
-const (
-	fxpInit    = 1
-	fxpVersion = 2
-	fxpOpen    = 3
-	fxpClose   = 4
-	fxpRead    = 5
-	fxpWrite   = 6
-	fxpRemove  = 13
-	fxpStatus  = 101
-	fxpHandle  = 102
-	fxpData    = 103
-
-	fxOK         = 0
-	fxEOF        = 1
-	fxNoSuchFile = 2
-	fxfRead      = 0x1
-	fxfWrite     = 0x2
-	fxfCreat     = 0x8
-	fxfTrunc     = 0x10
-)
-
 func (s *SFTP) Read(ctx context.Context, path string) ([]byte, error) {
-	c, err := s.dial(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer c.close()
-	h, err := c.open(ctx, path, fxfRead)
-	if err != nil {
-		return nil, err
-	}
-	var all []byte
-	var off uint64
-	for {
-		var body bytes.Buffer
-		putSSHString(&body, h)
-		binary.Write(&body, binary.BigEndian, off)
-		binary.Write(&body, binary.BigEndian, uint32(32768))
-		pkt, err := c.call(ctx, fxpRead, body.Bytes())
+	var data []byte
+	err := s.withClient(ctx, func(c *sftp.Client) error {
+		f, err := c.Open(path)
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("sftp read %s: %w", path, err)
 		}
-		switch pkt[0] {
-		case fxpData:
-			chunk, err := sshString(pkt[5:])
-			if err != nil {
-				return nil, err
-			}
-			all = append(all, chunk...)
-			off += uint64(len(chunk))
-		case fxpStatus:
-			code, msg, err := sshStatus(pkt)
-			if err != nil {
-				return nil, err
-			}
-			if code == fxEOF || code == fxOK {
-				_ = c.closeHandle(ctx, h)
-				return all, nil
-			}
-			return nil, fmt.Errorf("sftp read %s: %d %s", path, code, msg)
-		default:
-			return nil, fmt.Errorf("sftp read type %d", pkt[0])
+		defer f.Close()
+		data, err = io.ReadAll(io.LimitReader(f, maxResponseBytes+1))
+		if err != nil {
+			return fmt.Errorf("sftp read %s: %w", path, err)
 		}
-	}
+		if len(data) > maxResponseBytes {
+			return fmt.Errorf("sftp read %s: remote file exceeds 32 MiB", path)
+		}
+		return nil
+	})
+	return data, err
 }
 
 func (s *SFTP) Write(ctx context.Context, path string, data []byte) error {
-	c, err := s.dial(ctx)
-	if err != nil {
-		return err
-	}
-	defer c.close()
-	h, err := c.open(ctx, path, fxfWrite|fxfCreat|fxfTrunc)
-	if err != nil {
-		return err
-	}
-	var body bytes.Buffer
-	putSSHString(&body, h)
-	binary.Write(&body, binary.BigEndian, uint64(0))
-	putSSHBytes(&body, data)
-	pkt, err := c.call(ctx, fxpWrite, body.Bytes())
-	if err != nil {
-		return err
-	}
-	if err = mustOK(pkt, path); err != nil {
-		return err
-	}
-	return c.closeHandle(ctx, h)
+	return s.withClient(ctx, func(c *sftp.Client) error {
+		f, err := c.Create(path)
+		if err != nil {
+			return fmt.Errorf("sftp write %s: %w", path, err)
+		}
+		_, err = f.Write(data)
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			return fmt.Errorf("sftp write %s: %w", path, err)
+		}
+		return nil
+	})
 }
 
 func (s *SFTP) Delete(ctx context.Context, path string) error {
-	c, err := s.dial(ctx)
-	if err != nil {
-		return err
-	}
-	defer c.close()
-	var body bytes.Buffer
-	putSSHString(&body, path)
-	pkt, err := c.call(ctx, fxpRemove, body.Bytes())
-	if err != nil {
-		return err
-	}
-	return mustOK(pkt, path)
+	return s.withClient(ctx, func(c *sftp.Client) error {
+		if err := c.Remove(path); err != nil {
+			return fmt.Errorf("sftp delete %s: %w", path, err)
+		}
+		return nil
+	})
 }
 
-type sftpConn struct {
-	conn net.Conn
-	id   uint32
-	stop chan struct{}
-}
-
-func (s *SFTP) dial(ctx context.Context) (*sftpConn, error) {
+func (s *SFTP) withClient(ctx context.Context, fn func(*sftp.Client) error) error {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return err
 	}
+	config, release, err := s.clientConfig()
+	if err != nil {
+		return err
+	}
+	defer release()
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", s.Addr)
 	if err != nil {
-		return nil, ctxErr(ctx, err)
+		return ctxErr(ctx, err)
 	}
-	c := &sftpConn{conn: conn}
+	defer conn.Close()
+	// SSH 握手和 SFTP 请求都不接受 context；取消时关闭底层连接让阻塞调用返回。
 	stop := make(chan struct{})
+	defer close(stop)
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -144,150 +103,135 @@ func (s *SFTP) dial(ctx context.Context) (*sftpConn, error) {
 		case <-stop:
 		}
 	}()
-	c.stop = stop
-	var ver [4]byte
-	binary.BigEndian.PutUint32(ver[:], 3)
-	if err = writeFXP(conn, append([]byte{fxpInit}, ver[:]...)); err != nil {
-		c.close()
-		return nil, ctxErr(ctx, err)
-	}
-	pkt, err := readFXP(conn)
-	if err != nil || len(pkt) < 1 || pkt[0] != fxpVersion {
-		c.close()
-		if err == nil {
-			err = errors.New("sftp version missing")
-		}
-		return nil, ctxErr(ctx, err)
-	}
-	return c, nil
-}
-
-func (c *sftpConn) close() {
-	if c.stop != nil {
-		close(c.stop)
-		c.stop = nil
-	}
-	c.conn.Close()
-}
-
-func (c *sftpConn) open(ctx context.Context, path string, flags uint32) (string, error) {
-	var body bytes.Buffer
-	putSSHString(&body, path)
-	binary.Write(&body, binary.BigEndian, flags)
-	binary.Write(&body, binary.BigEndian, uint32(0))
-	pkt, err := c.call(ctx, fxpOpen, body.Bytes())
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, s.Addr, config)
 	if err != nil {
-		return "", err
+		return ctxErr(ctx, fmt.Errorf("ssh %s: %w", s.Addr, err))
 	}
-	if pkt[0] == fxpStatus {
-		code, msg, err := sshStatus(pkt)
+	sshClient := ssh.NewClient(sshConn, chans, reqs)
+	defer sshClient.Close()
+	client, err := sftp.NewClient(sshClient)
+	if err != nil {
+		return ctxErr(ctx, fmt.Errorf("sftp %s: %w", s.Addr, err))
+	}
+	defer client.Close()
+	return ctxErr(ctx, fn(client))
+}
+
+// clientConfig 返回 SSH 配置和释放 ssh-agent 连接的函数。
+func (s *SFTP) clientConfig() (*ssh.ClientConfig, func(), error) {
+	name := s.User
+	if name == "" {
+		u, err := user.Current()
 		if err != nil {
-			return "", err
+			return nil, nil, fmt.Errorf("sftp user is required: %w", err)
 		}
-		return "", fmt.Errorf("sftp open %s: %d %s", path, code, msg)
+		// Windows 返回 DOMAIN\user，SSH 登录名只取用户部分。
+		name = u.Username[strings.LastIndex(u.Username, `\`)+1:]
 	}
-	if pkt[0] != fxpHandle {
-		return "", fmt.Errorf("sftp open type %d", pkt[0])
+	hostKey := s.HostKeyCallback
+	if hostKey == nil {
+		var err error
+		if hostKey, err = s.knownHostsCallback(); err != nil {
+			return nil, nil, err
+		}
 	}
-	h, err := sshString(pkt[5:])
-	return string(h), err
-}
-
-func (c *sftpConn) closeHandle(ctx context.Context, h string) error {
-	var body bytes.Buffer
-	putSSHString(&body, h)
-	pkt, err := c.call(ctx, fxpClose, body.Bytes())
+	auth, release, err := s.authMethods()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	return mustOK(pkt, h)
+	return &ssh.ClientConfig{User: name, Auth: auth, HostKeyCallback: hostKey}, release, nil
 }
 
-func (c *sftpConn) call(ctx context.Context, typ byte, payload []byte) ([]byte, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
+// knownHostsCallback 包装 knownhosts 的错误，给出可执行的处理方法。
+func (s *SFTP) knownHostsCallback() (ssh.HostKeyCallback, error) {
+	files := s.KnownHosts
+	if len(files) == 0 {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("locate known_hosts: %w", err)
+		}
+		files = []string{filepath.Join(home, ".ssh", "known_hosts")}
 	}
-	c.id++
-	buf := make([]byte, 1+4+len(payload))
-	buf[0] = typ
-	binary.BigEndian.PutUint32(buf[1:5], c.id)
-	copy(buf[5:], payload)
-	if err := writeFXP(c.conn, buf); err != nil {
-		return nil, ctxErr(ctx, err)
-	}
-	pkt, err := readFXP(c.conn)
+	cb, err := knownhosts.New(files...)
 	if err != nil {
-		return nil, ctxErr(ctx, err)
+		return nil, fmt.Errorf("load known_hosts %v: %w; add the server key first, e.g. ssh-keyscan -p <port> <host> >> ~/.ssh/known_hosts", files, err)
 	}
-	if len(pkt) < 5 {
-		return nil, errors.New("short sftp packet")
-	}
-	return pkt, nil
-}
-
-func writeFXP(w io.Writer, payload []byte) error {
-	var n [4]byte
-	binary.BigEndian.PutUint32(n[:], uint32(len(payload)))
-	if _, err := w.Write(n[:]); err != nil {
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		err := cb(hostname, remote, key)
+		var keyErr *knownhosts.KeyError
+		if errors.As(err, &keyErr) {
+			if len(keyErr.Want) == 0 {
+				return fmt.Errorf("unknown SSH host key for %s (%s %s); verify the fingerprint with the server owner and add it to %v", hostname, key.Type(), ssh.FingerprintSHA256(key), files)
+			}
+			return fmt.Errorf("SSH host key for %s does not match known_hosts (got %s %s); the server key changed or the connection is being intercepted", hostname, key.Type(), ssh.FingerprintSHA256(key))
+		}
 		return err
-	}
-	_, err := w.Write(payload)
-	return err
+	}, nil
 }
 
-func readFXP(r io.Reader) ([]byte, error) {
-	var n [4]byte
-	if _, err := io.ReadFull(r, n[:]); err != nil {
-		return nil, err
+func (s *SFTP) authMethods() ([]ssh.AuthMethod, func(), error) {
+	release := func() {}
+	if s.Pass != "" {
+		pass := s.Pass
+		return []ssh.AuthMethod{
+			ssh.Password(pass),
+			// 部分服务端只开放 keyboard-interactive，提示一律用同一个密码回答。
+			ssh.KeyboardInteractive(func(_, _ string, questions []string, _ []bool) ([]string, error) {
+				answers := make([]string, len(questions))
+				for i := range answers {
+					answers[i] = pass
+				}
+				return answers, nil
+			}),
+		}, release, nil
 	}
-	sz := binary.BigEndian.Uint32(n[:])
-	if sz == 0 || sz > 32<<20 {
-		return nil, errors.New("sftp packet size")
+	var methods []ssh.AuthMethod
+	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
+		if conn, err := net.Dial("unix", sock); err == nil {
+			release = func() { conn.Close() }
+			methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
+		}
 	}
-	buf := make([]byte, sz)
-	_, err := io.ReadFull(r, buf)
-	return buf, err
-}
-
-func putSSHString(b *bytes.Buffer, s string) { putSSHBytes(b, []byte(s)) }
-
-func putSSHBytes(b *bytes.Buffer, p []byte) {
-	var n [4]byte
-	binary.BigEndian.PutUint32(n[:], uint32(len(p)))
-	b.Write(n[:])
-	b.Write(p)
-}
-
-func sshString(p []byte) ([]byte, error) {
-	if len(p) < 4 {
-		return nil, errors.New("short ssh string")
+	fail := func(err error) ([]ssh.AuthMethod, func(), error) {
+		release()
+		return nil, nil, err
 	}
-	n := binary.BigEndian.Uint32(p[:4])
-	if uint32(len(p)) < 4+n {
-		return nil, errors.New("short ssh string")
+	files := s.IdentityFiles
+	explicit := len(files) > 0
+	if !explicit {
+		if home, err := os.UserHomeDir(); err == nil {
+			for _, name := range []string{"id_ed25519", "id_ecdsa", "id_rsa"} {
+				files = append(files, filepath.Join(home, ".ssh", name))
+			}
+		}
 	}
-	return p[4 : 4+n], nil
-}
-
-func sshStatus(pkt []byte) (uint32, string, error) {
-	if len(pkt) < 9 {
-		return 0, "", errors.New("short sftp status")
+	var signers []ssh.Signer
+	for _, file := range files {
+		pem, err := os.ReadFile(file)
+		if err != nil {
+			if explicit {
+				return fail(fmt.Errorf("read identity %s: %w", file, err))
+			}
+			continue
+		}
+		signer, err := ssh.ParsePrivateKey(pem)
+		if err != nil {
+			var missing *ssh.PassphraseMissingError
+			if explicit && errors.As(err, &missing) {
+				return fail(fmt.Errorf("identity %s is passphrase-protected; add it to ssh-agent instead", file))
+			}
+			if explicit {
+				return fail(fmt.Errorf("parse identity %s: %w", file, err))
+			}
+			continue
+		}
+		signers = append(signers, signer)
 	}
-	code := binary.BigEndian.Uint32(pkt[5:9])
-	msg, err := sshString(pkt[9:])
-	return code, string(msg), err
-}
-
-func mustOK(pkt []byte, path string) error {
-	if len(pkt) == 0 || pkt[0] != fxpStatus {
-		return fmt.Errorf("sftp status missing for %s", path)
+	if len(signers) > 0 {
+		methods = append(methods, ssh.PublicKeys(signers...))
 	}
-	code, msg, err := sshStatus(pkt)
-	if err != nil {
-		return err
+	if len(methods) == 0 {
+		return fail(errors.New("no SSH credentials: put a password in the URL, start ssh-agent, or pass an identity file"))
 	}
-	if code != fxOK {
-		return fmt.Errorf("sftp %s: %d %s", path, code, msg)
-	}
-	return nil
+	return methods, release, nil
 }

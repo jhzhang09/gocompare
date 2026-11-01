@@ -44,7 +44,7 @@ func run(args []string, out, stderr io.Writer) int {
 		return 0
 	}
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Fprintln(out, "Usage: gocompare-cli <left-file> <right-file>\nDirectory report: gocompare-cli dir [--filter pattern] [--compare-mode] [--compare-time] [--links record|follow] <left-dir> <right-dir>\nSync preview: gocompare-cli preview <mode> <left-dir> <right-dir>\nSync: gocompare-cli sync [--mode mode] [--apply --backup-dir path] <left-dir> <right-dir>\nRestore: gocompare-cli restore <journal.json>\nMerge: gocompare-cli merge [--base file] [--output file] <left-file> <right-file>\nDirMerge: gocompare-cli dirmerge [--base dir] [--output dir] <left-dir> <right-dir>\nTable: gocompare-cli table [--keys cols] [--map cols] [--tolerance tol] <left-file> <right-file>\nRemote: gocompare-cli remote [--timeout 2m] <read|write|delete|compare> <url> [local-file-or-url2]\nArchive: gocompare-cli archive <list|compare|pack> ...\nSnapshot: gocompare-cli snapshot <create|list|compare> ...\nDocText: gocompare-cli doctext <file>\nCheckUpdate: gocompare-cli check-update [--url custom-url]\nHex: gocompare-cli hex <left-file> <right-file>\nPicture: gocompare-cli picture <left-image> <right-image>\nMedia: gocompare-cli media <file>\nPE: gocompare-cli pe <left-file> <right-file>\nRegistry: gocompare-cli reg <left.reg> <right.reg>\nExtend: gocompare-cli extend <spec.json> <path> [path]\nGit: gocompare-cli difftool <left-file> <right-file> | mergetool [--base file] [--output file] <left-file> <right-file>\nScript: gocompare-cli script <file>\nReport: gocompare-cli report --title text --input file --output file\nPaginate: gocompare-cli paginate --width N --rows N --input file\nWorkspace: gocompare-cli workspace save <bundle> <session>...\nVersion: gocompare-cli --version\nExit codes: 0 equal or clean, 1 different or conflicts, 2 error")
+		fmt.Fprintln(out, "Usage: gocompare-cli <left-file> <right-file>\nDirectory report: gocompare-cli dir [--filter pattern] [--compare-mode] [--compare-time] [--links record|follow] <left-dir> <right-dir>\nSync preview: gocompare-cli preview <mode> <left-dir> <right-dir>\nSync: gocompare-cli sync [--mode mode] [--apply --backup-dir path] <left-dir> <right-dir>\nRestore: gocompare-cli restore <journal.json>\nMerge: gocompare-cli merge [--base file] [--output file] <left-file> <right-file>\nDirMerge: gocompare-cli dirmerge [--base dir] [--output dir] <left-dir> <right-dir>\nTable: gocompare-cli table [--keys cols] [--map cols] [--tolerance tol] <left-file> <right-file>\nRemote: gocompare-cli remote [--timeout 2m] [--known-hosts file] [--identity key] <read|write|delete|compare> <url> [local-file-or-url2]\nArchive: gocompare-cli archive <list|compare|pack> ...\nSnapshot: gocompare-cli snapshot <create|list|compare> ...\nDocText: gocompare-cli doctext <file>\nCheckUpdate: gocompare-cli check-update [--url custom-url]\nHex: gocompare-cli hex <left-file> <right-file>\nPicture: gocompare-cli picture <left-image> <right-image>\nMedia: gocompare-cli media <file>\nPE: gocompare-cli pe <left-file> <right-file>\nRegistry: gocompare-cli reg <left.reg> <right.reg>\nExtend: gocompare-cli extend <spec.json> <path> [path]\nGit: gocompare-cli difftool <left-file> <right-file> | mergetool [--base file] [--output file] <left-file> <right-file>\nScript: gocompare-cli script <file>\nReport: gocompare-cli report --title text --input file --output file\nPaginate: gocompare-cli paginate --width N --rows N --input file\nWorkspace: gocompare-cli workspace save <bundle> <session>...\nVersion: gocompare-cli --version\nExit codes: 0 equal or clean, 1 different or conflicts, 2 error")
 		return 0
 	}
 	if len(args) > 0 && (args[0] == "check-update" || args[0] == "update") {
@@ -738,12 +738,27 @@ func remoteCmd(args []string, out, stderr io.Writer) int {
 	flags := flag.NewFlagSet("remote", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	timeout := flags.Duration("timeout", 2*time.Minute, "overall timeout for the remote operation")
+	knownHosts := flags.String("known-hosts", "", "SFTP known_hosts file (default ~/.ssh/known_hosts)")
+	identity := flags.String("identity", "", "SFTP private key file (default: ssh-agent, then ~/.ssh/id_*)")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
+	// parse 解析远程 URL，并把 SFTP 专用参数交给 SFTP 存储；其他协议忽略这两个参数。
+	parse := func(raw string) (remote.Store, string, error) {
+		store, path, err := remote.ParseURL(raw)
+		if s, ok := store.(*remote.SFTP); ok {
+			if *knownHosts != "" {
+				s.KnownHosts = []string{*knownHosts}
+			}
+			if *identity != "" {
+				s.IdentityFiles = []string{*identity}
+			}
+		}
+		return store, path, err
+	}
 	args = flags.Args()
 	if len(args) < 2 || *timeout <= 0 {
-		fmt.Fprintln(stderr, "Usage: gocompare-cli remote [--timeout 2m] <read|write|delete|compare> <url> [local-file-or-url2]")
+		fmt.Fprintln(stderr, "Usage: gocompare-cli remote [--timeout 2m] [--known-hosts file] [--identity key] <read|write|delete|compare> <url> [local-file-or-url2]")
 		return 2
 	}
 	// 远程服务无响应时不能无限挂起；超时覆盖连接、传输和整个操作。
@@ -751,7 +766,7 @@ func remoteCmd(args []string, out, stderr io.Writer) int {
 	defer cancel()
 	switch args[0] {
 	case "read":
-		store, path, err := remote.ParseURL(args[1])
+		store, path, err := parse(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
@@ -770,7 +785,7 @@ func remoteCmd(args []string, out, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "Usage: gocompare-cli remote write <url> <local-file>")
 			return 2
 		}
-		store, path, err := remote.ParseURL(args[1])
+		store, path, err := parse(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
@@ -787,7 +802,7 @@ func remoteCmd(args []string, out, stderr io.Writer) int {
 		fmt.Fprintf(out, "uploaded %d bytes to %s\n", len(data), args[1])
 		return 0
 	case "delete":
-		store, path, err := remote.ParseURL(args[1])
+		store, path, err := parse(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
@@ -803,12 +818,12 @@ func remoteCmd(args []string, out, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "Usage: gocompare-cli remote compare <url1> <url2>")
 			return 2
 		}
-		store1, path1, err := remote.ParseURL(args[1])
+		store1, path1, err := parse(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}
-		store2, path2, err := remote.ParseURL(args[2])
+		store2, path2, err := parse(args[2])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2

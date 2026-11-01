@@ -202,7 +202,8 @@ To report a security issue, please follow [SECURITY.md](SECURITY.md) instead of 
 ## Acknowledgements
 
 - [MyGo](https://github.com/egoist/mygo) by [@egoist](https://github.com/egoist) — the native Go desktop UI framework GoCompare is built on.
-- [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) and [golang.org/x/image](https://pkg.go.dev/golang.org/x/image).
+- [golang.org/x/text](https://pkg.go.dev/golang.org/x/text), [golang.org/x/image](https://pkg.go.dev/golang.org/x/image), [golang.org/x/net](https://pkg.go.dev/golang.org/x/net) and [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto).
+- [pkg/sftp](https://github.com/pkg/sftp) and [go-smb2](https://github.com/hirochachacha/go-smb2) for SFTP and SMB access.
 
 ## License
 

@@ -43,11 +43,6 @@ func TestParseURL(t *testing.T) {
 	}
 }
 
-func TestSFTPURLRequiresSSH(t *testing.T) {
-	if _, _, err := ParseURL("sftp://localhost:22/file.txt"); err == nil {
-		t.Fatal("raw TCP must not be exposed as SFTP")
-	}
-}
 func TestFTPSURLServerName(t *testing.T) {
 	s, _, err := ParseURL("ftps://user:pass@localhost:21/file")
 	if err != nil {
@@ -55,12 +50,6 @@ func TestFTPSURLServerName(t *testing.T) {
 	}
 	if s.(*FTP).TLS.ServerName != "localhost" || s.(*FTP).TLS.InsecureSkipVerify {
 		t.Fatal("missing verified TLS hostname")
-	}
-}
-
-func TestSMBURLRequiresAuthentication(t *testing.T) {
-	if _, _, err := ParseURL("smb://localhost:445/share/doc.txt"); err == nil {
-		t.Fatal("unauthenticated SMB must not be exposed as a usable URL")
 	}
 }
 
@@ -184,5 +173,60 @@ func TestParsePASVReturnsPortOnly(t *testing.T) {
 	}
 	if _, err = parsePASV("227 (1,2,3,4,999,1)"); err == nil {
 		t.Fatal("out-of-range PASV octet accepted")
+	}
+}
+
+func TestParseSFTPURL(t *testing.T) {
+	cases := []struct {
+		raw, addr, user, pass, path string
+	}{
+		{"sftp://alice:pw@example.com/srv/a.txt", "example.com:22", "alice", "pw", "/srv/a.txt"},
+		{"sftp://alice@example.com:2222/~/notes/a.txt", "example.com:2222", "alice", "", "notes/a.txt"},
+		{"sftp://[::1]:2200/tmp/x", "[::1]:2200", "", "", "/tmp/x"},
+	}
+	for _, tc := range cases {
+		store, path, err := ParseURL(tc.raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := store.(*SFTP)
+		if s.Addr != tc.addr || s.User != tc.user || s.Pass != tc.pass || path != tc.path {
+			t.Errorf("%s => %+v %q", tc.raw, s, path)
+		}
+	}
+	if _, _, err := ParseURL("sftp://example.com/"); err == nil {
+		t.Fatal("sftp URL without a path accepted")
+	}
+}
+
+func TestParseSMBURL(t *testing.T) {
+	cases := []struct {
+		raw, addr, share, domain, user, pass, path string
+	}{
+		{"smb://bob:pw@nas/docs/dir/a.txt", "nas:445", "docs", "", "bob", "pw", "dir/a.txt"},
+		{"smb://CORP;bob:pw@nas:1445/docs/a.txt", "nas:1445", "docs", "CORP", "bob", "pw", "a.txt"},
+		{"smb://CORP%5Cbob:pw@nas/docs/a.txt", "nas:445", "docs", "CORP", "bob", "pw", "a.txt"},
+		{"smb://nas/public/a.txt", "nas:445", "public", "", "", "", "a.txt"},
+	}
+	for _, tc := range cases {
+		store, path, err := ParseURL(tc.raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := store.(*SMB)
+		if s.Addr != tc.addr || s.Share != tc.share || s.Domain != tc.domain || s.User != tc.user || s.Pass != tc.pass || path != tc.path {
+			t.Errorf("%s => %+v %q", tc.raw, s, path)
+		}
+	}
+	for _, raw := range []string{"smb://nas/", "smb://nas/share", "smb://nas/share/"} {
+		if _, _, err := ParseURL(raw); err == nil {
+			t.Errorf("%s accepted without share and path", raw)
+		}
+	}
+}
+
+func TestSMBPath(t *testing.T) {
+	if got := smbPath("/dir/sub/a.txt"); got != `dir\sub\a.txt` {
+		t.Fatalf("smbPath = %q", got)
 	}
 }

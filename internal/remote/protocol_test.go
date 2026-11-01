@@ -10,7 +10,6 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -21,12 +20,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-	"unicode/utf16"
 )
 
 func TestProtocols(t *testing.T) {
@@ -36,8 +33,6 @@ func TestProtocols(t *testing.T) {
 	}{
 		{"ftp", testFTP},
 		{"ftps", testFTPS},
-		{"sftp", testSFTP},
-		{"smb", testSMB},
 		{"webdav", testWebDAV},
 		{"s3", testS3},
 		{"dropbox", testDropbox},
@@ -349,293 +344,6 @@ func testCert(t *testing.T) (tls.Certificate, *x509.CertPool) {
 	return cert, pool
 }
 
-func testSFTP(t *testing.T) {
-	files := newMem()
-	addr := serveTCP(t, func(conn net.Conn) { sftpSession(conn, files) })
-	client := &SFTP{Addr: addr}
-	exercise(t, client, func(ctx context.Context) error {
-		_, err := client.Read(ctx, "slow")
-		return err
-	}, files.slow)
-}
-
-func sftpSession(conn net.Conn, files *memFS) {
-	defer conn.Close()
-	handles := map[string]string{}
-	next := 0
-	for {
-		pkt, err := readFXP(conn)
-		if err != nil || len(pkt) == 0 {
-			return
-		}
-		switch pkt[0] {
-		case fxpInit:
-			var b bytes.Buffer
-			b.WriteByte(fxpVersion)
-			binary.Write(&b, binary.BigEndian, uint32(3))
-			writeFXP(conn, b.Bytes())
-		case fxpOpen:
-			id := binary.BigEndian.Uint32(pkt[1:5])
-			name, err := sshString(pkt[5:])
-			if err != nil {
-				return
-			}
-			path := string(name)
-			if path == "slow" {
-				files.entered()
-				io.Copy(io.Discard, conn)
-				return
-			}
-			rest := pkt[5+4+len(name):]
-			if len(rest) < 4 {
-				return
-			}
-			flags := binary.BigEndian.Uint32(rest[:4])
-			_, ok := files.get(path)
-			if path == "fail" || (flags&fxfCreat == 0 && !ok) {
-				writeFXP(conn, fxpStatusPacket(id, fxNoSuchFile, "missing"))
-				continue
-			}
-			if !ok {
-				files.put(path, nil)
-			}
-			next++
-			h := strconv.Itoa(next)
-			handles[h] = path
-			var b bytes.Buffer
-			b.WriteByte(fxpHandle)
-			binary.Write(&b, binary.BigEndian, id)
-			putSSHString(&b, h)
-			writeFXP(conn, b.Bytes())
-		case fxpRead:
-			id := binary.BigEndian.Uint32(pkt[1:5])
-			h, err := sshString(pkt[5:])
-			if err != nil {
-				return
-			}
-			path := handles[string(h)]
-			data, _ := files.get(path)
-			offBytes := pkt[5+4+len(h):]
-			if len(offBytes) < 8 {
-				return
-			}
-			off := binary.BigEndian.Uint64(offBytes[:8])
-			if off >= uint64(len(data)) {
-				writeFXP(conn, fxpStatusPacket(id, fxEOF, "eof"))
-				continue
-			}
-			var b bytes.Buffer
-			b.WriteByte(fxpData)
-			binary.Write(&b, binary.BigEndian, id)
-			putSSHBytes(&b, data[off:])
-			writeFXP(conn, b.Bytes())
-		case fxpWrite:
-			id := binary.BigEndian.Uint32(pkt[1:5])
-			h, err := sshString(pkt[5:])
-			if err != nil {
-				return
-			}
-			rest := pkt[5+4+len(h):]
-			if len(rest) < 8 {
-				return
-			}
-			data, err := sshString(rest[8:])
-			if err != nil {
-				return
-			}
-			files.put(handles[string(h)], data)
-			writeFXP(conn, fxpStatusPacket(id, fxOK, "ok"))
-		case fxpRemove:
-			id := binary.BigEndian.Uint32(pkt[1:5])
-			name, err := sshString(pkt[5:])
-			if err != nil {
-				return
-			}
-			files.del(string(name))
-			writeFXP(conn, fxpStatusPacket(id, fxOK, "ok"))
-		case fxpClose:
-			id := binary.BigEndian.Uint32(pkt[1:5])
-			writeFXP(conn, fxpStatusPacket(id, fxOK, "ok"))
-		default:
-			return
-		}
-	}
-}
-
-func fxpStatusPacket(id, code uint32, msg string) []byte {
-	var b bytes.Buffer
-	b.WriteByte(fxpStatus)
-	binary.Write(&b, binary.BigEndian, id)
-	binary.Write(&b, binary.BigEndian, code)
-	putSSHString(&b, msg)
-	putSSHString(&b, "en")
-	return b.Bytes()
-}
-
-func testSMB(t *testing.T) {
-	files := newMem()
-	addr := serveTCP(t, func(conn net.Conn) { serveSMB(conn, files) })
-	client := &SMB{Addr: addr}
-	exercise(t, client, func(ctx context.Context) error {
-		_, err := client.Read(ctx, "slow")
-		return err
-	}, files.slow)
-}
-
-func serveSMB(conn net.Conn, files *memFS) {
-	defer conn.Close()
-	type handle struct {
-		path   string
-		delete bool
-	}
-	handles := map[string]handle{}
-	var next uint64
-	const session uint64 = 0x11
-	const tree uint32 = 0x22
-	for {
-		pkt, err := readSMB(conn)
-		if err != nil || len(pkt) < 64 || pkt[0] != 0xFE || string(pkt[1:4]) != "SMB" || binary.LittleEndian.Uint16(pkt[4:6]) != 64 {
-			return
-		}
-		cmd := binary.LittleEndian.Uint16(pkt[12:14])
-		if cmd == smbCreate || cmd == smbReadCmd || cmd == smbWriteCmd || cmd == smbCloseCmd {
-			if binary.LittleEndian.Uint64(pkt[40:48]) != session || binary.LittleEndian.Uint32(pkt[36:40]) != tree {
-				writeSMB(conn, smbTestReply(pkt, 0xC0000022, cmd, session, tree, nil))
-				continue
-			}
-		}
-		switch cmd {
-		case smbNegotiate:
-			body := make([]byte, 8)
-			binary.LittleEndian.PutUint16(body[0:], 65)
-			binary.LittleEndian.PutUint16(body[4:], 0x0202)
-			writeSMB(conn, smbTestReply(pkt, 0, cmd, 0, 0, body))
-		case smbSession:
-			writeSMB(conn, smbTestReply(pkt, 0, cmd, session, 0, []byte{9, 0}))
-		case smbTree:
-			writeSMB(conn, smbTestReply(pkt, 0, cmd, session, tree, []byte{16, 0}))
-		case smbCreate:
-			body := pkt[64:]
-			if len(body) < 56 {
-				return
-			}
-			nameOff := int(binary.LittleEndian.Uint16(body[44:46]))
-			nameLen := int(binary.LittleEndian.Uint16(body[46:48]))
-			if nameOff < 0 || nameLen < 0 || nameOff+nameLen > len(pkt) {
-				return
-			}
-			name := decodeUTF16(pkt[nameOff : nameOff+nameLen])
-			if name == "slow" {
-				files.entered()
-				io.Copy(io.Discard, conn)
-				return
-			}
-			if name == "fail" {
-				writeSMB(conn, smbTestReply(pkt, 0xC0000022, cmd, session, tree, nil))
-				continue
-			}
-			disp := binary.LittleEndian.Uint32(body[36:40])
-			_, ok := files.get(name)
-			// 按 MS-SMB2 区分：FILE_OPEN_IF(3) 保留已有内容，FILE_OVERWRITE_IF(5) 截断。
-			if !ok && disp != 3 && disp != fileOverwriteIf {
-				writeSMB(conn, smbTestReply(pkt, 0xC0000034, cmd, session, tree, nil))
-				continue
-			}
-			if !ok || disp == fileOverwriteIf {
-				files.put(name, nil)
-			}
-			next++
-			var id [16]byte
-			binary.LittleEndian.PutUint64(id[:], next)
-			handles[string(id[:])] = handle{path: name, delete: binary.LittleEndian.Uint32(body[40:44])&fileDelete != 0}
-			resp := make([]byte, 88)
-			binary.LittleEndian.PutUint16(resp[0:], 89)
-			copy(resp[64:], id[:])
-			writeSMB(conn, smbTestReply(pkt, 0, cmd, session, tree, resp))
-		case smbReadCmd:
-			body := pkt[64:]
-			if len(body) < 32 {
-				return
-			}
-			h := handles[string(body[16:32])]
-			data, _ := files.get(h.path)
-			offset := binary.LittleEndian.Uint64(body[8:16])
-			length := binary.LittleEndian.Uint32(body[4:8])
-			if offset >= uint64(len(data)) {
-				writeSMB(conn, smbTestReply(pkt, 0xC0000011, cmd, session, tree, nil))
-				continue
-			}
-			end := min(uint64(len(data)), offset+uint64(length))
-			data = data[offset:end]
-			resp := make([]byte, 16+len(data))
-			binary.LittleEndian.PutUint16(resp[0:], 17)
-			resp[2] = 80
-			binary.LittleEndian.PutUint32(resp[4:], uint32(len(data)))
-			copy(resp[16:], data)
-			writeSMB(conn, smbTestReply(pkt, 0, cmd, session, tree, resp))
-		case smbWriteCmd:
-			body := pkt[64:]
-			if len(body) < 48 {
-				return
-			}
-			h := handles[string(body[16:32])]
-			off := int(binary.LittleEndian.Uint16(body[2:4]))
-			n := int(binary.LittleEndian.Uint32(body[4:8]))
-			if off < 0 || n < 0 || off+n > len(pkt) {
-				return
-			}
-			// 按 WRITE 偏移覆盖写入，不隐式截断，与真实服务端一致。
-			cur, _ := files.get(h.path)
-			woff := int(binary.LittleEndian.Uint64(body[8:16]))
-			buf := append([]byte(nil), cur...)
-			if len(buf) < woff+n {
-				buf = append(buf, make([]byte, woff+n-len(buf))...)
-			}
-			copy(buf[woff:], pkt[off:off+n])
-			files.put(h.path, buf)
-			resp := make([]byte, 16)
-			binary.LittleEndian.PutUint16(resp[0:], 17)
-			binary.LittleEndian.PutUint32(resp[4:], uint32(n))
-			writeSMB(conn, smbTestReply(pkt, 0, cmd, session, tree, resp))
-		case smbCloseCmd:
-			body := pkt[64:]
-			if len(body) < 24 {
-				return
-			}
-			key := string(body[8:24])
-			if h, ok := handles[key]; ok && h.delete {
-				files.del(h.path)
-			}
-			delete(handles, key)
-			writeSMB(conn, smbTestReply(pkt, 0, cmd, session, tree, []byte{24, 0}))
-		default:
-			return
-		}
-	}
-}
-
-func smbTestReply(req []byte, status uint32, cmd uint16, session uint64, tree uint32, body []byte) []byte {
-	h := make([]byte, 64)
-	copy(h, req[:64])
-	binary.LittleEndian.PutUint32(h[8:], status)
-	binary.LittleEndian.PutUint16(h[12:], cmd)
-	binary.LittleEndian.PutUint32(h[16:], 1)
-	binary.LittleEndian.PutUint32(h[36:], tree)
-	binary.LittleEndian.PutUint64(h[40:], session)
-	return append(h, body...)
-}
-
-func decodeUTF16(b []byte) string {
-	if len(b)%2 == 1 {
-		b = b[:len(b)-1]
-	}
-	u := make([]uint16, len(b)/2)
-	for i := range u {
-		u[i] = binary.LittleEndian.Uint16(b[i*2:])
-	}
-	return string(utf16.Decode(u))
-}
-
 func testWebDAV(t *testing.T) {
 	files := newMem()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -795,38 +503,5 @@ func httpObject(files *memFS, w http.ResponseWriter, r *http.Request, path strin
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "method", http.StatusMethodNotAllowed)
-	}
-}
-
-func TestSMBReadMultipleChunks(t *testing.T) {
-	files := newMem()
-	data := bytes.Repeat([]byte("payload"), 400000)
-	files.put("large", data)
-	addr := serveTCP(t, func(conn net.Conn) { serveSMB(conn, files) })
-	client := &SMB{Addr: addr}
-	got, err := client.Read(context.Background(), "large")
-	if err != nil || !bytes.Equal(got, data) {
-		t.Fatalf("incomplete read: got %d want %d: %v", len(got), len(data), err)
-	}
-}
-
-func TestSMBWriteTruncatesExistingFile(t *testing.T) {
-	files := newMem()
-	files.put("doc", []byte("a much longer original body"))
-	addr := serveTCP(t, func(conn net.Conn) { serveSMB(conn, files) })
-	client := &SMB{Addr: addr}
-	if err := client.Write(context.Background(), "doc", []byte("short")); err != nil {
-		t.Fatal(err)
-	}
-	got, err := client.Read(context.Background(), "doc")
-	if err != nil || string(got) != "short" {
-		t.Fatalf("stale tail after overwrite: %q %v", got, err)
-	}
-}
-
-func TestSMBWriteRejectsOversizedFrame(t *testing.T) {
-	err := (&SMB{Addr: "127.0.0.1:1"}).Write(context.Background(), "big", make([]byte, smbMaxFrame))
-	if err == nil || !strings.Contains(err.Error(), "exceeds") {
-		t.Fatalf("oversized write must fail before dialing: %v", err)
 	}
 }

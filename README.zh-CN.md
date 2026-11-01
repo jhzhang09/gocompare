@@ -200,7 +200,8 @@ go tool mygo vet .
 ## 致谢
 
 - [MyGo](https://github.com/egoist/mygo)（作者 [@egoist](https://github.com/egoist)）—— GoCompare 所基于的 Go 原生桌面 UI 框架。
-- [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) 与 [golang.org/x/image](https://pkg.go.dev/golang.org/x/image)。
+- [golang.org/x/text](https://pkg.go.dev/golang.org/x/text)、[golang.org/x/image](https://pkg.go.dev/golang.org/x/image)、[golang.org/x/net](https://pkg.go.dev/golang.org/x/net) 与 [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto)。
+- [pkg/sftp](https://github.com/pkg/sftp) 与 [go-smb2](https://github.com/hirochachacha/go-smb2)，用于 SFTP 与 SMB 访问。
 
 ## 许可证
 

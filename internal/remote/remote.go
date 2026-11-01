@@ -1,5 +1,5 @@
-// Package remote 实现可用可控夹具验收的远程来源客户端。
-// 这里没有真实云账号；Dropbox 与 OneDrive 只实现各自声明的 HTTP 子集。
+// Package remote 实现远程来源客户端：FTP/FTPS、SFTP（SSH）、SMB2/3、WebDAV、S3、Dropbox、OneDrive 与 SVN HTTP 子集。
+// Dropbox 与 OneDrive 只实现各自声明的 HTTP 子集。
 package remote
 
 import (
@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -39,10 +40,26 @@ func ParseURL(rawURL string) (Store, string, error) {
 	case "ftps":
 		return &FTP{Addr: u.Host, User: user, Pass: pass, TLS: &tls.Config{ServerName: u.Hostname()}}, path, nil
 	case "sftp":
-		return nil, "", fmt.Errorf("sftp URLs are not supported: SSH authentication and host verification are not implemented")
+		// 路径按 curl 约定：/abs 为绝对路径，/~/rel 相对登录用户的主目录。
+		p := u.Path
+		if strings.HasPrefix(p, "/~/") {
+			p = p[3:]
+		}
+		if p == "" || p == "/" {
+			return nil, "", fmt.Errorf("sftp URL needs a file path")
+		}
+		return &SFTP{Addr: hostPort(u, "22"), User: user, Pass: pass}, p, nil
 	case "smb":
-		// SMB 客户端只发送空安全令牌，真实服务端都会要求 NTLM/Kerberos，因此与 SFTP 一样明确拒绝。
-		return nil, "", fmt.Errorf("smb URLs are not supported: NTLM/Kerberos authentication is not implemented")
+		// smb://[domain;]user:pass@host[:port]/share/path，域也可写成 domain\user（需编码为 %5C）。
+		share, rel, _ := strings.Cut(path, "/")
+		if share == "" || rel == "" {
+			return nil, "", fmt.Errorf("smb URL must be smb://host/share/path")
+		}
+		domain, name := "", user
+		if i := strings.IndexAny(user, ";\\"); i >= 0 {
+			domain, name = user[:i], user[i+1:]
+		}
+		return &SMB{Addr: hostPort(u, "445"), Share: share, User: name, Pass: pass, Domain: domain}, rel, nil
 	case "webdav", "webdav+https":
 		return &WebDAV{Base: httpBase(u.Scheme, u.Host), User: user, Pass: pass}, path, nil
 	case "s3", "s3+https":
@@ -64,6 +81,15 @@ func ParseURL(rawURL string) (Store, string, error) {
 	default:
 		return nil, "", fmt.Errorf("unsupported remote scheme: %s", u.Scheme)
 	}
+}
+
+// hostPort 返回带端口的地址，URL 未写端口时使用协议默认端口。
+func hostPort(u *url.URL, defaultPort string) string {
+	port := u.Port()
+	if port == "" {
+		port = defaultPort
+	}
+	return net.JoinHostPort(u.Hostname(), port)
 }
 
 // httpBase 按 scheme 的 "+https" 后缀选择传输协议；未声明时保持既有的 http 行为。
