@@ -3,8 +3,8 @@
 | Platform · 平台 | Desktop app · 桌面应用 | CLI · 命令行 |
 |---|---|---|
 | macOS (Apple Silicon & Intel) | `gocompare-<version>.dmg` | `gocompare-cli_<version>_darwin_<arch>.tar.gz` |
-| Windows | `gocompare-setup-<version>-<arch>.exe` (installer · 安装版) / `gocompare-<version>-windows-<arch>-portable.zip` (portable · 免安装版) | `gocompare-cli_<version>_windows_<arch>.zip` |
-| Linux | `gocompare_<version>_<arch>.deb` / `gocompare-<version>-linux-<arch>.tar.gz` | `gocompare-cli_<version>_linux_<arch>.tar.gz` |
+| Windows | Installer · 安装版<br>`gocompare-setup-<version>-<arch>.exe`<br><br>Portable · 免安装版<br>`gocompare-<version>-windows-<arch>-portable.zip` | `gocompare-cli_<version>_windows_<arch>.zip` |
+| Linux | Debian / Ubuntu<br>`gocompare_<version>_<arch>.deb`<br><br>Other distributions · 其他发行版<br>`gocompare-<version>-linux-<arch>.tar.gz` | `gocompare-cli_<version>_linux_<arch>.tar.gz` |
 
 Homebrew: `brew install --cask jhzhang09/tap/gocompare` (app) · `brew install jhzhang09/tap/gocompare-cli` (CLI)
 
