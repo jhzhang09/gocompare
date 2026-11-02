@@ -6,12 +6,18 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **Center Diff Gutter & Inline Hunk Actions**: Split views in File Compare and Text Compare now include a dedicated center diff column between the left and right editors. Each difference hunk renders an aligned visual connector band with prominent focus highlighting, click-to-focus navigation, and compact inline `←` / `→` buttons to apply any individual hunk to the left or right in place.
+- **Per-Side & Cross-Side On-Demand Undo/Redo**: Added independent Undo/Redo controls in both the left and right pane headers as well as a chronological cross-side Undo/Redo stack in the top action toolbar (with `Cmd/Ctrl+Z` and `Cmd/Ctrl+Shift+Z` shortcuts). To keep the interface clean, Undo/Redo buttons appear only when modifications exist.
 - **Remote Sources Across All Modes**: Extended the **Remote…** button and connection dialog to all dual-pane modes (File Compare, Directory Compare, Text Merge, Picture Compare, Table Compare, Media Tags, and Version/Registry Compare). Files can be picked directly from SFTP, SMB, FTP/FTPS, and WebDAV servers with unified authentication, host key verification, and password prompts.
 - **Drag-and-Drop Auto-Fill**: All modules now support dragging and dropping files or folders from the desktop/file manager. Dropping onto either side capsule fills that path, dropping onto the empty view automatically fills empty slots, and dropping two items at once populates both left and right paths and starts comparison immediately. Drag-over visual feedback highlights drop targets in real time. Dropping a folder into File Compare automatically switches to Directory Compare, and Text Merge base and output paths also support drag-and-drop and browsing.
 - **Media Tags Multi-Format & Extended Metadata**: Added tag inspection for FLAC (Vorbis Comment & Picture), M4A/MP4 (`ilst` atoms), WAV (`LIST/INFO` & embedded ID3), OGG/Opus and trailing ID3v1 tags, alongside extended fields (`Year`, `Track`, `Genre`, `Comment`, embedded cover art size and container format badge).
 - **PE Metadata Inspection & Fallback Comparison**: PE version view now displays target architecture (`x86` / `amd64` / `arm64`), `ProductName`, `FileDescription`, `CompanyName`, `LegalCopyright`, file size and SHA-256 fingerprint. Valid PE binaries without an `RT_VERSION` resource (such as NSIS installer stubs or raw Go CLI executables) fall back to `ProductVersion`, `VS_FIXEDFILEINFO`, `RT_MANIFEST` or a deterministic `PE/<arch> (<sha256>)` identifier instead of failing.
 - **Registry Diff Classification & Pagination**: Registry comparison now supports `REGEDIT4` exports, case-insensitive key/value matching per Windows semantics, empty/deleted key detection, `Left only` / `Right only` / `Modified` badges (without leaking values) and 50-item pagination.
 - **Windows Installer Version Resource**: Configured `resources/installer.nsh` so NSIS installers (`gocompare-setup-*.exe`) embed standard Windows `RT_VERSION` metadata.
+
+### Improved
+
+- **Focus Preservation & Smooth Scroll on Hunk Apply**: Applying a difference hunk (`← Apply to Left` / `Apply to Right →` or via the center diff gutter) now automatically advances focus and line selection highlight to the next remaining hunk instead of clearing focus or jumping back to the top of the file, while synchronizing carets across both editors and keeping the viewport scroll stable.
 
 ## [0.3.2] - 2026-11-01
 
