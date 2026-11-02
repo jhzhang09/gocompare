@@ -150,6 +150,41 @@ func TestPEFileVersionAlignedString(t *testing.T) {
 	}
 }
 
+func TestPEWithoutRTVersion(t *testing.T) {
+	// 模拟类似 NSIS 安装包的 PE：有 .rsrc 节和 RT_ICON (3)，但没有 RT_VERSION (16)
+	const blobAt = 88
+	blob := []byte{1, 2, 3, 4}
+	sec := make([]byte, blobAt+len(blob))
+	putDir(sec, 0, 3, 24, true)
+	putDir(sec, 24, 1, 48, true)
+	putDir(sec, 48, 0, 72, false)
+	const sectionVA = 0x1000
+	binary.LittleEndian.PutUint32(sec[72:], uint32(sectionVA+blobAt))
+	binary.LittleEndian.PutUint32(sec[76:], uint32(len(blob)))
+	copy(sec[blobAt:], blob)
+	file := make([]byte, 0x80+len(sec))
+	file[0], file[1] = 'M', 'Z'
+	binary.LittleEndian.PutUint32(file[0x3c:], 0x40)
+	copy(file[0x40:], []byte{'P', 'E', 0, 0})
+	binary.LittleEndian.PutUint16(file[0x40+4:], 0xaa64) // arm64
+	binary.LittleEndian.PutUint16(file[0x40+4+2:], 1)
+	off := 0x40 + 4 + 20
+	copy(file[off:off+8], []byte(".rsrc"))
+	binary.LittleEndian.PutUint32(file[off+8:], uint32(len(sec)))
+	binary.LittleEndian.PutUint32(file[off+12:], sectionVA)
+	binary.LittleEndian.PutUint32(file[off+16:], uint32(len(sec)))
+	binary.LittleEndian.PutUint32(file[off+20:], 0x80)
+	copy(file[0x80:], sec)
+
+	got, err := pever.FileVersion(file)
+	if err != nil {
+		t.Fatalf("unexpected error for PE without RT_VERSION: %v", err)
+	}
+	if !bytes.HasPrefix([]byte(got), []byte("PE/arm64 (")) {
+		t.Fatalf("expected PE/arm64 fallback, got %q", got)
+	}
+}
+
 func peWithVersion(version string) []byte {
 	return peWithVersionBlob(append(utf16z("FileVersion"), utf16z(version)...))
 }

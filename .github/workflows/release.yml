@@ -90,6 +90,12 @@ jobs:
           sed -i.bak -E "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" mygo.json
           rm mygo.json.bak
           grep '"version"' mygo.json
+          base_ver="${VERSION%%-*}"
+          IFS='.' read -r v1 v2 v3 v4 <<< "${base_ver}.0.0.0"
+          vi_ver="${v1:-0}.${v2:-0}.${v3:-0}.${v4:-0}"
+          sed -i.bak -E "s/VIProductVersion \"[^\"]*\"/VIProductVersion \"$vi_ver\"/; s/\"(File|Product)Version\" \"[^\"]*\"/\"\1Version\" \"$VERSION\"/" resources/installer.nsh
+          rm resources/installer.nsh.bak
+          cat resources/installer.nsh
       - name: Build
         env:
           MYGO_LDFLAGS: -X gocompare/internal/brand.Version=${{ env.TAG }}

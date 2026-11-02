@@ -52,3 +52,28 @@ func TestParseRegeditExport(t *testing.T) {
 		t.Fatalf("UTF-8 BOM: %q %v", text, err)
 	}
 }
+
+func TestRegedit4CaseInsensitiveAndEmptyKey(t *testing.T) {
+	leftText := "REGEDIT4\n\n[HKEY_CURRENT_USER\\Software\\GoCompare]\n\"Name\"=\"One\"\n\n[HKEY_CURRENT_USER\\Software\\EmptyLeft]\n"
+	rightText := "REGEDIT4\n\n[hkey_current_user\\software\\gocompare]\n\"name\"=\"One\"\n\"Added\"=\"Two\"\n"
+
+	lv, err := Parse(leftText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rv, err := Parse(rightText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	details := DiffDetails(lv, rv)
+	if len(details) != 2 {
+		t.Fatalf("expected 2 diffs (EmptyLeft left_only, Added right_only), got %+v", details)
+	}
+	kinds := map[string]string{}
+	for _, d := range details {
+		kinds[d.Path] = d.Kind
+	}
+	if kinds[`HKEY_CURRENT_USER\Software\EmptyLeft`] != "left_only" || kinds[`hkey_current_user\software\gocompare\Added`] != "right_only" {
+		t.Fatalf("unexpected diff details: %+v", details)
+	}
+}

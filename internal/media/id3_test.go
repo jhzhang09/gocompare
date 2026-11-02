@@ -68,3 +68,48 @@ func TestOpenReadsOnlyTheTag(t *testing.T) {
 		t.Fatalf("%+v %v", got, err)
 	}
 }
+
+func TestFLACWAVAndID3v1(t *testing.T) {
+	dir := t.TempDir()
+
+	// 1. FLAC with Vorbis Comment
+	var vc bytes.Buffer
+	binary.Write(&vc, binary.LittleEndian, uint32(4))
+	vc.WriteString("test")
+	binary.Write(&vc, binary.LittleEndian, uint32(3))
+	for _, entry := range []string{"TITLE=FlacSong", "ARTIST=FlacArtist", "DATE=2026"} {
+		binary.Write(&vc, binary.LittleEndian, uint32(len(entry)))
+		vc.WriteString(entry)
+	}
+	flacData := []byte("fLaC")
+	blk := vc.Bytes()
+	flacData = append(flacData, 0x84, byte(len(blk)>>16), byte(len(blk)>>8), byte(len(blk)))
+	flacData = append(flacData, blk...)
+	flacPath := filepath.Join(dir, "test.flac")
+	if err := os.WriteFile(flacPath, flacData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	flacTags, err := Open(context.Background(), flacPath)
+	if err != nil || flacTags.Title != "FlacSong" || flacTags.Artist != "FlacArtist" || flacTags.Year != "2026" || flacTags.Format != "FLAC" {
+		t.Fatalf("flac: %+v %v", flacTags, err)
+	}
+
+	// 2. ID3v1 at end of file
+	v1 := make([]byte, 256)
+	tail := v1[128:]
+	copy(tail[0:3], "TAG")
+	copy(tail[3:33], "V1Title")
+	copy(tail[33:63], "V1Artist")
+	copy(tail[63:93], "V1Album")
+	copy(tail[93:97], "1999")
+	tail[125] = 0
+	tail[126] = 5
+	v1Path := filepath.Join(dir, "v1.mp3")
+	if err := os.WriteFile(v1Path, v1, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v1Tags, err := Open(context.Background(), v1Path)
+	if err != nil || v1Tags.Title != "V1Title" || v1Tags.Artist != "V1Artist" || v1Tags.Year != "1999" || v1Tags.Track != "5" {
+		t.Fatalf("id3v1: %+v %v", v1Tags, err)
+	}
+}

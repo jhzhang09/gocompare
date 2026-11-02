@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Media Tags Multi-Format & Extended Metadata**: Added tag inspection for FLAC (Vorbis Comment & Picture), M4A/MP4 (`ilst` atoms), WAV (`LIST/INFO` & embedded ID3), OGG/Opus and trailing ID3v1 tags, alongside extended fields (`Year`, `Track`, `Genre`, `Comment`, embedded cover art size and container format badge).
+- **PE Metadata Inspection & Fallback Comparison**: PE version view now displays target architecture (`x86` / `amd64` / `arm64`), `ProductName`, `FileDescription`, `CompanyName`, `LegalCopyright`, file size and SHA-256 fingerprint. Valid PE binaries without an `RT_VERSION` resource (such as NSIS installer stubs or raw Go CLI executables) fall back to `ProductVersion`, `VS_FIXEDFILEINFO`, `RT_MANIFEST` or a deterministic `PE/<arch> (<sha256>)` identifier instead of failing.
+- **Registry Diff Classification & Pagination**: Registry comparison now supports `REGEDIT4` exports, case-insensitive key/value matching per Windows semantics, empty/deleted key detection, `Left only` / `Right only` / `Modified` badges (without leaking values) and 50-item pagination.
+- **Windows Installer Version Resource**: Configured `resources/installer.nsh` so NSIS installers (`gocompare-setup-*.exe`) embed standard Windows `RT_VERSION` metadata.
+
 ## [0.3.2] - 2026-11-01
 
 ### Added

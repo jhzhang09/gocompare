@@ -23,7 +23,9 @@ import (
 	"gocompare/internal/media"
 	"gocompare/internal/merge"
 	"gocompare/internal/operations"
+	"gocompare/internal/pever"
 	"gocompare/internal/picture"
+	"gocompare/internal/regfile"
 	"gocompare/internal/table"
 	"gocompare/internal/textcompare"
 	"gocompare/internal/updater"
@@ -101,11 +103,15 @@ type modeSession struct {
 	mediaRight media.Tags
 	mediaReady bool
 
-	infoKind  string
-	infoLeft  string
-	infoRight string
-	infoDiffs []string
-	infoReady bool
+	infoKind     string
+	infoLeft     string
+	infoRight    string
+	infoLeftPE   pever.Info
+	infoRightPE  pever.Info
+	infoDiffs    []string
+	infoRegDiffs []regfile.DiffEntry
+	infoRegPage  int
+	infoReady    bool
 
 	tableSheets        [2][]table.Sheet
 	tableDiffs         []table.Diff
@@ -195,12 +201,16 @@ type workspaceState struct {
 	mediaRight media.Tags
 	mediaReady bool
 
-	infoGen   uint64
-	infoKind  string
-	infoLeft  string
-	infoRight string
-	infoDiffs []string
-	infoReady bool
+	infoGen      uint64
+	infoKind     string
+	infoLeft     string
+	infoRight    string
+	infoLeftPE   pever.Info
+	infoRightPE  pever.Info
+	infoDiffs    []string
+	infoRegDiffs []regfile.DiffEntry
+	infoRegPage  int
+	infoReady    bool
 
 	tableGen           uint64
 	tableSheets        [2][]table.Sheet
@@ -878,7 +888,11 @@ func (a *workspaceState) saveModeSession(kind int) {
 		infoKind:           a.infoKind,
 		infoLeft:           a.infoLeft,
 		infoRight:          a.infoRight,
+		infoLeftPE:         a.infoLeftPE,
+		infoRightPE:        a.infoRightPE,
 		infoDiffs:          append([]string(nil), a.infoDiffs...),
+		infoRegDiffs:       append([]regfile.DiffEntry(nil), a.infoRegDiffs...),
+		infoRegPage:        a.infoRegPage,
 		infoReady:          a.infoReady,
 		tableSheets:        a.tableSheets,
 		tableDiffs:         a.tableDiffs,
@@ -940,7 +954,11 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.infoKind = sess.infoKind
 	a.infoLeft = sess.infoLeft
 	a.infoRight = sess.infoRight
+	a.infoLeftPE = sess.infoLeftPE
+	a.infoRightPE = sess.infoRightPE
 	a.infoDiffs = sess.infoDiffs
+	a.infoRegDiffs = sess.infoRegDiffs
+	a.infoRegPage = sess.infoRegPage
 	a.infoReady = sess.infoReady
 	a.tableSheets = sess.tableSheets
 	a.tableDiffs = sess.tableDiffs

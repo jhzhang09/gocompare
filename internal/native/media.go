@@ -57,6 +57,14 @@ func (a *workspaceState) mediaView(c *ui.Context) {
 		ui.Icon(c, iconMediaTag).Size(13, 13).TextColor(pal.baseAccent)
 		ui.Text(c, i18n.T("media.header")).FontSize(11).Bold()
 		statusPill(c, i18n.T("media.noPlayback"), pal.sameFg, pal.sameBg)
+		if a.mediaReady {
+			diffs := mediaDiffCount(a.mediaLeft, a.mediaRight)
+			if diffs == 0 {
+				statusPill(c, i18n.T("dir.equal"), pal.sameFg, pal.sameBg)
+			} else {
+				statusPill(c, i18n.TArgs("table.diffCount", diffs), pal.diffFg, pal.diffBg)
+			}
+		}
 	})
 
 	if !a.mediaReady {
@@ -73,23 +81,74 @@ func (a *workspaceState) mediaView(c *ui.Context) {
 				ui.Row(c).Gap(6).Margin(0, 0, 4).Children(func() {
 					sideBadge(c, 0, pal)
 					ui.Text(c, i18n.T("media.leftTags")).Bold().FontSize(12)
+					if a.mediaLeft.Format != "" {
+						statusPill(c, a.mediaLeft.Format, pal.baseAccent, pal.baseBg)
+					}
 				})
 				a.mediaFieldRow(c, pal, i18n.TArgs("media.leftTitle", a.mediaLeft.Title), a.mediaLeft.Title != a.mediaRight.Title)
 				a.mediaFieldRow(c, pal, i18n.TArgs("media.leftArtist", a.mediaLeft.Artist), a.mediaLeft.Artist != a.mediaRight.Artist)
 				a.mediaFieldRow(c, pal, i18n.TArgs("media.leftAlbum", a.mediaLeft.Album), a.mediaLeft.Album != a.mediaRight.Album)
+				a.mediaExtraRows(c, pal, a.mediaLeft, a.mediaRight)
 			})
 			// 右侧卡片
 			ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(8).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
 				ui.Row(c).Gap(6).Margin(0, 0, 4).Children(func() {
 					sideBadge(c, 1, pal)
 					ui.Text(c, i18n.T("media.rightTags")).Bold().FontSize(12)
+					if a.mediaRight.Format != "" {
+						statusPill(c, a.mediaRight.Format, pal.baseAccent, pal.baseBg)
+					}
 				})
 				a.mediaFieldRow(c, pal, i18n.TArgs("media.rightTitle", a.mediaRight.Title), a.mediaLeft.Title != a.mediaRight.Title)
 				a.mediaFieldRow(c, pal, i18n.TArgs("media.rightArtist", a.mediaRight.Artist), a.mediaLeft.Artist != a.mediaRight.Artist)
 				a.mediaFieldRow(c, pal, i18n.TArgs("media.rightAlbum", a.mediaRight.Album), a.mediaLeft.Album != a.mediaRight.Album)
+				a.mediaExtraRows(c, pal, a.mediaRight, a.mediaLeft)
 			})
 		})
 	})
+}
+
+func mediaDiffCount(l, r media.Tags) int {
+	diffs := 0
+	for _, pair := range [][2]string{
+		{l.Title, r.Title},
+		{l.Artist, r.Artist},
+		{l.Album, r.Album},
+		{l.Year, r.Year},
+		{l.Track, r.Track},
+		{l.Genre, r.Genre},
+		{l.Comment, r.Comment},
+	} {
+		if pair[0] != pair[1] {
+			diffs++
+		}
+	}
+	if l.HasPic != r.HasPic || l.PicSize != r.PicSize {
+		diffs++
+	}
+	return diffs
+}
+
+func (a *workspaceState) mediaExtraRows(c *ui.Context, pal uiPalette, self, other media.Tags) {
+	if self.Year != "" || other.Year != "" {
+		a.mediaFieldRow(c, pal, i18n.TArgs("media.year", self.Year), self.Year != other.Year)
+	}
+	if self.Track != "" || other.Track != "" {
+		a.mediaFieldRow(c, pal, i18n.TArgs("media.track", self.Track), self.Track != other.Track)
+	}
+	if self.Genre != "" || other.Genre != "" {
+		a.mediaFieldRow(c, pal, i18n.TArgs("media.genre", self.Genre), self.Genre != other.Genre)
+	}
+	if self.Comment != "" || other.Comment != "" {
+		a.mediaFieldRow(c, pal, i18n.TArgs("media.comment", self.Comment), self.Comment != other.Comment)
+	}
+	if self.HasPic || other.HasPic {
+		coverText := i18n.T("media.noCover")
+		if self.HasPic {
+			coverText = i18n.TArgs("media.cover", self.PicSize)
+		}
+		a.mediaFieldRow(c, pal, coverText, self.HasPic != other.HasPic || self.PicSize != other.PicSize)
+	}
 }
 
 func (a *workspaceState) mediaFieldRow(c *ui.Context, pal uiPalette, text string, diff bool) {

@@ -4,5 +4,8 @@
   "identifier": "dev.gocompare.desktop",
   "version": "0.1.0",
   "main": "./cmd/gocompare",
-  "out": "build"
+  "out": "build",
+  "windows": {
+    "installerInclude": "resources/installer.nsh"
+  }
 }

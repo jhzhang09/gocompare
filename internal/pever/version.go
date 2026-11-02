@@ -1,14 +1,78 @@
 // Package pever 从 PE 资源目录读取 RT_VERSION 中的 FileVersion。
+// 当合法 PE 不含 RT_VERSION（如未嵌入版本资源的安装壳或命令行程序）时，
+// 回退至应用清单版本或基于 PE 架构与内容摘要的确定性标识。
 package pever
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"strings"
 	"unicode/utf16"
 )
 
-// FileVersion 解析最小 PE 的资源树，返回 RT_VERSION（类型 16）里的 FileVersion。
+// Info 是从 PE 文件提取的版本与构建元数据。
+type Info struct {
+	FileVersion      string
+	ProductVersion   string
+	ProductName      string
+	FileDescription  string
+	CompanyName      string
+	LegalCopyright   string
+	OriginalFilename string
+	Architecture     string
+	SHA256           string
+	Size             int
+}
+
+// Inspect 解析 PE 文件的版本信息、字符串表元数据、目标架构与摘要。
+func Inspect(data []byte) (Info, error) {
+	fv, err := FileVersion(data)
+	if err != nil {
+		return Info{}, err
+	}
+	lfanew := int(binary.LittleEndian.Uint32(data[0x3c:]))
+	coff := lfanew + 4
+	machine := binary.LittleEndian.Uint16(data[coff:])
+	sum := sha256.Sum256(data)
+	info := Info{
+		FileVersion:  fv,
+		Architecture: peArch(machine),
+		SHA256:       fmt.Sprintf("%x", sum[:8]),
+		Size:         len(data),
+	}
+	sections := int(binary.LittleEndian.Uint16(data[coff+2:]))
+	optSize := int(binary.LittleEndian.Uint16(data[coff+16:]))
+	table := coff + 20 + optSize
+	for i := 0; i < sections; i++ {
+		off := table + i*40
+		if off+40 > len(data) {
+			break
+		}
+		if string(bytes.TrimRight(data[off:off+8], "\x00")) != ".rsrc" {
+			continue
+		}
+		va := int(binary.LittleEndian.Uint32(data[off+12:]))
+		size := int(binary.LittleEndian.Uint32(data[off+16:]))
+		raw := int(binary.LittleEndian.Uint32(data[off+20:]))
+		if raw >= 0 && size >= 0 && raw+size <= len(data) {
+			if blob, bErr := resourceBlob(data[raw:raw+size], va, 16); bErr == nil {
+				info.ProductVersion, _ = utf16Value(blob, "ProductVersion")
+				info.ProductName, _ = utf16Value(blob, "ProductName")
+				info.FileDescription, _ = utf16Value(blob, "FileDescription")
+				info.CompanyName, _ = utf16Value(blob, "CompanyName")
+				info.LegalCopyright, _ = utf16Value(blob, "LegalCopyright")
+				info.OriginalFilename, _ = utf16Value(blob, "OriginalFilename")
+			}
+		}
+		break
+	}
+	return info, nil
+}
+
+// FileVersion 解析最小 PE 的资源树，优先返回 RT_VERSION（类型 16）里的 FileVersion。
 func FileVersion(data []byte) (string, error) {
 	if len(data) < 0x40 || data[0] != 'M' || data[1] != 'Z' {
 		return "", errors.New("not a PE file")
@@ -18,9 +82,13 @@ func FileVersion(data []byte) (string, error) {
 		return "", errors.New("missing PE signature")
 	}
 	coff := lfanew + 4
+	machine := binary.LittleEndian.Uint16(data[coff:])
 	sections := int(binary.LittleEndian.Uint16(data[coff+2:]))
 	optSize := int(binary.LittleEndian.Uint16(data[coff+16:]))
 	table := coff + 20 + optSize
+	if table < 0 || table > len(data) {
+		return "", errors.New("truncated section table")
+	}
 	found := false
 	var va, raw, size int
 	for i := 0; i < sections; i++ {
@@ -38,20 +106,44 @@ func FileVersion(data []byte) (string, error) {
 		found = true
 	}
 	if !found {
-		return "", errors.New("resource section not found")
+		return peFallbackVersion(data, machine), nil
 	}
 	if raw < 0 || size < 0 || raw+size > len(data) {
 		return "", errors.New("resource section out of range")
 	}
-	blob, err := versionBlob(data[raw:raw+size], va)
+	sec := data[raw : raw+size]
+	if _, dir, ok := findID(sec, 0, 16); !ok || !dir {
+		if v, ok := manifestVersion(sec, va); ok {
+			return v, nil
+		}
+		return peFallbackVersion(data, machine), nil
+	}
+	blob, err := resourceBlob(sec, va, 16)
 	if err != nil {
 		return "", err
 	}
-	return utf16Value(blob, "FileVersion")
+	v, err := utf16Value(blob, "FileVersion")
+	if err == nil {
+		return v, nil
+	}
+	if err.Error() == "empty FileVersion" {
+		return "", err
+	}
+	if pv, pvErr := utf16Value(blob, "ProductVersion"); pvErr == nil {
+		return pv, nil
+	}
+	if fv, ok := fixedFileVersion(blob); ok {
+		return fv, nil
+	}
+	return "", err
 }
 
 func versionBlob(sec []byte, sectionVA int) ([]byte, error) {
-	typeOff, dir, ok := findID(sec, 0, 16)
+	return resourceBlob(sec, sectionVA, 16)
+}
+
+func resourceBlob(sec []byte, sectionVA, resType int) ([]byte, error) {
+	typeOff, dir, ok := findID(sec, 0, resType)
 	if !ok || !dir {
 		return nil, errors.New("RT_VERSION not found")
 	}
@@ -73,6 +165,68 @@ func versionBlob(sec []byte, sectionVA int) ([]byte, error) {
 		return nil, errors.New("version bytes out of range")
 	}
 	return sec[local : local+n], nil
+}
+
+func fixedFileVersion(blob []byte) (string, bool) {
+	sig := []byte{0xbd, 0x04, 0xef, 0xfe}
+	idx := bytes.Index(blob, sig)
+	if idx < 0 || idx+16 > len(blob) {
+		return "", false
+	}
+	ms := binary.LittleEndian.Uint32(blob[idx+8:])
+	ls := binary.LittleEndian.Uint32(blob[idx+12:])
+	return fmt.Sprintf("%d.%d.%d.%d", ms>>16, ms&0xffff, ls>>16, ls&0xffff), true
+}
+
+func manifestVersion(sec []byte, sectionVA int) (string, bool) {
+	blob, err := resourceBlob(sec, sectionVA, 24)
+	if err != nil {
+		return "", false
+	}
+	text := string(blob)
+	if strings.Contains(text, "Nullsoft.NSIS") {
+		return "", false
+	}
+	idx := strings.Index(text, "<assemblyIdentity")
+	if idx < 0 {
+		return "", false
+	}
+	sub := text[idx:]
+	if end := strings.Index(sub, ">"); end >= 0 {
+		sub = sub[:end]
+	}
+	if strings.Contains(sub, "Microsoft.Windows.Common-Controls") {
+		return "", false
+	}
+	const key = `version="`
+	vAt := strings.Index(sub, key)
+	if vAt < 0 {
+		return "", false
+	}
+	rest := sub[vAt+len(key):]
+	vEnd := strings.IndexByte(rest, '"')
+	if vEnd <= 0 {
+		return "", false
+	}
+	return rest[:vEnd], true
+}
+
+func peFallbackVersion(data []byte, machine uint16) string {
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("PE/%s (%x)", peArch(machine), sum[:6])
+}
+
+func peArch(machine uint16) string {
+	switch machine {
+	case 0x8664:
+		return "amd64"
+	case 0xaa64:
+		return "arm64"
+	case 0x014c:
+		return "x86"
+	default:
+		return fmt.Sprintf("0x%04x", machine)
+	}
 }
 
 func findID(sec []byte, dirOff, id int) (int, bool, bool) {
