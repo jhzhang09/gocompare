@@ -176,6 +176,8 @@ func (a *workspaceState) saveAsPath(side int, path string) {
 			a.paths[side] = f.Path
 			if p.buffer.Version() == version {
 				p.buffer.MarkSaved()
+				a.history.setBaseline(a.panes, side, f.Text)
+				a.history.applied[side] = nil
 			}
 			a.message = i18n.TArgs("status.savedAs", f.Path)
 			a.updateTitle()

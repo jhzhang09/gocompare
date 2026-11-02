@@ -172,3 +172,43 @@ func (d *DiffState) HunkBands() []DiffHunkBand {
 	}
 	return out
 }
+
+// DiffLineBand 描述分栏视图中某一侧的一段行范围在当前视口内的纵向像素范围（DIP）。
+type DiffLineBand struct {
+	Range       DiffLineRange
+	Top, Height float32
+}
+
+// LineBands 返回分栏模式下指定行区间在当前视口中的纵向位置，供中间列绘制已应用标记。
+func (d *DiffState) LineBands(ranges []DiffLineRange) []DiffLineBand {
+	d.ensure()
+	if d.Layout != DiffSplit || len(ranges) == 0 {
+		return nil
+	}
+	out := make([]DiffLineBand, 0, len(ranges))
+	scrollY := d.eds[1].scrollY
+	for _, r := range ranges {
+		side := 0
+		if r.Side == DiffNew {
+			side = 1
+		}
+		vh := &d.eds[side].view.heights
+		if vh.n <= 0 || vh.lh <= 0 {
+			continue
+		}
+		start := max(0, min(r.Start, vh.n-1))
+		last := max(start, min(r.End, vh.n-1))
+		top := vh.geometry(start).rows
+		gLast := vh.geometry(last)
+		bottom := gLast.below
+		if bottom < top {
+			bottom = top
+		}
+		out = append(out, DiffLineBand{
+			Range:  r,
+			Top:    float32(top - scrollY),
+			Height: float32(bottom - top),
+		})
+	}
+	return out
+}

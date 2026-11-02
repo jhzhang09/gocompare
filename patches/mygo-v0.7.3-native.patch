@@ -1,4 +1,6 @@
---- a/vendor/github.com/egoist/mygo/internal/diff/diff.go
+diff --git avendor/github.com/egoist/mygo/internal/diff/diff.go b/vendor/github.com/egoist/mygo/internal/diff/diff.go
+index 6b3dbfa..ddd9041 100644
+--- avendor/github.com/egoist/mygo/internal/diff/diff.go
 +++ b/vendor/github.com/egoist/mygo/internal/diff/diff.go
 @@ -8,6 +8,8 @@
  // heuristic.
@@ -9,7 +11,7 @@
  // Hunk is a change: the elements A0 to A1 of the old sequence replaced by
  // B0 to B1 of the new one. A0 == A1 is an insertion before A0, B0 == B1 a
  // deletion.
-@@ -56,6 +58,8 @@
+@@ -56,6 +58,8 @@ func Intern(a, b []string) ([]int32, []int32) {
  
  // differ marks the elements of a and b that the hunks change.
  type differ struct {
@@ -18,7 +20,7 @@
  	a, b       []int32
  	da, db     []bool // changed elements
  	next, cnt  []int  // histogram scratch, by position in a
-@@ -75,9 +79,11 @@
+@@ -75,9 +79,11 @@ func (d *differ) mark(a0, a1, b0, b1 int) {
  		d.da, d.db = make([]bool, len(d.a)), make([]bool, len(d.b))
  	}
  	for i := a0; i < a1; i++ {
@@ -30,7 +32,7 @@
  		d.db[i] = true
  	}
  }
-@@ -90,6 +96,7 @@
+@@ -90,6 +96,7 @@ func (d *differ) hunks() []Hunk {
  	var out []Hunk
  	i, j := 0, 0
  	for i < len(d.a) || j < len(d.b) {
@@ -38,7 +40,7 @@
  		if i < len(d.a) && j < len(d.b) && !d.da[i] && !d.db[j] {
  			i++
  			j++
-@@ -97,9 +104,11 @@
+@@ -97,9 +104,11 @@ func (d *differ) hunks() []Hunk {
  		}
  		h := Hunk{A0: i, B0: j}
  		for i < len(d.a) && d.da[i] {
@@ -50,9 +52,11 @@
  			j++
  		}
  		h.A1, h.B1 = i, j
---- a/vendor/github.com/egoist/mygo/internal/diff/histogram.go
+diff --git avendor/github.com/egoist/mygo/internal/diff/histogram.go b/vendor/github.com/egoist/mygo/internal/diff/histogram.go
+index 993da2d..e25c0d2 100644
+--- avendor/github.com/egoist/mygo/internal/diff/histogram.go
 +++ b/vendor/github.com/egoist/mygo/internal/diff/histogram.go
-@@ -13,12 +13,15 @@
+@@ -13,12 +13,15 @@ const maxDepth = 256
  // before and after it the same way.
  func (d *differ) histogram(a0, a1, b0, b1, depth int) {
  	for {
@@ -68,7 +72,7 @@
  			a1--
  			b1--
  		}
-@@ -70,6 +73,7 @@
+@@ -70,6 +73,7 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
  	recs := d.recs
  	// From the end, so each record's chain goes forward from its first.
  	for i := a1 - 1; i >= a0; i-- {
@@ -76,7 +80,7 @@
  		r, seen := recs[d.a[i]]
  		if seen {
  			next[i-a0] = r.first
-@@ -85,12 +89,14 @@
+@@ -85,12 +89,14 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
  	// CNT, not the count from it to the region's end, which makes the last
  	// of many blank lines look unique.
  	for i := a0; i < a1; i++ {
@@ -91,7 +95,7 @@
  		bnext := bi + 1
  		r, found := recs[d.b[bi]]
  		if !found {
-@@ -103,9 +109,11 @@
+@@ -103,9 +109,11 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
  			continue
  		}
  		for as := r.first; as >= 0; {
@@ -103,7 +107,7 @@
  				s--
  				bs--
  				if rc > 1 {
-@@ -113,6 +121,7 @@
+@@ -113,6 +121,7 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
  				}
  			}
  			for e < a1 && be < b1 && d.a[e] == d.b[be] {
@@ -111,7 +115,7 @@
  				if rc > 1 {
  					rc = min(rc, cnt[e-a0])
  				}
-@@ -128,6 +137,7 @@
+@@ -128,6 +137,7 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
  			// The next occurrence past this run.
  			np := next[as-a0]
  			for np >= 0 && np < e {
@@ -119,9 +123,11 @@
  				np = next[np-a0]
  			}
  			as = np
---- a/vendor/github.com/egoist/mygo/internal/diff/myers.go
+diff --git avendor/github.com/egoist/mygo/internal/diff/myers.go b/vendor/github.com/egoist/mygo/internal/diff/myers.go
+index be7030b..64c3386 100644
+--- avendor/github.com/egoist/mygo/internal/diff/myers.go
 +++ b/vendor/github.com/egoist/mygo/internal/diff/myers.go
-@@ -18,6 +18,7 @@
+@@ -18,6 +18,7 @@ func (d *differ) myers(a0, a1, b0, b1 int) {
  	}
  	cost := 1
  	for cost*cost < n {
@@ -129,7 +135,7 @@
  		cost <<= 1
  	}
  	d.myersExtra = max(cost, maxCostMin)
-@@ -26,10 +27,12 @@
+@@ -26,10 +27,12 @@ func (d *differ) myers(a0, a1, b0, b1 int) {
  
  func (d *differ) recsCmp(off1, lim1, off2, lim2 int, needMin bool) {
  	for off1 < lim1 && off2 < lim2 && d.a[off1] == d.b[off2] {
@@ -142,7 +148,7 @@
  		lim1--
  		lim2--
  	}
-@@ -58,6 +61,7 @@
+@@ -58,6 +61,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
  	vf[base+fmid] = off1
  	vb[base+bmid] = lim1
  	for ec := 1; ; ec++ {
@@ -150,7 +156,7 @@
  		// Forward.
  		if fmin > dmin {
  			fmin--
-@@ -72,6 +76,7 @@
+@@ -72,6 +76,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
  			fmax--
  		}
  		for k := fmax; k >= fmin; k -= 2 {
@@ -158,7 +164,7 @@
  			var i1 int
  			if vf[base+k-1] >= vf[base+k+1] {
  				i1 = vf[base+k-1] + 1
-@@ -80,6 +85,7 @@
+@@ -80,6 +85,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
  			}
  			i2 := i1 - k
  			for i1 < lim1 && i2 < lim2 && ha1[i1] == ha2[i2] {
@@ -166,7 +172,7 @@
  				i1++
  				i2++
  			}
-@@ -102,6 +108,7 @@
+@@ -102,6 +108,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
  			bmax--
  		}
  		for k := bmax; k >= bmin; k -= 2 {
@@ -174,7 +180,7 @@
  			var i1 int
  			if vb[base+k-1] < vb[base+k+1] {
  				i1 = vb[base+k-1]
-@@ -110,6 +117,7 @@
+@@ -110,6 +117,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
  			}
  			i2 := i1 - k
  			for i1 > off1 && i2 > off2 && ha1[i1-1] == ha2[i2-1] {
@@ -182,7 +188,7 @@
  				i1--
  				i2--
  			}
-@@ -124,6 +132,7 @@
+@@ -124,6 +132,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
  		// Too costly: split where the furthest diagonals got.
  		fbest, fbest1 := -1, -1
  		for k := fmax; k >= fmin; k -= 2 {
@@ -190,7 +196,7 @@
  			i1 := min(vf[base+k], lim1)
  			i2 := i1 - k
  			if lim2 < i2 {
-@@ -135,6 +144,7 @@
+@@ -135,6 +144,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
  		}
  		bbest, bbest1 := lineMax, lineMax
  		for k := bmax; k >= bmin; k -= 2 {
@@ -198,9 +204,11 @@
  			i1 := max(off1, vb[base+k])
  			i2 := i1 - k
  			if i2 < off2 {
---- a/vendor/github.com/egoist/mygo/internal/diff/compact.go
+diff --git avendor/github.com/egoist/mygo/internal/diff/compact.go b/vendor/github.com/egoist/mygo/internal/diff/compact.go
+index 8a743e5..18fa928 100644
+--- avendor/github.com/egoist/mygo/internal/diff/compact.go
 +++ b/vendor/github.com/egoist/mygo/internal/diff/compact.go
-@@ -5,24 +5,33 @@
+@@ -5,24 +5,33 @@ package diff
  // them, as git's xdl_change_compact: groups merge when they meet, line
  // up with a group of the other side (ro) where they can, and otherwise
  // take the place the indent heuristic scores best.
@@ -240,7 +248,7 @@
  					if gOther.end > gOther.start {
  						endMatchingOther = g.end
  					}
-@@ -37,7 +46,8 @@
+@@ -37,7 +46,8 @@ func compact(r, ro []bool, ids []int32, lines []string) {
  			case endMatchingOther != -1:
  				// Back to the last place matching a group of the other side.
  				for gOther.end == gOther.start {
@@ -250,7 +258,7 @@
  						break
  					}
  				}
-@@ -46,6 +56,7 @@
+@@ -46,6 +56,7 @@ func compact(r, ro []bool, ids []int32, lines []string) {
  				best := -1
  				var bestScore score
  				for ; shift <= g.end; shift++ {
@@ -258,7 +266,7 @@
  					var s score
  					s.add(measure(lines, shift))
  					s.add(measure(lines, shift-size))
-@@ -54,13 +65,14 @@
+@@ -54,13 +65,14 @@ func compact(r, ro []bool, ids []int32, lines []string) {
  					}
  				}
  				for g.end > best {
@@ -275,7 +283,7 @@
  			return
  		}
  	}
-@@ -69,41 +81,65 @@
+@@ -69,41 +81,65 @@ func compact(r, ro []bool, ids []int32, lines []string) {
  // group is a run of changed lines, maybe empty, between unchanged ones.
  type group struct{ start, end int }
  
@@ -345,7 +353,7 @@
  			g.end++
  		}
  		return true
-@@ -111,13 +147,19 @@
+@@ -111,13 +147,19 @@ func (g *group) slideDown(r []bool, ids []int32) bool {
  	return false
  }
  
@@ -366,6 +374,9 @@
  			g.start--
  		}
  		return true
+diff --git a/vendor/github.com/egoist/mygo/internal/diff/context.go b/vendor/github.com/egoist/mygo/internal/diff/context.go
+new file mode 100644
+index 0000000..90ee32e
 --- /dev/null
 +++ b/vendor/github.com/egoist/mygo/internal/diff/context.go
 @@ -0,0 +1,61 @@
@@ -430,9 +441,11 @@
 +	}
 +	return hunks, nil
 +}
---- a/vendor/github.com/egoist/mygo/ui/editor/diffview.go
+diff --git avendor/github.com/egoist/mygo/ui/editor/diffview.go b/vendor/github.com/egoist/mygo/ui/editor/diffview.go
+index 5488de8..c8be6ee 100644
+--- avendor/github.com/egoist/mygo/ui/editor/diffview.go
 +++ b/vendor/github.com/egoist/mygo/ui/editor/diffview.go
-@@ -20,6 +20,10 @@
+@@ -20,6 +20,10 @@ type DiffState struct {
  	// Editable lets the new text be edited where it shows, with all an
  	// editor does; the diff follows as it is typed.
  	Editable bool
@@ -443,7 +456,7 @@
  	// Inline highlights what changed within changed lines.
  	Inline DiffInline
  	// Indicators mark changed lines: with bars, + and -, or nothing.
-@@ -80,6 +84,11 @@
+@@ -80,6 +84,15 @@ type DiffState struct {
  	// editors, as State's.
  	RenderFindBar  func(c *ui.Context, bar ui.Element, f *FindBar)
  	RenderGoToLine func(c *ui.Context, bar ui.Element, g *GoToLineBar)
@@ -452,10 +465,14 @@
 +	// a 1px divider is drawn.
 +	CenterWidth  float32
 +	RenderCenter func(c *ui.Context, col ui.Element)
++	// Backgrounds and GutterMarks highlight line ranges and gutter lines on the
++	// old (0) and new (1) sides (for example, applied changes).
++	Backgrounds [2][]LineBackground
++	GutterMarks [2][]GutterMark
  
  	model   diffModel
  	eds     [2]editor // the old side's and the new side's
-@@ -209,6 +218,11 @@
+@@ -209,6 +222,11 @@ func (d *DiffState) ensure() {
  		d.partial = nil
  		d.prepared = diffPrepared{}
  	}
@@ -467,7 +484,7 @@
  	d.model.set(d.Old, d.New)
  	d.model.update()
  	// The lines revealed move with edits of the old text, as Keep makes,
-@@ -296,14 +310,20 @@
+@@ -296,14 +314,20 @@ func (d *DiffState) GoToHunk(i int) {
  	}
  	h := d.model.hunks[i]
  	side := d.ActiveSide()
@@ -495,16 +512,24 @@
  }
  
  // Run runs a command in the editor of the active side (ActiveSide), as
-@@ -393,7 +413,7 @@
+@@ -392,10 +416,15 @@ func (d *DiffState) editorOf(side DiffSide) *editor {
+ func (d *DiffState) sideOptions(old bool) options {
  	// Both gutters as wide, so that both sides wrap alike.
  	digits := max(3, len(strconv.Itoa(max(d.Old.LineCount(), d.New.LineCount()))))
++	side := 1
++	if old {
++		side = 0
++	}
  	o := options{
 -		readOnly: old || !d.Editable, font: d.Font, lineHeight: d.LineHeight, tabSize: d.TabSize,
 +		readOnly: (old && !d.OldEditable) || (!old && !d.Editable), font: d.Font, lineHeight: d.LineHeight, tabSize: d.TabSize,
  		wrap: d.Wrap, lineNumbers: LineNumbersOn, whitespace: WhitespaceNone, autoClose: true,
  		theme: d.Theme, bindings: d.Bindings, fitContent: d.FitContent, minDigits: digits,
++		backgrounds: d.Backgrounds[side], gutterMarks: d.GutterMarks[side],
  		renderFindBar: d.RenderFindBar, renderGoToLine: d.RenderGoToLine,
-@@ -454,7 +474,11 @@
+ 	}
+ 	if d.NoLineNumbers {
+@@ -454,7 +483,11 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
  	// The old text on the left, as code reads left to right.
  	row := ui.Row(c).Direction(ui.LeftToRight).Clip()
  	row.Draw(func(p *ui.Painter, r ui.Rect) {
@@ -517,7 +542,7 @@
  		for i := range d.eds {
  			d.eds[i].layout(w, r.H, p.Scale())
  		}
-@@ -478,6 +502,8 @@
+@@ -478,6 +511,8 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
  		d.rebuildIfMoved()
  	})
  	row.Children(func() {
@@ -526,7 +551,7 @@
  		for i, b := range []*Buffer{d.Old, d.New} {
  			o := opts(i == 0)
  			o.decor = &d.sides[i]
-@@ -492,12 +518,27 @@
+@@ -492,12 +527,27 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
  			ed := d.eds[i].build(c, b, o)
  			ed.Grow(1).Basis(0).FillHeight()
  			if i == 0 {
@@ -555,7 +580,7 @@
  		d.buildSeparators(c, ct)
  	})
  	if d.FitContent {
-@@ -637,6 +678,7 @@
+@@ -637,6 +687,7 @@ func isDark(c ui.Color) bool {
  // as its separators, which the view builds from the last frame's layout:
  // the blocks, the wraps of the lines, the height and the scroll.
  type diffGeom struct {
@@ -563,7 +588,7 @@
  	blocks         int
  	wrapsA, wrapsB uint64
  	total, scroll  float64
-@@ -648,7 +690,7 @@
+@@ -648,7 +699,7 @@ func (d *DiffState) geom() diffGeom {
  		a = &d.oldView
  	}
  	b := &d.eds[1]
@@ -572,7 +597,9 @@
  }
  
  // rebuildIfMoved asks for the view to be built again when laying it out
---- a/vendor/github.com/egoist/mygo/ui/editor/diffmodel.go
+diff --git avendor/github.com/egoist/mygo/ui/editor/diffmodel.go b/vendor/github.com/egoist/mygo/ui/editor/diffmodel.go
+index 6dca408..a51b833 100644
+--- avendor/github.com/egoist/mygo/ui/editor/diffmodel.go
 +++ b/vendor/github.com/egoist/mygo/ui/editor/diffmodel.go
 @@ -1,6 +1,7 @@
  package editor
@@ -582,7 +609,7 @@
  	"slices"
  	"sort"
  	"strings"
-@@ -15,6 +16,8 @@
+@@ -15,6 +16,8 @@ import (
  // touches to those after, as each keystroke would otherwise compare the
  // whole texts; a change of the old text compares them anew.
  type diffModel struct {
@@ -591,7 +618,7 @@
  	old, new         *Buffer
  	oldText, newText rope.Text
  	oldVer, newVer   uint64
-@@ -54,6 +57,16 @@
+@@ -54,6 +57,16 @@ func (d *diffModel) update() bool {
  	}
  	oldText, oldVer := d.old.snapshot()
  	newText, newVer := d.new.snapshot()
@@ -608,7 +635,7 @@
  	if oldVer == d.oldVer && newVer == d.newVer && d.old != d.new {
  		return false
  	}
-@@ -346,10 +359,19 @@
+@@ -346,10 +359,19 @@ type hunkWords struct {
  
  // wordsOf returns the inline diff of hunk i.
  func (d *diffModel) wordsOf(i int, mode DiffInline) *hunkWords {
@@ -629,7 +656,7 @@
  	}
  	if d.words == nil {
  		d.words = map[wordKey]*hunkWords{}
-@@ -357,12 +379,21 @@
+@@ -357,12 +379,21 @@ func (d *diffModel) wordsOf(i int, mode DiffInline) *hunkWords {
  	w := &hunkWords{oldWords: map[int][]diffRange{}, newWords: map[int][]diffRange{}}
  	d.words[key] = w
  	if h.A0 == h.A1 || h.B0 == h.B1 || mode == DiffInlineNone {
@@ -653,7 +680,7 @@
  		j := i - w.offset
  		if len(a) < len(b) {
  			j = i + w.offset
-@@ -381,7 +412,7 @@
+@@ -381,7 +412,7 @@ func (d *diffModel) wordsOf(i int, mode DiffInline) *hunkWords {
  			w.newWords[h.B0+j] = rb
  		}
  	}
@@ -662,7 +689,7 @@
  }
  
  // alignBySimilarity returns how far to push the lines of the shorter side
-@@ -390,27 +421,43 @@
+@@ -390,27 +421,43 @@ func (d *diffModel) wordsOf(i int, mode DiffInline) *hunkWords {
  // and suffix of the lines without their whitespace, over their longer
  // length, taking an offset only when it pairs better by half a line.
  func alignBySimilarity(a, b []string) int {
@@ -692,30 +719,30 @@
  		}
 -		return s
 +		return sum, nil
- 	}
--	best, bestScore := 0, score(0)
++	}
 +	best := 0
 +	bestScore, err := score(0)
 +	if err != nil {
 +		return 0, err
-+	}
+ 	}
+-	best, bestScore := 0, score(0)
  	for off := 1; off <= len(long)-len(short); off++ {
 -		if s := score(off); s > bestScore+0.5*float64(len(short)) {
 -			best, bestScore = off, s
 +		value, err := score(off)
 +		if err != nil {
 +			return 0, err
- 		}
++		}
 +		if value > bestScore+0.5*float64(len(short)) {
 +			best, bestScore = off, value
-+		}
+ 		}
  	}
 -	return best
 +	return best, nil
  }
  
  func similarity(a, b string) float64 {
-@@ -491,6 +538,10 @@
+@@ -491,6 +538,10 @@ func hunkEdit(h diff.Hunk, old, nw rope.Text) Edit {
  	if h.A1 > h.A0 {
  		text = old.Slice(old.LineStart(h.A0), old.LineEnd(h.A1-1))
  	}
@@ -726,9 +753,12 @@
  	n := nw.LineCount()
  	switch {
  	case h.B1 > h.B0 && h.A1 > h.A0:
+diff --git a/vendor/github.com/egoist/mygo/ui/editor/comparison.go b/vendor/github.com/egoist/mygo/ui/editor/comparison.go
+new file mode 100644
+index 0000000..8a088a0
 --- /dev/null
 +++ b/vendor/github.com/egoist/mygo/ui/editor/comparison.go
-@@ -0,0 +1,174 @@
+@@ -0,0 +1,214 @@
 +package editor
 +
 +import (
@@ -903,9 +933,51 @@
 +	}
 +	return out
 +}
---- a/vendor/github.com/egoist/mygo/ui/editor/patch.go
++
++// DiffLineBand 描述分栏视图中某一侧的一段行范围在当前视口内的纵向像素范围（DIP）。
++type DiffLineBand struct {
++	Range       DiffLineRange
++	Top, Height float32
++}
++
++// LineBands 返回分栏模式下指定行区间在当前视口中的纵向位置，供中间列绘制已应用标记。
++func (d *DiffState) LineBands(ranges []DiffLineRange) []DiffLineBand {
++	d.ensure()
++	if d.Layout != DiffSplit || len(ranges) == 0 {
++		return nil
++	}
++	out := make([]DiffLineBand, 0, len(ranges))
++	scrollY := d.eds[1].scrollY
++	for _, r := range ranges {
++		side := 0
++		if r.Side == DiffNew {
++			side = 1
++		}
++		vh := &d.eds[side].view.heights
++		if vh.n <= 0 || vh.lh <= 0 {
++			continue
++		}
++		start := max(0, min(r.Start, vh.n-1))
++		last := max(start, min(r.End, vh.n-1))
++		top := vh.geometry(start).rows
++		gLast := vh.geometry(last)
++		bottom := gLast.below
++		if bottom < top {
++			bottom = top
++		}
++		out = append(out, DiffLineBand{
++			Range:  r,
++			Top:    float32(top - scrollY),
++			Height: float32(bottom - top),
++		})
++	}
++	return out
++}
+diff --git avendor/github.com/egoist/mygo/ui/editor/patch.go b/vendor/github.com/egoist/mygo/ui/editor/patch.go
+index e2494b7..0433dcb 100644
+--- avendor/github.com/egoist/mygo/ui/editor/patch.go
 +++ b/vendor/github.com/egoist/mygo/ui/editor/patch.go
-@@ -366,8 +366,11 @@
+@@ -366,8 +366,11 @@ func (d *DiffState) SetPatch(p FilePatch) {
  	pt.old, pt.new = d.Old, d.New
  	d.partial = pt
  	d.Editable = false
@@ -917,6 +989,9 @@
  	m.set(d.Old, d.New)
  	m.oldText, m.oldVer = d.Old.snapshot()
  	m.newText, m.newVer = d.New.snapshot()
+diff --git a/vendor/github.com/egoist/mygo/ui/editor/comparison_rules.go b/vendor/github.com/egoist/mygo/ui/editor/comparison_rules.go
+new file mode 100644
+index 0000000..636a3b7
 --- /dev/null
 +++ b/vendor/github.com/egoist/mygo/ui/editor/comparison_rules.go
 @@ -0,0 +1,67 @@

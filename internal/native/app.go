@@ -55,6 +55,9 @@ type pane struct {
 type editHistory struct {
 	buffers  [2]*editor.Buffer
 	versions [2]uint64
+	baseline [2]string
+	baseBuf  [2]*editor.Buffer
+	applied  [2][]editor.DiffLineRange
 	undo     []int
 	redo     []int
 }
@@ -63,8 +66,14 @@ func (h *editHistory) clone() editHistory {
 	return editHistory{
 		buffers:  h.buffers,
 		versions: h.versions,
-		undo:     append([]int(nil), h.undo...),
-		redo:     append([]int(nil), h.redo...),
+		baseline: h.baseline,
+		baseBuf:  h.baseBuf,
+		applied: [2][]editor.DiffLineRange{
+			append([]editor.DiffLineRange(nil), h.applied[0]...),
+			append([]editor.DiffLineRange(nil), h.applied[1]...),
+		},
+		undo: append([]int(nil), h.undo...),
+		redo: append([]int(nil), h.redo...),
 	}
 }
 
@@ -75,9 +84,18 @@ func (h *editHistory) sync(panes [2]*pane) {
 	}
 	b0, b1 := panes[0].buffer, panes[1].buffer
 	if h.buffers[0] != b0 || h.buffers[1] != b1 {
+		t0, t1 := b0.String(), b1.String()
+		if panes[0].file != nil && panes[0].file.Text != "" {
+			t0 = panes[0].file.Text
+		}
+		if panes[1].file != nil && panes[1].file.Text != "" {
+			t1 = panes[1].file.Text
+		}
 		*h = editHistory{
 			buffers:  [2]*editor.Buffer{b0, b1},
 			versions: [2]uint64{b0.Version(), b1.Version()},
+			baseline: [2]string{t0, t1},
+			baseBuf:  [2]*editor.Buffer{editor.NewBuffer(t0), editor.NewBuffer(t1)},
 		}
 		return
 	}
@@ -96,6 +114,20 @@ func (h *editHistory) sync(panes [2]*pane) {
 			}
 		}
 	}
+}
+
+func (h *editHistory) setBaseline(panes [2]*pane, side int, text string) {
+	if panes[0] == nil || panes[1] == nil || side < 0 || side > 1 {
+		return
+	}
+	h.sync(panes)
+	h.baseline[side] = text
+	if h.baseBuf[side] == nil {
+		h.baseBuf[side] = editor.NewBuffer(text)
+	} else {
+		h.baseBuf[side].Reset(text)
+	}
+	h.versions[side] = panes[side].buffer.Version()
 }
 
 func (h *editHistory) recordEdit(panes [2]*pane, side int) {
@@ -775,6 +807,8 @@ func (a *workspaceState) save(side int) {
 			p.file = f
 			if p.buffer.Version() == version {
 				p.buffer.MarkSaved()
+				a.history.setBaseline(a.panes, side, f.Text)
+				a.history.applied[side] = nil
 			}
 			a.message = i18n.TArgs("status.saved", filepath.Base(f.Path))
 		})
@@ -835,6 +869,14 @@ func (a *workspaceState) applyHunk(i int, side int) {
 	a.pendingFocusHunk = i + 1
 	h := a.activeHistory()
 	h.sync(panes)
+	if a.kind == kindScratch && h.baseline[0] == "" && h.baseline[1] == "" && (panes[0].buffer.Len() > 0 || panes[1].buffer.Len() > 0) && len(h.applied[0]) == 0 && len(h.applied[1]) == 0 {
+		for s := 0; s < 2; s++ {
+			txt := panes[s].buffer.String()
+			panes[s].buffer.Reset(txt)
+			h.setBaseline(panes, s, txt)
+		}
+		h.undo, h.redo = nil, nil
+	}
 	// Revert 将左侧块复制到右侧；Accept 将右侧块复制到左侧，仅改变内存缓冲区。
 	if side == 1 {
 		diff.Revert(i)
@@ -867,6 +909,105 @@ func (a *workspaceState) canRedo() bool {
 		return false
 	}
 	return panes[0].buffer.CanRedo() || panes[1].buffer.CanRedo()
+}
+
+func (a *workspaceState) canRestoreSide(side int) bool {
+	panes, _ := a.basePanes()
+	if side < 0 || side > 1 || panes[side] == nil {
+		return false
+	}
+	b := panes[side].buffer
+	return b.Modified() || b.CanUndo() || b.CanRedo()
+}
+
+func (a *workspaceState) canRestore() bool {
+	return a.canRestoreSide(0) || a.canRestoreSide(1)
+}
+
+func (a *workspaceState) restoreSide(side int) {
+	if a.ignoreBlankLines {
+		a.message = i18n.T("status.blankReadOnly")
+		return
+	}
+	panes, _ := a.basePanes()
+	if a.busy || side < 0 || side > 1 || panes[side] == nil {
+		return
+	}
+	if panes[side].file != nil && panes[side].file.ReadOnly() {
+		a.err = document.ErrReadOnly.Error()
+		return
+	}
+	if !a.canRestoreSide(side) {
+		return
+	}
+	h := a.activeHistory()
+	h.sync(panes)
+	baseText := h.baseline[side]
+	if a.kind == kindFile && panes[side].file != nil {
+		baseText = panes[side].file.Text
+	}
+	panes[side].buffer.Reset(baseText)
+	h.setBaseline(panes, side, baseText)
+	h.removeSide(&h.undo, side)
+	h.removeSide(&h.redo, side)
+	h.applied[side] = nil
+	a.hunkFocus = 0
+	a.pendingFocusHunk = 0
+	a.recompute()
+	a.message = i18n.T([]string{"status.restoredLeft", "status.restoredRight"}[side])
+}
+
+func (a *workspaceState) restoreAll() {
+	if a.ignoreBlankLines {
+		a.message = i18n.T("status.blankReadOnly")
+		return
+	}
+	panes, _ := a.basePanes()
+	if a.busy || panes[0] == nil || panes[1] == nil {
+		return
+	}
+	if a.kind == kindFile && a.mode > 0 {
+		a.restoreSide(a.mode - 1)
+		return
+	}
+	if !a.canRestore() {
+		return
+	}
+	h := a.activeHistory()
+	h.sync(panes)
+	var restored [2]bool
+	for side := 0; side < 2; side++ {
+		if !a.canRestoreSide(side) {
+			continue
+		}
+		if panes[side].file != nil && panes[side].file.ReadOnly() {
+			continue
+		}
+		baseText := h.baseline[side]
+		if a.kind == kindFile && panes[side].file != nil {
+			baseText = panes[side].file.Text
+		}
+		panes[side].buffer.Reset(baseText)
+		h.setBaseline(panes, side, baseText)
+		h.removeSide(&h.undo, side)
+		h.removeSide(&h.redo, side)
+		h.applied[side] = nil
+		restored[side] = true
+	}
+	if !restored[0] && !restored[1] {
+		return
+	}
+	a.hunkFocus = 0
+	a.pendingFocusHunk = 0
+	a.recompute()
+	switch {
+	case restored[0] && restored[1]:
+		a.message = i18n.T("status.restoredBoth")
+	case restored[0]:
+		a.message = i18n.T("status.restoredLeft")
+	default:
+		a.message = i18n.T("status.restoredRight")
+	}
 }
 
 func (a *workspaceState) undoSide(side int) {
@@ -1151,6 +1292,8 @@ func (a *workspaceState) saveScratchAsPath(side int, path string) {
 			}
 			if p.buffer.Version() == version {
 				p.buffer.MarkSaved()
+				a.scratchHistory.setBaseline(a.scratchPanes, side, text)
+				a.scratchHistory.applied[side] = nil
 			}
 			a.message = i18n.TArgs("status.savedTo", filepath.Base(f.Path))
 		})

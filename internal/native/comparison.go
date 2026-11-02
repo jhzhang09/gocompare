@@ -21,8 +21,21 @@ func (a *workspaceState) stopComparison() {
 // refreshComparison 只在输入版本改变时启动任务，不能在绘制回调中触发。
 func (a *workspaceState) refreshComparison() {
 	basePanes, _ := a.basePanes()
+	var baseReqs [2]editor.ComparisonRequest
+	var hasBaseReqs [2]bool
+	var lineCounts [2]int
+	h := a.activeHistory()
 	if basePanes[0] != nil && basePanes[1] != nil {
-		a.activeHistory().sync(basePanes)
+		h.sync(basePanes)
+		if !a.ignoreBlankLines {
+			for s := 0; s < 2; s++ {
+				lineCounts[s] = basePanes[s].buffer.LineCount()
+				if basePanes[s].buffer.Modified() && h.baseBuf[s] != nil {
+					baseReqs[s] = editor.NewComparisonRequest(h.baseBuf[s], basePanes[s].buffer)
+					hasBaseReqs[s] = true
+				}
+			}
+		}
 	}
 	panes := a.activePanes()
 	diff := a.activeDiff()
@@ -64,6 +77,19 @@ func (a *workspaceState) refreshComparison() {
 		if err == nil {
 			err = ctx.Err()
 		}
+		var applied [2][]editor.DiffLineRange
+		if err == nil {
+			hunks := result.Hunks()
+			for s := 0; s < 2; s++ {
+				if !hasBaseReqs[s] {
+					continue
+				}
+				baseComp, bErr := baseReqs[s].Compute(ctx, editor.DiffInlineNone)
+				if bErr == nil {
+					applied[s] = extractAppliedRanges(editor.DiffSide(s), baseComp.Hunks(), hunks, lineCounts[s])
+				}
+			}
+		}
 		a.publish(func() {
 			if generation != a.compareGeneration {
 				return
@@ -77,6 +103,9 @@ func (a *workspaceState) refreshComparison() {
 			activeDiff := a.activeDiff()
 			if !activeDiff.ApplyComparison(result) {
 				return
+			}
+			if !a.ignoreBlankLines {
+				a.activeHistory().applied = applied
 			}
 			hunks := result.Hunks()
 			n := len(hunks)
@@ -121,6 +150,59 @@ func (a *workspaceState) refreshComparison() {
 	}
 }
 func (a *workspaceState) recompute() { a.compareRequested = false; a.refreshComparison() }
+
+func extractAppliedRanges(side editor.DiffSide, baseHunks, unresolved []editor.DiffHunk, lineCount int) []editor.DiffLineRange {
+	if len(baseHunks) == 0 {
+		return nil
+	}
+	isUnresolvedLine := func(line int) bool {
+		for _, u := range unresolved {
+			start, end := u.OldStart, u.OldEnd
+			if side == editor.DiffNew {
+				start, end = u.NewStart, u.NewEnd
+			}
+			if end > start && line >= start && line < end {
+				return true
+			}
+		}
+		return false
+	}
+	isUnresolvedPoint := func(line int) bool {
+		for _, u := range unresolved {
+			start, end := u.OldStart, u.OldEnd
+			if side == editor.DiffNew {
+				start, end = u.NewStart, u.NewEnd
+			}
+			if (start == end && start == line) || (end > start && line >= start && line < end) {
+				return true
+			}
+		}
+		return false
+	}
+	var out []editor.DiffLineRange
+	for _, bh := range baseHunks {
+		if bh.NewEnd > bh.NewStart {
+			runStart := -1
+			for line := bh.NewStart; line < bh.NewEnd; line++ {
+				if !isUnresolvedLine(line) {
+					if runStart < 0 {
+						runStart = line
+					}
+				} else if runStart >= 0 {
+					out = append(out, editor.DiffLineRange{Side: side, Start: runStart, End: line - 1})
+					runStart = -1
+				}
+			}
+			if runStart >= 0 {
+				out = append(out, editor.DiffLineRange{Side: side, Start: runStart, End: bh.NewEnd - 1})
+			}
+		} else if lineCount > 0 && !isUnresolvedPoint(bh.NewStart) {
+			line := min(bh.NewStart, lineCount-1)
+			out = append(out, editor.DiffLineRange{Side: side, Start: line, End: line})
+		}
+	}
+	return out
+}
 
 func sameAnchors(a, b []textcompare.Anchor) bool {
 	if len(a) != len(b) {

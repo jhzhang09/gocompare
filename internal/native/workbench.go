@@ -825,11 +825,17 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 
 		sampleBtn := ui.Button(c.Key("scratch-sample"), i18n.T("action.sample")).Padding(4, 8).Radius(6).FontSize(11)
 		sampleBtn.OnClick(func() {
-			a.scratchHistory.recordDualEdit(a.scratchPanes, func() {
-				leftBuf.Set("package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare!\")\n\titems := []string{\"apple\", \"banana\", \"cherry\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"%d: %s\\n\", i, item)\n\t}\n}\n")
-				rightBuf.Set("package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare v2!\")\n\titems := []string{\"apple\", \"blueberry\", \"cherry\", \"date\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"[%d] %s\\n\", i+1, strings.ToUpper(item))\n\t}\n}\n")
-			})
-			a.refreshComparison()
+			const sampleLeft = "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare!\")\n\titems := []string{\"apple\", \"banana\", \"cherry\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"%d: %s\\n\", i, item)\n\t}\n}\n"
+			const sampleRight = "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare v2!\")\n\titems := []string{\"apple\", \"blueberry\", \"cherry\", \"date\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"[%d] %s\\n\", i+1, strings.ToUpper(item))\n\t}\n}\n"
+			leftBuf.Reset(sampleLeft)
+			rightBuf.Reset(sampleRight)
+			a.scratchHistory.setBaseline(a.scratchPanes, 0, sampleLeft)
+			a.scratchHistory.setBaseline(a.scratchPanes, 1, sampleRight)
+			a.scratchHistory.undo, a.scratchHistory.redo = nil, nil
+			a.scratchHistory.applied = [2][]editor.DiffLineRange{}
+			a.hunkFocus = 0
+			a.pendingFocusHunk = 0
+			a.recompute()
 			a.message = i18n.T("status.sampleLoaded")
 		})
 
@@ -1045,9 +1051,14 @@ func (a *workspaceState) textView(c *ui.Context) {
 	if a.mode == 0 {
 		a.comparisonView(c, "comparison")
 	} else {
-		p := a.panes[a.mode-1]
+		side := a.mode - 1
+		a.syncAppliedDecorations(&a.diff, pal)
+		p := a.panes[side]
 		p.edit.SoftWrap = a.wrap
 		p.edit.ReadOnly = a.busy || (p.file != nil && p.file.ReadOnly())
+		p.edit.LineBackgrounds = a.diff.Backgrounds[side]
+		p.edit.GutterMarks = a.diff.GutterMarks[side]
+		p.edit.DiffBase = a.activeHistory().baseBuf[side]
 		editor.View(c.Key(a.mode), &p.edit).Grow(1).FillWidth()
 	}
 	ui.Row(c).Height(26).Padding(0, 12).Gap(12).Background(pal.cardBg).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
@@ -1094,10 +1105,12 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 			pasteBtn.OnClick(func() {
 				clip := c.Services().ReadClipboard()
 				if clip != "" {
-					a.scratchHistory.sync(a.scratchPanes)
-					leftBuf.Set(clip)
-					a.scratchHistory.recordEdit(a.scratchPanes, 0)
-					a.refreshComparison()
+					leftBuf.Reset(clip)
+					a.scratchHistory.setBaseline(a.scratchPanes, 0, clip)
+					a.scratchHistory.removeSide(&a.scratchHistory.undo, 0)
+					a.scratchHistory.removeSide(&a.scratchHistory.redo, 0)
+					a.scratchHistory.applied[0] = nil
+					a.recompute()
 					a.message = i18n.TArgs("scratch.pastedLeft", len(clip))
 				} else {
 					a.message = i18n.T("scratch.clipboardEmpty")
@@ -1138,10 +1151,12 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 			pasteBtn.OnClick(func() {
 				clip := c.Services().ReadClipboard()
 				if clip != "" {
-					a.scratchHistory.sync(a.scratchPanes)
-					rightBuf.Set(clip)
-					a.scratchHistory.recordEdit(a.scratchPanes, 1)
-					a.refreshComparison()
+					rightBuf.Reset(clip)
+					a.scratchHistory.setBaseline(a.scratchPanes, 1, clip)
+					a.scratchHistory.removeSide(&a.scratchHistory.undo, 1)
+					a.scratchHistory.removeSide(&a.scratchHistory.redo, 1)
+					a.scratchHistory.applied[1] = nil
+					a.recompute()
 					a.message = i18n.TArgs("scratch.pastedRight", len(clip))
 				} else {
 					a.message = i18n.T("scratch.clipboardEmpty")
@@ -1183,6 +1198,7 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 // comparisonView 绘制当前比较视图；忽略空行时使用独立键和只读副本，避免与可编辑视图共享控件状态。
 func (a *workspaceState) comparisonView(c *ui.Context, key string) {
 	diff := a.activeDiff()
+	pal := paletteFor(c.Theme())
 	editable := !a.busy && !a.ignoreBlankLines
 	if a.ignoreBlankLines {
 		key += "_blank"
@@ -1191,6 +1207,7 @@ func (a *workspaceState) comparisonView(c *ui.Context, key string) {
 	panes := a.activePanes()
 	diff.Editable = editable && (panes[1] == nil || panes[1].file == nil || !panes[1].file.ReadOnly())
 	diff.OldEditable = editable && (panes[0] == nil || panes[0].file == nil || !panes[0].file.ReadOnly())
+	a.syncAppliedDecorations(diff, pal)
 	diff.CenterWidth = 40
 	diff.RenderCenter = func(c *ui.Context, col ui.Element) {
 		a.renderDiffCenter(c, col, diff, panes, editable)
@@ -1198,7 +1215,44 @@ func (a *workspaceState) comparisonView(c *ui.Context, key string) {
 	editor.DiffView(c.Key(key), diff).Grow(1).FillWidth()
 }
 
-// renderDiffCenter 在双栏文本比较中间绘制差异块连接与焦点列，支持点击聚焦及就地向左右两侧应用当前差异块。
+// syncAppliedDecorations 将各侧相对于初始基线已应用/已修改的行区间同步为编辑器背景色与行号槽标记。
+func (a *workspaceState) syncAppliedDecorations(diff *editor.DiffState, pal uiPalette) {
+	if a.ignoreBlankLines {
+		diff.Backgrounds = [2][]editor.LineBackground{}
+		diff.GutterMarks = [2][]editor.GutterMark{}
+		return
+	}
+	h := a.activeHistory()
+	bgCol := pal.baseAccent.Alpha(0.14)
+	markCol := pal.baseAccent
+	for side := 0; side < 2; side++ {
+		ranges := h.applied[side]
+		if len(ranges) == 0 {
+			diff.Backgrounds[side] = nil
+			diff.GutterMarks[side] = nil
+			continue
+		}
+		bgs := make([]editor.LineBackground, 0, len(ranges))
+		var marks []editor.GutterMark
+		for _, r := range ranges {
+			bgs = append(bgs, editor.LineBackground{
+				First: r.Start,
+				Last:  r.End,
+				Color: bgCol,
+			})
+			for line := r.Start; line <= r.End; line++ {
+				marks = append(marks, editor.GutterMark{
+					Line:  line,
+					Color: markCol,
+				})
+			}
+		}
+		diff.Backgrounds[side] = bgs
+		diff.GutterMarks[side] = marks
+	}
+}
+
+// renderDiffCenter 在双栏文本比较中间绘制差异块连接与焦点列，支持点击聚焦、就地向左右两侧应用差异块，并标出已应用的修改位置。
 func (a *workspaceState) renderDiffCenter(c *ui.Context, col ui.Element, diff *editor.DiffState, panes [2]*pane, editable bool) {
 	t := c.Theme()
 	pal := paletteFor(t)
@@ -1207,13 +1261,52 @@ func (a *workspaceState) renderDiffCenter(c *ui.Context, col ui.Element, diff *e
 		return
 	}
 	bands := diff.HunkBands()
-	if len(bands) == 0 {
+	var appliedRanges []editor.DiffLineRange
+	if !a.ignoreBlankLines {
+		h := a.activeHistory()
+		appliedRanges = append(appliedRanges, h.applied[0]...)
+		appliedRanges = append(appliedRanges, h.applied[1]...)
+	}
+	appliedBands := diff.LineBands(appliedRanges)
+	if len(bands) == 0 && len(appliedBands) == 0 {
 		return
 	}
 	leftCanApply := editable && (panes[0] == nil || panes[0].file == nil || !panes[0].file.ReadOnly())
 	rightCanApply := editable && (panes[1] == nil || panes[1].file == nil || !panes[1].file.ReadOnly())
 	total := len(bands)
 	col.Children(func() {
+		for idx, ab := range appliedBands {
+			ab := ab
+			h := max(ab.Height, float32(18))
+			if ab.Top+h < -100 || ab.Top > 4000 {
+				continue
+			}
+			isLeft := ab.Range.Side == editor.DiffOld
+			tip := i18n.T("diff.appliedRight")
+			accent := pal.rightAccent
+			bg := pal.rightBg.Alpha(0.85)
+			if isLeft {
+				tip = i18n.T("diff.appliedLeft")
+				accent = pal.leftAccent
+				bg = pal.leftBg.Alpha(0.85)
+			}
+			badge := ui.Row(c.Key(fmt.Sprintf("diff-applied-%d-%d", ab.Range.Side, idx))).
+				Label(tip).
+				Absolute().Left(2).Right(2).Top(ab.Top).Height(h).
+				Center().Gap(1).Radius(4).
+				Background(bg).Border(1, accent.Alpha(0.45)).
+				Tooltip(tip).Cursor(ui.CursorPointer)
+			badge.OnClick(func() { diff.SetSelectedLines(ab.Range, true) })
+			badge.Children(func() {
+				if isLeft {
+					ui.Icon(c, iconChevronLeft).Size(9, 9).TextColor(accent)
+					ui.Icon(c, iconCheck).Size(9, 9).TextColor(accent)
+				} else {
+					ui.Icon(c, iconCheck).Size(9, 9).TextColor(accent)
+					ui.Icon(c, iconChevronRight).Size(9, 9).TextColor(accent)
+				}
+			})
+		}
 		for _, band := range bands {
 			band := band
 			h := max(band.Height, float32(20))
@@ -1269,7 +1362,7 @@ func (a *workspaceState) renderDiffCenter(c *ui.Context, col ui.Element, diff *e
 	})
 }
 
-// renderToolbarUndoRedo 在公共工具栏按需渲染跨侧撤销与重做按钮；无修改时不占位。
+// renderToolbarUndoRedo 在公共工具栏按需渲染跨侧撤销、重做与恢复按钮；无修改时不占位。
 func (a *workspaceState) renderToolbarUndoRedo(c *ui.Context, prefix string) {
 	disabled := a.busy || a.ignoreBlankLines
 	if a.canUndo() {
@@ -1288,15 +1381,29 @@ func (a *workspaceState) renderToolbarUndoRedo(c *ui.Context, prefix string) {
 			ui.Text(c, i18n.T("action.redo")).FontSize(11).SingleLine()
 		})
 	}
+	if a.canRestore() {
+		restoreBtn := ui.Button(c.Key(prefix+"-restore"), "").Label(i18n.T("action.restore")).Padding(4, 8).Gap(3).Radius(6).Disabled(disabled)
+		restoreBtn.OnClick(a.restoreAll)
+		restoreBtn.Children(func() {
+			ui.Icon(c, iconReset).Size(11, 11)
+			ui.Text(c, i18n.T("action.restore")).FontSize(11).SingleLine()
+		})
+	}
 }
 
-// renderPaneUndoRedo 在左右分栏头部按需渲染本侧独立的撤销与重做按钮；本侧无修改时不显示。
+// renderPaneUndoRedo 在左右分栏头部按需渲染本侧已改标记、独立撤销、重做与恢复按钮；本侧无修改时不显示。
 func (a *workspaceState) renderPaneUndoRedo(c *ui.Context, side int) {
 	panes, _ := a.basePanes()
 	if side < 0 || side > 1 || panes[side] == nil {
 		return
 	}
 	p := panes[side]
+	pal := paletteFor(c.Theme())
+	if !a.ignoreBlankLines {
+		if n := len(a.activeHistory().applied[side]); n > 0 {
+			statusPill(c, i18n.TArgs("pane.appliedCount", n), pal.baseAccent, pal.baseBg)
+		}
+	}
 	disabled := a.busy || a.ignoreBlankLines || (p.file != nil && p.file.ReadOnly())
 	if p.buffer.CanUndo() {
 		label := i18n.T([]string{"pane.undoLeft", "pane.undoRight"}[side])
@@ -1314,6 +1421,15 @@ func (a *workspaceState) renderPaneUndoRedo(c *ui.Context, side int) {
 		redoBtn.Children(func() {
 			ui.Icon(c, iconRedo).Size(11, 11)
 			ui.Text(c, i18n.T("action.redo")).FontSize(11).SingleLine()
+		})
+	}
+	if a.canRestoreSide(side) {
+		label := i18n.T([]string{"pane.restoreLeft", "pane.restoreRight"}[side])
+		restoreBtn := ui.Button(c.Key("pane-restore"), "").Label(label).Tooltip(label).Shrink(0).Padding(3, 8).Gap(3).Radius(5).Disabled(disabled)
+		restoreBtn.OnClick(func() { a.restoreSide(side) })
+		restoreBtn.Children(func() {
+			ui.Icon(c, iconReset).Size(11, 11)
+			ui.Text(c, i18n.T("action.restore")).FontSize(11).SingleLine()
 		})
 	}
 }

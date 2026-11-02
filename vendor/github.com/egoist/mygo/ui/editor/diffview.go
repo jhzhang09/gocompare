@@ -89,6 +89,10 @@ type DiffState struct {
 	// a 1px divider is drawn.
 	CenterWidth  float32
 	RenderCenter func(c *ui.Context, col ui.Element)
+	// Backgrounds and GutterMarks highlight line ranges and gutter lines on the
+	// old (0) and new (1) sides (for example, applied changes).
+	Backgrounds [2][]LineBackground
+	GutterMarks [2][]GutterMark
 
 	model   diffModel
 	eds     [2]editor // the old side's and the new side's
@@ -412,10 +416,15 @@ func (d *DiffState) editorOf(side DiffSide) *editor {
 func (d *DiffState) sideOptions(old bool) options {
 	// Both gutters as wide, so that both sides wrap alike.
 	digits := max(3, len(strconv.Itoa(max(d.Old.LineCount(), d.New.LineCount()))))
+	side := 1
+	if old {
+		side = 0
+	}
 	o := options{
 		readOnly: (old && !d.OldEditable) || (!old && !d.Editable), font: d.Font, lineHeight: d.LineHeight, tabSize: d.TabSize,
 		wrap: d.Wrap, lineNumbers: LineNumbersOn, whitespace: WhitespaceNone, autoClose: true,
 		theme: d.Theme, bindings: d.Bindings, fitContent: d.FitContent, minDigits: digits,
+		backgrounds: d.Backgrounds[side], gutterMarks: d.GutterMarks[side],
 		renderFindBar: d.RenderFindBar, renderGoToLine: d.RenderGoToLine,
 	}
 	if d.NoLineNumbers {

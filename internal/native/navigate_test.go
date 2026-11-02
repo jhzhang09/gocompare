@@ -145,3 +145,118 @@ func TestApplyPreservesFocusAndCenterGutterActions(t *testing.T) {
 		t.Fatal("expected selection cleared when no hunks remain")
 	}
 }
+
+func TestRestoreClearsUndoRedoStackAndHighlightsAppliedChanges(t *testing.T) {
+	i18n.SetLanguage(i18n.ZhCN)
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "l.txt"), filepath.Join(dir, "r.txt")
+	const leftInit = "same1\nleftA\nsame2\nleftB\nsame3\nleftC\n"
+	const rightInit = "same1\nrightA\nsame2\nrightB\nsame3\nrightC\n"
+	os.WriteFile(left, []byte(leftInit), 0o600)
+	os.WriteFile(right, []byte(rightInit), 0o600)
+
+	a := &workspaceState{paths: [2]string{left, right}}
+	a.load()
+	tt := ui.NewTester(a.view, 1400, 880)
+	tt.Frame()
+
+	// 初始状态：撤销、重做、恢复按钮均不显示，已应用高亮为空。
+	if tt.HasText(i18n.T("action.undo")) || tt.HasText(i18n.T("action.redo")) || tt.HasText(i18n.T("action.restore")) {
+		t.Fatal("undo/redo/restore must be hidden before any edits")
+	}
+	if len(a.history.applied[0]) != 0 || len(a.history.applied[1]) != 0 {
+		t.Fatalf("unexpected initial applied ranges: %+v", a.history.applied)
+	}
+
+	// 将第 1 处差异应用到右侧，将新的第 1 处差异应用到左侧。
+	a.applyHunk(0, 1)
+	tt.Frame()
+	a.applyHunk(0, 0)
+	tt.Frame()
+
+	// 验证左右两侧已应用的修改区间均被标记，且编辑器背景高亮、行号槽标记、分栏头部计数及中间列已应用标记均已生成。
+	if len(a.history.applied[0]) != 1 || a.history.applied[0][0] != (editor.DiffLineRange{Side: editor.DiffOld, Start: 3, End: 3}) {
+		t.Fatalf("expected left applied range at line 3, got %+v", a.history.applied[0])
+	}
+	if len(a.history.applied[1]) != 1 || a.history.applied[1][0] != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}) {
+		t.Fatalf("expected right applied range at line 1, got %+v", a.history.applied[1])
+	}
+	if len(a.diff.Backgrounds[0]) != 1 || len(a.diff.GutterMarks[0]) != 1 {
+		t.Fatalf("expected left editor background/gutter mark for applied range, got bg=%+v gm=%+v", a.diff.Backgrounds[0], a.diff.GutterMarks[0])
+	}
+	if len(a.diff.Backgrounds[1]) != 1 || len(a.diff.GutterMarks[1]) != 1 {
+		t.Fatalf("expected right editor background/gutter mark for applied range, got bg=%+v gm=%+v", a.diff.Backgrounds[1], a.diff.GutterMarks[1])
+	}
+	if !tt.HasText(i18n.TArgs("pane.appliedCount", 1)) {
+		t.Fatal("expected pane applied count pill to be visible")
+	}
+	appliedRightBadge, ok := tt.Find(i18n.T("diff.appliedRight"))
+	if !ok {
+		t.Fatal("missing center gutter appliedRight badge")
+	}
+	if _, ok := tt.Find(i18n.T("diff.appliedLeft")); !ok {
+		t.Fatal("missing center gutter appliedLeft badge")
+	}
+
+	// 点击中间列的“已应用到右侧”标记，应选中并高亮该已应用行区间。
+	tt.ClickAt(appliedRightBadge.X+appliedRightBadge.W/2, appliedRightBadge.Y+appliedRightBadge.H/2)
+	tt.Frame()
+	if sel, hasSel := a.diff.SelectedLines(); !hasSel || sel != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}) {
+		t.Fatalf("clicking center applied badge did not select range: %+v %v", sel, hasSel)
+	}
+
+	// 制造复杂的撤销/重做栈状态（撤销一次，此时既有可撤销项又有可重做项）。
+	a.undo()
+	tt.Frame()
+	if !a.canUndo() || !a.canRedo() || !a.canRestore() {
+		t.Fatalf("expected undo, redo, and restore available: undo=%v redo=%v restore=%v", a.canUndo(), a.canRedo(), a.canRestore())
+	}
+
+	// 单独点击「恢复右侧」：右侧恢复初始文本并清空右侧撤销/重做栈与已应用标记。
+	if err := tt.Click(i18n.T("pane.restoreRight")); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := a.panes[1].buffer.String(); got != rightInit {
+		t.Fatalf("right buffer not restored: %q", got)
+	}
+	if a.panes[1].buffer.CanUndo() || a.panes[1].buffer.CanRedo() || a.panes[1].buffer.Modified() {
+		t.Fatal("right buffer undo/redo stack not cleared after restoreRight")
+	}
+	if _, ok := tt.Find(i18n.T("pane.undoRight")); ok {
+		t.Fatal("undoRight should be hidden after restoreRight")
+	}
+	if _, ok := tt.Find(i18n.T("pane.redoRight")); ok {
+		t.Fatal("redoRight should be hidden after restoreRight")
+	}
+	if _, ok := tt.Find(i18n.T("pane.restoreRight")); ok {
+		t.Fatal("restoreRight should be hidden after restoreRight")
+	}
+
+	// 左侧仍有重做历史（因为刚才 undo 了左侧的修改），点击顶部公共工具栏「恢复」彻底清空所有历史并回到初始状态。
+	if !a.canRestore() {
+		t.Fatal("expected toolbar restore still available for left side redo history")
+	}
+	if err := tt.Click(i18n.T("action.restore")); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.panes[0].buffer.String() != leftInit || a.panes[1].buffer.String() != rightInit {
+		t.Fatalf("buffers not at initial baseline: left=%q right=%q", a.panes[0].buffer.String(), a.panes[1].buffer.String())
+	}
+	if a.canUndo() || a.canRedo() || a.canRestore() {
+		t.Fatalf("all undo/redo/restore state must be cleared: undo=%v redo=%v restore=%v", a.canUndo(), a.canRedo(), a.canRestore())
+	}
+	if _, ok := tt.Find(i18n.T("action.undo")); ok {
+		t.Fatal("undo button must disappear after full restore")
+	}
+	if _, ok := tt.Find(i18n.T("action.redo")); ok {
+		t.Fatal("redo button must disappear after full restore")
+	}
+	if _, ok := tt.Find(i18n.T("action.restore")); ok {
+		t.Fatal("restore button must disappear after full restore")
+	}
+	if len(a.history.applied[0]) != 0 || len(a.history.applied[1]) != 0 {
+		t.Fatalf("applied ranges not cleared after restore: %+v", a.history.applied)
+	}
+}

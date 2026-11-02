@@ -24,7 +24,7 @@
     },
     "vendor/github.com/egoist/mygo/ui/editor/diffview.go": {
       "original": "1fc80daecf27a50830d42a6bba2d26ff6e5955ea620c6d7828e3e8ece5888696",
-      "patched": "a8c436150e4e58255891262ab854adfef2eff50f87a9e27bf08c924d0a4c4744"
+      "patched": "8eefffeba0e3453b848faff22c104c1daaa3601cecdaa1dab362661410d3f4e5"
     },
     "vendor/github.com/egoist/mygo/ui/editor/diffmodel.go": {
       "original": "5555beebcba7959c6e27f9b65d89fdb46f5cf1830a4dab1b9570239685ed6b36",
@@ -32,7 +32,7 @@
     },
     "vendor/github.com/egoist/mygo/ui/editor/comparison.go": {
       "original": null,
-      "patched": "b17f8efa474a2fe0ab47cf8bfd5a0d326a349e97987391f585abe08dabc8eb64"
+      "patched": "f3b9ad0693125eddc64244f75dea4c42b85d2585a499547029a11da9070a8bd2"
     },
     "vendor/github.com/egoist/mygo/ui/editor/patch.go": {
       "original": "9347a30e475eedd415a42bbc3df58e52e4a3376c6a84f9f907a3f9c4b959eadb",

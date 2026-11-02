@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-02
+
+### Added
+
+- **One-Click Restore & Stack Reset**: Added on-demand **Restore** controls in both left/right pane headers (restoring a single side independently) and the top action toolbar (restoring both sides at once). Restoring resets the buffer back to its initial/saved baseline and clears the undo/redo stack, automatically hiding the Undo, Redo, and Restore buttons to return to a clean initial state.
+- **Applied Change Highlighting & Center Badges**: Applied diff hunks and resolved modifications are now tracked against each side's baseline and visually highlighted across three linked views:
+  1. Soft blue line background tint and gutter dot markers in the editor panes (`Backgrounds` & `GutterMarks`).
+  2. Directional applied badges (`← ✓` for applied to left, `✓ →` for applied to right) in the center diff gutter (`LineBands`), with click-to-highlight support.
+  3. Per-pane applied count pills (`N applied` / `已改 N 处`) in the pane headers, automatically cleared upon saving or restoring.
+
 ## [0.3.3] - 2026-11-02
 
 ### Added
@@ -89,7 +99,8 @@ First public release.
 - Merges treat a missing final newline as a change; merge output can be saved repeatedly.
 - `.reg` exports in UTF-16 with continued hex lines and ID3v2.4 tags are parsed correctly.
 
-[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/jhzhang09/gocompare/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/jhzhang09/gocompare/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/jhzhang09/gocompare/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/jhzhang09/gocompare/compare/v0.3.0...v0.3.1
