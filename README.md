@@ -37,7 +37,8 @@ Compare text, files, folders, tables and images — locally or on SFTP, SMB, FTP
 | **Text compare** | Paste or type into two panes and see differences instantly, with word-level highlights. Swap, copy, clear and save either side. |
 | **File compare** | Side-by-side diff with **both sides editable**, undo/redo, find & replace, manual alignment anchors, ignore whitespace / blank lines. Previous / Next Difference highlights the change and shows where you are ("2 / 7"). Detects UTF-8, UTF-16 (BOM) and GBK and preserves encoding, BOM and line endings on save. Word (.docx) and PDF files open as read-only extracted text. |
 | **Folder compare** | Recursive tree with collapse, filter and "only differences". Optionally compares permissions and modification times and follows symlinks safely. Either side can be a remote folder. |
-| **Remote files & folders** | Click **Remote…** next to a path to connect to **SFTP, SMB, FTP/FTPS or WebDAV**, then browse and pick a file or folder — no URLs to type. SFTP hosts can be imported from `~/.ssh/config` and sign in with a password, a private key (with passphrase), ssh-agent or your default keys; unknown host keys are shown for you to verify. Recent connections are remembered without passwords. S3, Dropbox, OneDrive and SVN work through URLs. |
+| **Remote sources (all modes)** | Click **Remote…** next to a path in any comparison mode (files, folders, merges, tables, images, media, versions) to connect to **SFTP, SMB, FTP/FTPS or WebDAV**, then browse and pick a file or folder — no URLs to type. SFTP hosts can be imported from `~/.ssh/config` and sign in with a password, a private key (with passphrase), ssh-agent or your default keys; unknown host keys are shown for you to verify. Recent connections are remembered without passwords. S3, Dropbox, OneDrive and SVN work through URLs. |
+| **Drag & drop auto-fill** | Drag files or folders directly onto the path capsules or into the empty view to auto-fill. Dropping two items at once populates both sides and begins comparison immediately. Dropping a folder in File Compare automatically switches to Directory Compare. |
 | **Folder sync** | Update left/right/both or mirror. Always previews a plan; executes with backups, a journal, automatic rollback on failure and one-click undo. |
 | **Table compare** | CSV, TSV, Excel (.xlsx) and HTML tables, cell by cell. The CLI adds key columns, column mapping and numeric tolerance. |
 | **Three-way merge** | Base / left / right aligned columns, take left / right / both / base per conflict, edit the output freely. Also works as a Git `mergetool`. |
@@ -57,11 +58,13 @@ Compare text, files, folders, tables and images — locally or on SFTP, SMB, FTP
   </tr>
 </table>
 
-## Remote files and folders
+## Remote files and drag-and-drop
 
-Both **File compare** and **Folder compare** can work with servers. Either side — or both — can be remote.
+All comparison modes (**File compare**, **Folder compare**, **Text merge**, **Table compare**, **Picture compare**, **Media tags**, and **Version compare**) can connect directly to servers or load dropped files. Either side — or both — can be remote.
 
-1. Click **Remote…** next to the left or right path.
+### Remote connections
+
+1. Click **Remote…** next to the left or right path in any mode.
 2. Choose the protocol and enter the host and user name. For SFTP you can also import a host from `~/.ssh/config`.
 3. Enter a password, or choose a private key (fill in its passphrase if it has one). Leave both empty to use ssh-agent or your default keys.
 4. Click **Connect**, browse the server, and pick a file (**Open**) or a folder (**Choose this folder**). If the other side is already set, the comparison starts right away.
@@ -77,6 +80,12 @@ Both **File compare** and **Folder compare** can work with servers. Either side 
 - **In folder compare**, files that exist only locally open an empty remote side that is created when you save. Sync and folder merge stay local-only and are disabled while a side is remote.
 - **Host keys are verified.** The first connection to an SFTP server shows its fingerprint and adds it to `~/.ssh/known_hosts` only after you trust it; a changed key is refused.
 - **Secrets stay in memory.** Passwords and key passphrases are never written to disk, sessions or settings. Recent connections are remembered without them.
+
+### Drag-and-drop auto-fill
+
+- **Single item**: Drag a file or directory over either the left or right path capsule to fill that side. When the other side already has a path, comparison begins automatically.
+- **Multiple items**: Select two files or directories from your desktop or file manager and drop them onto either path capsule or into the empty workspace card; left and right paths will be populated simultaneously and loaded immediately.
+- **Smart mode switching**: Dropping a folder into File Compare automatically switches to Directory Compare. In Text Merge, base and output paths can also be filled via drag-and-drop or browsing.
 
 ## Installation
 
