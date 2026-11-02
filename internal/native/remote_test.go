@@ -488,3 +488,65 @@ func TestRemoteDialogPicksFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteButtonPresentInAllModes(t *testing.T) {
+	i18n.SetLanguage(i18n.ZhCN)
+	modes := []int{kindFile, kindDirectory, kindMerge, kindPicture, kindMedia, kindVersion, kindTable}
+	for _, m := range modes {
+		a := &workspaceState{kind: m}
+		tt := ui.NewTester(a.view, 1200, 800)
+		tt.Frame()
+		if !tt.HasText(i18n.T("remote.open")) {
+			t.Fatalf("remote button missing in mode %d", m)
+		}
+	}
+	// Scratchpad mode has no path capsules
+	scratch := &workspaceState{kind: kindScratch}
+	ttScratch := ui.NewTester(scratch.view, 1200, 800)
+	ttScratch.Frame()
+	if ttScratch.HasText(i18n.T("remote.open")) {
+		t.Fatal("remote button should not be in scratch mode")
+	}
+}
+
+func TestRemoteMergeAndTableCompare(t *testing.T) {
+	i18n.SetLanguage(i18n.ZhCN)
+	_, base := startDAV(t, map[string]string{
+		"/m1.txt": "hello\nworld\n",
+		"/t1.csv": "col1,col2\n1,2\n",
+	})
+	localMerge := filepath.Join(t.TempDir(), "m2.txt")
+	os.WriteFile(localMerge, []byte("hello\nthere\n"), 0o600)
+	localTable := filepath.Join(t.TempDir(), "t2.csv")
+	os.WriteFile(localTable, []byte("col1,col2\n1,3\n"), 0o600)
+
+	// Merge with remote left
+	remoteMergeURL := strings.Replace(base, "webdav://", "webdav://u@", 1) + "/m1.txt"
+	aMerge := &workspaceState{
+		kind:          kindMerge,
+		paths:         [2]string{remoteMergeURL, localMerge},
+		remoteSecrets: map[string]string{remote.CredentialKey(remoteMergeURL): "p"},
+	}
+	aMerge.loadMerge()
+	if aMerge.err != "" {
+		t.Fatalf("loadMerge remote err: %s", aMerge.err)
+	}
+	if aMerge.mergeResult == nil {
+		t.Fatalf("loadMerge remote failed to produce merge result, prompt=%v", aMerge.passwordPrompt != nil)
+	}
+
+	// Table with remote left
+	remoteTableURL := strings.Replace(base, "webdav://", "webdav://u@", 1) + "/t1.csv"
+	aTable := &workspaceState{
+		kind:          kindTable,
+		paths:         [2]string{remoteTableURL, localTable},
+		remoteSecrets: map[string]string{remote.CredentialKey(remoteTableURL): "p"},
+	}
+	aTable.loadTable()
+	if aTable.err != "" {
+		t.Fatalf("loadTable remote err: %s", aTable.err)
+	}
+	if !aTable.tableReady || len(aTable.tableDiffs) == 0 {
+		t.Fatalf("loadTable remote ready=%v diffs=%d", aTable.tableReady, len(aTable.tableDiffs))
+	}
+}

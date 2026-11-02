@@ -3,8 +3,6 @@ package native
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"strconv"
 	"strings"
 
@@ -17,11 +15,12 @@ func (a *workspaceState) loadTable() {
 	paths := a.paths
 	a.tableGen++
 	gen := a.tableGen
+	auth := a.takeURLPasswords()
 	a.job(func(ctx context.Context) {
-		leftData, err := readTableFile(paths[0])
+		leftData, err := readInputBytes(ctx, paths[0], 32<<20, auth)
 		var rightData []byte
 		if err == nil {
-			rightData, err = readTableFile(paths[1])
+			rightData, err = readInputBytes(ctx, paths[1], 32<<20, auth)
 		}
 		var leftSheets, rightSheets []table.Sheet
 		var diffs []table.Diff
@@ -43,7 +42,9 @@ func (a *workspaceState) loadTable() {
 			}
 			a.busy = false
 			if err != nil {
-				a.err = err.Error()
+				if !a.handleRemoteError(err, a.load) {
+					a.err = err.Error()
+				}
 				a.clearTable()
 				return
 			}
@@ -63,19 +64,7 @@ func (a *workspaceState) loadTable() {
 }
 
 func readTableFile(path string) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, (32<<20)+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > 32<<20 {
-		return nil, fmt.Errorf("table exceeds 32 MiB")
-	}
-	return data, nil
+	return readInputBytes(context.Background(), path, 32<<20, remoteAuth{})
 }
 
 func (a *workspaceState) clearTable() {

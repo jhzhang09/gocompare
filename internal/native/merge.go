@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -128,20 +129,21 @@ func (a *workspaceState) loadMerge() {
 	if a.busy {
 		return
 	}
+	auth := a.takeURLPasswords()
 	left, right, base := a.paths[0], a.paths[1], strings.TrimSpace(a.mergeBase)
 	if strings.TrimSpace(left) == "" || strings.TrimSpace(right) == "" {
 		a.err = i18n.T("err.selectBothFiles")
 		return
 	}
 	a.job(func(ctx context.Context) {
-		lf, err := document.ReadMergeable(ctx, left)
+		lf, err := openMergeInput(ctx, left, auth)
 		var rf, bf *document.File
 		var result merge.Result
 		if err == nil {
-			rf, err = document.ReadMergeable(ctx, right)
+			rf, err = openMergeInput(ctx, right, auth)
 		}
 		if err == nil && base != "" {
-			bf, err = document.ReadMergeable(ctx, base)
+			bf, err = openMergeInput(ctx, base, auth)
 			if err == nil {
 				result, err = merge.MergeThree(bf.Text, lf.Text, rf.Text)
 			}
@@ -151,13 +153,26 @@ func (a *workspaceState) loadMerge() {
 		a.publish(func() {
 			a.busy = false
 			if err != nil {
-				a.err = err.Error()
+				if !a.handleRemoteError(err, a.load) {
+					a.err = err.Error()
+				}
 				a.clearMerge()
 				return
 			}
 			a.installMerge(lf, result)
 		})
 	})
+}
+
+func openMergeInput(ctx context.Context, path string, auth remoteAuth) (*document.File, error) {
+	f, err := openInput(ctx, path, false, auth)
+	if err != nil {
+		return nil, err
+	}
+	if f.ReadOnly() {
+		return nil, fmt.Errorf("%s: %w", f.Path, document.ErrReadOnly)
+	}
+	return f, nil
 }
 
 func (a *workspaceState) clearMerge() {
@@ -249,8 +264,42 @@ func (a *workspaceState) saveMerge() {
 
 func (a *workspaceState) mergeInputsRow(c *ui.Context, pal uiPalette) {
 	sideBadge(c, 2, pal)
-	ui.TextInput(c.Key("merge-base"), &a.mergeBase).Grow(1).MinWidth(140).Placeholder(i18n.T("merge.basePlaceholder")).Disabled(a.busy).Label(i18n.T("merge.baseLabel"))
-	ui.TextInput(c.Key("merge-output"), &a.mergeOutput).Grow(1).MinWidth(140).Placeholder(i18n.T("merge.outputPlaceholder")).Disabled(a.busy).Label(i18n.T("merge.outputLabel"))
+	baseRow := ui.Row(c.Key("merge-base-row")).Grow(1).Basis(0).MinWidth(140).Height(34).Padding(0, 8).Gap(6).Radius(7)
+	if baseRow.FileDragOver() {
+		baseRow.Background(pal.baseBg).Border(1.5, pal.baseAccent)
+	} else {
+		baseRow.Background(pal.cardBg).Border(1, pal.cardBorder)
+	}
+	if dropped := baseRow.DroppedFiles(); len(dropped) > 0 {
+		a.mergeBase = dropped[0]
+	}
+	baseRow.Children(func() {
+		ui.TextInput(c.Key("merge-base"), &a.mergeBase).Grow(1).MinWidth(0).Placeholder(i18n.T("merge.basePlaceholder")).Disabled(a.busy).Label(i18n.T("merge.baseLabel")).OnSubmit(func() { a.guard(a.load) })
+		ui.Button(c.Key("browse-base"), i18n.T("action.browse")).Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy).OnClick(func() {
+			if paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: i18n.T("merge.baseLabel")}); err == nil && len(paths) > 0 {
+				a.mergeBase = paths[0]
+			}
+		})
+	})
+
+	outRow := ui.Row(c.Key("merge-output-row")).Grow(1).Basis(0).MinWidth(140).Height(34).Padding(0, 8).Gap(6).Radius(7)
+	if outRow.FileDragOver() {
+		outRow.Background(pal.baseBg).Border(1.5, pal.baseAccent)
+	} else {
+		outRow.Background(pal.cardBg).Border(1, pal.cardBorder)
+	}
+	if dropped := outRow.DroppedFiles(); len(dropped) > 0 {
+		a.mergeOutput = dropped[0]
+	}
+	outRow.Children(func() {
+		ui.TextInput(c.Key("merge-output"), &a.mergeOutput).Grow(1).MinWidth(0).Placeholder(i18n.T("merge.outputPlaceholder")).Disabled(a.busy).Label(i18n.T("merge.outputLabel"))
+		ui.Button(c.Key("browse-output"), i18n.T("action.browse")).Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy).OnClick(func() {
+			if p, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: a.win, Title: i18n.T("merge.outputLabel")}); err == nil && p != "" {
+				a.mergeOutput = p
+			}
+		})
+	})
+
 	saveBtn := ui.PrimaryButton(c, "").Label(i18n.T("merge.save")).Padding(4, 10).Gap(4).Radius(5).Disabled(a.busy || a.mergeBuffer == nil)
 	saveBtn.OnClick(a.saveMerge)
 	saveBtn.Children(func() {

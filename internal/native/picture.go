@@ -48,11 +48,23 @@ func (a *workspaceState) loadPictures() {
 	paths := a.paths
 	a.pictureGen++
 	gen := a.pictureGen
+	auth := a.takeURLPasswords()
 	a.job(func(ctx context.Context) {
-		left, err := picture.Open(paths[0])
+		leftPath, leftClean, err := openInputTemp(ctx, paths[0], 128<<20, auth)
+		defer leftClean()
+		var left image.Image
+		if err == nil {
+			left, err = picture.Open(leftPath)
+		}
 		var right image.Image
 		if err == nil {
-			right, err = picture.Open(paths[1])
+			var rightPath string
+			var rightClean func()
+			rightPath, rightClean, err = openInputTemp(ctx, paths[1], 128<<20, auth)
+			defer rightClean()
+			if err == nil {
+				right, err = picture.Open(rightPath)
+			}
 		}
 		if err == nil && ctx.Err() != nil {
 			err = ctx.Err()
@@ -64,7 +76,9 @@ func (a *workspaceState) loadPictures() {
 				return
 			}
 			if err != nil {
-				a.err = err.Error()
+				if !a.handleRemoteError(err, a.load) {
+					a.err = err.Error()
+				}
 				a.clearPictures()
 				return
 			}

@@ -310,22 +310,29 @@ func (a *workspaceState) view(c *ui.Context) {
 					for side := 0; side < 2; side++ {
 						side := side
 						sideLabels := []string{i18n.T("pane.leftPath"), i18n.T("pane.rightPath")}
-						ui.Row(c.Key(side)).Grow(1).Basis(0).MinWidth(0).Height(34).Padding(0, 8).Gap(6).Radius(7).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
+						sideRow := ui.Row(c.Key(side)).Grow(1).Basis(0).MinWidth(0).Height(34).Padding(0, 8).Gap(6).Radius(7)
+						if sideRow.FileDragOver() {
+							sideRow.Background(pal.baseBg).Border(1.5, pal.baseAccent)
+						} else {
+							sideRow.Background(pal.cardBg).Border(1, pal.cardBorder)
+						}
+						if dropped := sideRow.DroppedFiles(); len(dropped) > 0 {
+							a.handleDrop(side, dropped)
+						}
+						sideRow.Children(func() {
 							sideBadge(c, side, pal)
 							if remote.IsURL(a.paths[side]) {
 								statusPill(c, i18n.T("remote.badge"), pal.baseAccent, pal.baseBg)
 							}
 							ui.TextInput(c.Key("input"), &a.paths[side]).Grow(1).MinWidth(0).Placeholder(i18n.T("pane.pathPlaceholder")).Label(sideLabels[side]).Disabled(a.busy).OnSubmit(func() { a.guard(a.load) })
 							ui.Button(c.Key("browse"), i18n.T("action.browse")).Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy).OnClick(func() { a.browse(side) })
-							// 文件比较与目录比较支持远程来源：打开连接对话框选择，不必手输地址。
-							if a.kind == kindFile || a.kind == kindDirectory {
-								remoteBtn := ui.Button(c.Key("remote"), "").Label(i18n.T("remote.open")).Tooltip(i18n.T("remote.openTooltip")).Shrink(0).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
-								remoteBtn.OnClick(func() { a.openRemoteDialog(side) })
-								remoteBtn.Children(func() {
-									ui.Icon(c, iconRemote).Size(11, 11)
-									ui.Text(c, i18n.T("remote.open")).FontSize(11).SingleLine()
-								})
-							}
+							// 所有双侧来源模式都支持远程来源：打开连接对话框选择，不必手输地址。
+							remoteBtn := ui.Button(c.Key("remote"), "").Label(i18n.T("remote.open")).Tooltip(i18n.T("remote.openTooltip")).Shrink(0).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
+							remoteBtn.OnClick(func() { a.openRemoteDialog(side) })
+							remoteBtn.Children(func() {
+								ui.Icon(c, iconRemote).Size(11, 11)
+								ui.Text(c, i18n.T("remote.open")).FontSize(11).SingleLine()
+							})
 						})
 					}
 				})
@@ -635,14 +642,33 @@ func (a *workspaceState) modeEmptyView(c *ui.Context, pal uiPalette, kind int) {
 		f3TKey, f3DKey = "intro.fileFeat3Title", "intro.fileFeat3Desc"
 	}
 
-	ui.Column(c).Grow(1).FillWidth().Center().Padding(24).Children(func() {
-		ui.Column(c).MaxWidth(620).Padding(24, 28).Gap(10).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.04)).Center().Children(func() {
+	emptyCol := ui.Column(c.Key("empty-col")).Grow(1).FillWidth().Center().Padding(24)
+	isDrag := emptyCol.FileDragOver()
+	if isDrag {
+		emptyCol.Background(pal.baseBg.Alpha(0.2))
+	}
+	if dropped := emptyCol.DroppedFiles(); len(dropped) > 0 {
+		a.handleDrop(-1, dropped)
+	}
+	emptyCol.Children(func() {
+		card := ui.Column(c).MaxWidth(620).Padding(24, 28).Gap(10).Radius(12)
+		if isDrag {
+			card.Background(pal.cardBg).Border(2, pal.baseAccent).Shadow(0, 4, 16, 0, pal.baseAccent.Alpha(0.2))
+		} else {
+			card.Background(pal.cardBg).Border(1, pal.cardBorder).Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.04))
+		}
+		card.Center().Children(func() {
 			ui.Row(c).Size(36, 36).Center().Radius(10).Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.2)).Children(func() {
 				ui.Icon(c, icon).Size(18, 18).TextColor(pal.baseAccent)
 			})
 			statusPill(c, i18n.T(tagKey), pal.baseAccent, pal.baseBg)
 			ui.Text(c, i18n.T(titleKey)).FontSize(20).Bold()
 			ui.Text(c, i18n.T(descKey)).FontSize(12).TextColor(t.TextMuted)
+
+			ui.Row(c).Margin(2, 0, 0).Gap(6).Center().Children(func() {
+				ui.Icon(c, iconDrop).Size(13, 13).TextColor(pal.baseAccent)
+				ui.Text(c, i18n.T("pane.dropPrompt")).FontSize(11).TextColor(pal.baseAccent)
+			})
 
 			ui.Row(c).FillWidth().Gap(8).Margin(8, 0, 0).Children(func() {
 				feats := []struct{ t, d string }{
@@ -944,7 +970,16 @@ func (a *workspaceState) textView(c *ui.Context) {
 				name += " •"
 			}
 			parent := filepath.Base(filepath.Dir(p.file.Path))
-			ui.Row(c).Grow(1).Basis(0).MinWidth(0).Height(36).Padding(0, 12).Gap(8).Background(pal.cardBg).Children(func() {
+			sideRow := ui.Row(c.Key(fmt.Sprintf("text-pane-header-%d", side))).Grow(1).Basis(0).MinWidth(0).Height(36).Padding(0, 12).Gap(8)
+			if sideRow.FileDragOver() {
+				sideRow.Background(pal.baseBg).Border(1.5, pal.baseAccent)
+			} else {
+				sideRow.Background(pal.cardBg)
+			}
+			if dropped := sideRow.DroppedFiles(); len(dropped) > 0 {
+				a.handleDrop(side, dropped)
+			}
+			sideRow.Children(func() {
 				sideBadge(c, side, pal)
 				if parent != "" && parent != "." && parent != "/" {
 					ui.Text(c, parent+"/").Shrink(0).FontSize(11).TextColor(t.TextMuted).SingleLine()

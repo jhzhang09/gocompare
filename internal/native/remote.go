@@ -3,9 +3,13 @@ package native
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"maps"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -90,6 +94,70 @@ func openInput(ctx context.Context, path string, missing bool, auth remoteAuth) 
 		return nil, &remoteInputError{raw: path, err: err}
 	}
 	return f, nil
+}
+
+// readInputBytes 读取用于比较的原始字节：远程地址从远端读取，本地文件从本地读取。
+func readInputBytes(ctx context.Context, path string, max int64, auth remoteAuth) ([]byte, error) {
+	if !remote.IsURL(path) {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		if max > 0 {
+			data, err := io.ReadAll(io.LimitReader(f, max+1))
+			if err != nil {
+				return nil, err
+			}
+			if int64(len(data)) > max {
+				return nil, fmt.Errorf("%s exceeds %d bytes limit", path, max)
+			}
+			return data, nil
+		}
+		return io.ReadAll(f)
+	}
+	store, rel, err := remote.ParseURL(path)
+	if err != nil {
+		return nil, err
+	}
+	auth.apply(path, store)
+	src := remote.File{Store: store, Path: rel, Timeout: remoteTimeout}
+	data, err := src.Read(ctx)
+	if err != nil {
+		return nil, &remoteInputError{raw: path, err: err}
+	}
+	if max > 0 && int64(len(data)) > max {
+		return nil, fmt.Errorf("%s exceeds %d bytes limit", remote.Redact(path), max)
+	}
+	return data, nil
+}
+
+// openInputTemp 为需要本地文件句柄或 seek 的模块准备输入。
+// 如果是远程地址，将内容下载到临时文件，返回临时文件路径与清理函数。
+func openInputTemp(ctx context.Context, path string, max int64, auth remoteAuth) (string, func(), error) {
+	if !remote.IsURL(path) {
+		return path, func() {}, nil
+	}
+	data, err := readInputBytes(ctx, path, max, auth)
+	if err != nil {
+		return "", func() {}, err
+	}
+	ext := filepath.Ext(path)
+	tmp, err := os.CreateTemp("", "gocompare-remote-*"+ext)
+	if err != nil {
+		return "", func() {}, err
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return "", func() {}, err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", func() {}, err
+	}
+	return name, func() { _ = os.Remove(name) }, nil
 }
 
 // takeURLPasswords 把输入框里 URL 携带的密码移入内存凭据表，并从输入框中抹掉，

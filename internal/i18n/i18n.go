@@ -491,9 +491,14 @@ var messages = map[string]map[Language]string{
 		EnUS: "Right Path",
 	},
 	"pane.pathPlaceholder": {
-		ZhCN: "输入路径、sftp:// smb:// 等远程地址，或浏览选择…",
-		ZhTW: "輸入路徑、sftp:// smb:// 等遠端位址，或瀏覽選擇…",
-		EnUS: "Enter a path, a remote URL such as sftp:// or smb://, or browse…",
+		ZhCN: "输入路径、拖拽文件至此、远程地址或浏览选择…",
+		ZhTW: "輸入路徑、拖拽檔案至此、遠端位址或瀏覽選擇…",
+		EnUS: "Enter path, drag & drop files, remote URL, or browse…",
+	},
+	"pane.dropPrompt": {
+		ZhCN: "支持拖拽文件或文件夹到此处自动填充并比较",
+		ZhTW: "支援拖拽檔案或資料夾至此處自動填入並比較",
+		EnUS: "Drag and drop files or folders here to auto-fill and compare",
 	},
 	"remote.open": {
 		ZhCN: "远程…",

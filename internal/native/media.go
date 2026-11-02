@@ -14,11 +14,23 @@ func (a *workspaceState) loadMedia() {
 	paths := a.paths
 	a.mediaGen++
 	gen := a.mediaGen
+	auth := a.takeURLPasswords()
 	a.job(func(ctx context.Context) {
-		left, err := media.Open(ctx, paths[0])
+		leftPath, leftClean, err := openInputTemp(ctx, paths[0], 128<<20, auth)
+		defer leftClean()
+		var left media.Tags
+		if err == nil {
+			left, err = media.Open(ctx, leftPath)
+		}
 		var right media.Tags
 		if err == nil {
-			right, err = media.Open(ctx, paths[1])
+			var rightPath string
+			var rightClean func()
+			rightPath, rightClean, err = openInputTemp(ctx, paths[1], 128<<20, auth)
+			defer rightClean()
+			if err == nil {
+				right, err = media.Open(ctx, rightPath)
+			}
 		}
 		if err == nil && ctx.Err() != nil {
 			err = ctx.Err()
@@ -29,7 +41,9 @@ func (a *workspaceState) loadMedia() {
 			}
 			a.busy = false
 			if err != nil {
-				a.err = err.Error()
+				if !a.handleRemoteError(err, a.load) {
+					a.err = err.Error()
+				}
 				a.clearMedia()
 				return
 			}

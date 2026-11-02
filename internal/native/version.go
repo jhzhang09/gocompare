@@ -4,9 +4,6 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -31,11 +28,12 @@ func (a *workspaceState) loadVersion() {
 	paths := a.paths
 	a.infoGen++
 	gen := a.infoGen
+	auth := a.takeURLPasswords()
 	a.job(func(ctx context.Context) {
-		left, err := readVersionFile(paths[0])
+		left, err := readInputBytes(ctx, paths[0], 128<<20, auth)
 		var right []byte
 		if err == nil {
-			right, err = readVersionFile(paths[1])
+			right, err = readInputBytes(ctx, paths[1], 128<<20, auth)
 		}
 		var result versionResult
 		if err == nil && ctx.Err() != nil {
@@ -50,7 +48,9 @@ func (a *workspaceState) loadVersion() {
 			}
 			a.busy = false
 			if err != nil {
-				a.err = err.Error()
+				if !a.handleRemoteError(err, a.load) {
+					a.err = err.Error()
+				}
 				a.clearVersion()
 				return
 			}
@@ -285,18 +285,5 @@ func looksLikeRegistry(text string) bool {
 }
 
 func readVersionFile(path string) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	const max = 128 << 20
-	data, err := io.ReadAll(io.LimitReader(f, max+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > max {
-		return nil, fmt.Errorf("%s exceeds 128 MiB", path)
-	}
-	return data, nil
+	return readInputBytes(context.Background(), path, 128<<20, remoteAuth{})
 }

@@ -580,6 +580,51 @@ func (a *workspaceState) browse(side int) {
 		a.paths[side] = paths[0]
 	}
 }
+
+// handleDrop 处理从外部拖入的文件或目录，自动填充到输入框并按需触发比较。
+func (a *workspaceState) handleDrop(side int, files []string) {
+	if a.busy || len(files) == 0 {
+		return
+	}
+	if len(files) >= 2 {
+		// 一次性拖入多个文件或文件夹：分别填充左右两侧并触发加载
+		a.paths[0] = files[0]
+		a.paths[1] = files[1]
+		a.guard(a.load)
+		return
+	}
+	first := files[0]
+	if side == 0 || side == 1 {
+		a.paths[side] = first
+		if fi, err := os.Stat(first); err == nil {
+			if fi.IsDir() && a.kind == kindFile && strings.TrimSpace(a.paths[1-side]) == "" {
+				a.kind = kindDirectory
+			} else if !fi.IsDir() && a.kind == kindDirectory && strings.TrimSpace(a.paths[1-side]) == "" {
+				a.kind = kindFile
+			}
+		}
+		if strings.TrimSpace(a.paths[1-side]) != "" {
+			a.guard(a.load)
+		}
+		return
+	}
+	// 未明确指定侧（例如拖入整体空白引导区域）：若左侧为空填左侧，否则填右侧
+	if strings.TrimSpace(a.paths[0]) == "" {
+		a.paths[0] = first
+		if fi, err := os.Stat(first); err == nil && fi.IsDir() && a.kind == kindFile && strings.TrimSpace(a.paths[1]) == "" {
+			a.kind = kindDirectory
+		}
+		if strings.TrimSpace(a.paths[1]) != "" {
+			a.guard(a.load)
+		}
+	} else if strings.TrimSpace(a.paths[1]) == "" {
+		a.paths[1] = first
+		a.guard(a.load)
+	} else {
+		a.paths[0] = first
+		a.guard(a.load)
+	}
+}
 func (a *workspaceState) save(side int) {
 	if a.busy || a.panes[side] == nil {
 		return
