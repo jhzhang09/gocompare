@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-02
+
 ### Added
 
 - **Center Diff Gutter & Inline Hunk Actions**: Split views in File Compare and Text Compare now include a dedicated center diff column between the left and right editors. Each difference hunk renders an aligned visual connector band with prominent focus highlighting, click-to-focus navigation, and compact inline `←` / `→` buttons to apply any individual hunk to the left or right in place.
@@ -87,7 +89,8 @@ First public release.
 - Merges treat a missing final newline as a change; merge output can be saved repeatedly.
 - `.reg` exports in UTF-16 with continued hex lines and ID3v2.4 tags are parsed correctly.
 
-[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/jhzhang09/gocompare/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/jhzhang09/gocompare/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/jhzhang09/gocompare/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/jhzhang09/gocompare/compare/v0.2.0...v0.3.0
