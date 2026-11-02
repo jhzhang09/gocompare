@@ -346,6 +346,16 @@ var messages = map[string]map[Language]string{
 		ZhTW: "套用到右側 →",
 		EnUS: "Apply to Right →",
 	},
+	"action.undo": {
+		ZhCN: "撤销",
+		ZhTW: "復原",
+		EnUS: "Undo",
+	},
+	"action.redo": {
+		ZhCN: "重做",
+		ZhTW: "重做",
+		EnUS: "Redo",
+	},
 	"action.find": {
 		ZhCN: "查找",
 		ZhTW: "尋找",
@@ -885,6 +895,26 @@ var messages = map[string]map[Language]string{
 		ZhCN: "保存右侧",
 		ZhTW: "儲存右側",
 		EnUS: "Save Right",
+	},
+	"pane.undoLeft": {
+		ZhCN: "撤销左侧",
+		ZhTW: "復原左側",
+		EnUS: "Undo Left",
+	},
+	"pane.undoRight": {
+		ZhCN: "撤销右侧",
+		ZhTW: "復原右側",
+		EnUS: "Undo Right",
+	},
+	"pane.redoLeft": {
+		ZhCN: "重做左侧",
+		ZhTW: "重做左側",
+		EnUS: "Redo Left",
+	},
+	"pane.redoRight": {
+		ZhCN: "重做右侧",
+		ZhTW: "重做右側",
+		EnUS: "Redo Right",
 	},
 	"pane.unsaved": {
 		ZhCN: "未保存",

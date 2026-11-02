@@ -49,6 +49,122 @@ type pane struct {
 	edit   editor.State
 }
 
+// editHistory 记录双侧编辑的先后顺序，配合各侧独立的 Buffer 撤销栈，
+// 使公共工具栏能按实际修改顺序跨侧撤销/重做，同时各侧头部也能单独撤销/重做本侧。
+// 栈中元素：0 表示左侧，1 表示右侧，2 表示两侧同时变更（如交换两侧、清空两侧、载入示例）。
+type editHistory struct {
+	buffers  [2]*editor.Buffer
+	versions [2]uint64
+	undo     []int
+	redo     []int
+}
+
+func (h *editHistory) clone() editHistory {
+	return editHistory{
+		buffers:  h.buffers,
+		versions: h.versions,
+		undo:     append([]int(nil), h.undo...),
+		redo:     append([]int(nil), h.redo...),
+	}
+}
+
+func (h *editHistory) sync(panes [2]*pane) {
+	if panes[0] == nil || panes[1] == nil {
+		*h = editHistory{}
+		return
+	}
+	b0, b1 := panes[0].buffer, panes[1].buffer
+	if h.buffers[0] != b0 || h.buffers[1] != b1 {
+		*h = editHistory{
+			buffers:  [2]*editor.Buffer{b0, b1},
+			versions: [2]uint64{b0.Version(), b1.Version()},
+		}
+		return
+	}
+	for side := 0; side < 2; side++ {
+		v := h.buffers[side].Version()
+		if v == h.versions[side] {
+			continue
+		}
+		h.versions[side] = v
+		if h.buffers[side].CanUndo() && !h.buffers[side].CanRedo() {
+			h.undo = append(h.undo, side)
+			h.removeSide(&h.redo, side)
+		} else if h.buffers[side].CanRedo() {
+			if h.popLastSide(&h.undo, side) {
+				h.redo = append(h.redo, side)
+			}
+		}
+	}
+}
+
+func (h *editHistory) recordEdit(panes [2]*pane, side int) {
+	if panes[0] == nil || panes[1] == nil || side < 0 || side > 1 {
+		return
+	}
+	v := panes[side].buffer.Version()
+	if v == h.versions[side] {
+		return
+	}
+	h.versions[side] = v
+	h.undo = append(h.undo, side)
+	h.removeSide(&h.redo, side)
+}
+
+func (h *editHistory) recordDualEdit(panes [2]*pane, fn func()) {
+	if panes[0] == nil || panes[1] == nil {
+		fn()
+		return
+	}
+	h.sync(panes)
+	v0, v1 := panes[0].buffer.Version(), panes[1].buffer.Version()
+	fn()
+	n0, n1 := panes[0].buffer.Version(), panes[1].buffer.Version()
+	h.versions = [2]uint64{n0, n1}
+	switch {
+	case n0 != v0 && n1 != v1:
+		h.undo = append(h.undo, 2)
+		h.redo = nil
+	case n0 != v0:
+		h.undo = append(h.undo, 0)
+		h.removeSide(&h.redo, 0)
+	case n1 != v1:
+		h.undo = append(h.undo, 1)
+		h.removeSide(&h.redo, 1)
+	}
+}
+
+func (h *editHistory) popLastSide(stack *[]int, side int) bool {
+	s := *stack
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == side {
+			*stack = append(s[:i], s[i+1:]...)
+			return true
+		}
+		if s[i] == 2 {
+			s[i] = 1 - side
+			return true
+		}
+	}
+	return false
+}
+
+func (h *editHistory) removeSide(stack *[]int, side int) {
+	s := *stack
+	out := s[:0]
+	for _, item := range s {
+		if item == side {
+			continue
+		}
+		if item == 2 {
+			out = append(out, 1-side)
+			continue
+		}
+		out = append(out, item)
+	}
+	*stack = out
+}
+
 func newPane(f *document.File) *pane {
 	b := editor.NewBuffer(f.Text)
 	b.SetLanguage(editor.LanguageFor(f.Path))
@@ -59,6 +175,7 @@ type modeSession struct {
 	paths          [2]string
 	panes          [2]*pane
 	diff           editor.DiffState
+	history        editHistory
 	anchors        []textcompare.Anchor
 	anchorLeft     int
 	anchorRight    int
@@ -221,6 +338,8 @@ type workspaceState struct {
 
 	// hunkFocus 是上一/下一差异定位到的差异块序号（从 1 开始），0 表示尚未定位；零值即可用。
 	hunkFocus int
+	// pendingFocusHunk 记录应用差异块后待自动聚焦的差异块序号（从 1 开始），避免重算后失焦或跳回首处。
+	pendingFocusHunk int
 
 	compareGeneration uint64
 	compareRequested  bool
@@ -240,8 +359,10 @@ type workspaceState struct {
 	anchorLeftSet  bool
 	anchorRightSet bool
 
-	scratchPanes [2]*pane
-	scratchDiff  editor.DiffState
+	scratchPanes   [2]*pane
+	scratchDiff    editor.DiffState
+	scratchHistory editHistory
+	history        editHistory
 
 	updateChecking bool
 	updateStatus   string
@@ -557,9 +678,12 @@ func (a *workspaceState) install(left, right *document.File) {
 	a.directoryRows = nil
 	a.paths = [2]string{left.Path, right.Path}
 	a.diff = editor.DiffState{Old: a.panes[0].buffer, New: a.panes[1].buffer, ExpandUnchanged: true, Editable: true, OldEditable: true, ExternalComparison: true}
+	a.history = editHistory{}
+	a.history.sync(a.panes)
 	a.anchors = nil
 	a.anchorLeftSet, a.anchorRightSet = false, false
 	a.hunkFocus = 0
+	a.pendingFocusHunk = 0
 	a.stopComparison()
 	a.compareRequested = false
 	a.refreshComparison()
@@ -671,23 +795,242 @@ func (a *workspaceState) apply(side int) {
 		return
 	}
 	hunks := diff.Hunks()
-	i, inside := diff.CurrentHunk()
-	if len(hunks) > 0 && (!inside || i < 0) {
-		i = 0
-		diff.GoToHunk(0)
-		inside = true
-	}
-	if !inside || i < 0 || i >= len(hunks) {
+	if len(hunks) == 0 {
 		a.message = i18n.T("status.selectHunk")
 		return
 	}
+	i := -1
+	if a.hunkFocus > 0 && a.hunkFocus <= len(hunks) {
+		i = a.hunkFocus - 1
+	} else if cur, inside := diff.CurrentHunk(); inside && cur >= 0 && cur < len(hunks) {
+		i = cur
+	} else {
+		i = 0
+	}
+	a.applyHunk(i, side)
+}
+
+func (a *workspaceState) applyHunk(i int, side int) {
+	if a.ignoreBlankLines {
+		a.message = i18n.T("status.blankReadOnly")
+		return
+	}
+	diff := a.activeDiff()
+	panes := a.activePanes()
+	if a.busy || a.compareRunning || a.compareErr != nil || panes[0] == nil || !diff.ComparisonReady() {
+		return
+	}
+	if side < 0 || side > 1 || panes[side] == nil {
+		return
+	}
+	if panes[side].file != nil && panes[side].file.ReadOnly() {
+		a.err = document.ErrReadOnly.Error()
+		return
+	}
+	hunks := diff.Hunks()
+	if i < 0 || i >= len(hunks) {
+		a.message = i18n.T("status.selectHunk")
+		return
+	}
+	a.pendingFocusHunk = i + 1
+	h := a.activeHistory()
+	h.sync(panes)
 	// Revert 将左侧块复制到右侧；Accept 将右侧块复制到左侧，仅改变内存缓冲区。
 	if side == 1 {
 		diff.Revert(i)
 	} else {
 		diff.Accept(i)
 	}
+	h.recordEdit(panes, side)
+	a.refreshComparison()
 	a.message = i18n.T("status.hunkApplied")
+}
+
+func (a *workspaceState) activeHistory() *editHistory {
+	if a.kind == kindScratch {
+		return &a.scratchHistory
+	}
+	return &a.history
+}
+
+func (a *workspaceState) canUndo() bool {
+	panes, _ := a.basePanes()
+	if panes[0] == nil || panes[1] == nil {
+		return false
+	}
+	return panes[0].buffer.CanUndo() || panes[1].buffer.CanUndo()
+}
+
+func (a *workspaceState) canRedo() bool {
+	panes, _ := a.basePanes()
+	if panes[0] == nil || panes[1] == nil {
+		return false
+	}
+	return panes[0].buffer.CanRedo() || panes[1].buffer.CanRedo()
+}
+
+func (a *workspaceState) undoSide(side int) {
+	if a.ignoreBlankLines {
+		a.message = i18n.T("status.blankReadOnly")
+		return
+	}
+	panes, _ := a.basePanes()
+	if a.busy || side < 0 || side > 1 || panes[side] == nil {
+		return
+	}
+	if panes[side].file != nil && panes[side].file.ReadOnly() {
+		a.err = document.ErrReadOnly.Error()
+		return
+	}
+	h := a.activeHistory()
+	h.sync(panes)
+	if !panes[side].buffer.Undo() {
+		return
+	}
+	h.versions[side] = panes[side].buffer.Version()
+	h.popLastSide(&h.undo, side)
+	h.redo = append(h.redo, side)
+	a.refreshComparison()
+	a.message = i18n.T([]string{"status.undoneLeft", "status.undoneRight"}[side])
+}
+
+func (a *workspaceState) redoSide(side int) {
+	if a.ignoreBlankLines {
+		a.message = i18n.T("status.blankReadOnly")
+		return
+	}
+	panes, _ := a.basePanes()
+	if a.busy || side < 0 || side > 1 || panes[side] == nil {
+		return
+	}
+	if panes[side].file != nil && panes[side].file.ReadOnly() {
+		a.err = document.ErrReadOnly.Error()
+		return
+	}
+	h := a.activeHistory()
+	h.sync(panes)
+	if !panes[side].buffer.Redo() {
+		return
+	}
+	h.versions[side] = panes[side].buffer.Version()
+	h.popLastSide(&h.redo, side)
+	h.undo = append(h.undo, side)
+	a.refreshComparison()
+	a.message = i18n.T([]string{"status.redoneLeft", "status.redoneRight"}[side])
+}
+
+func (a *workspaceState) undo() {
+	if a.ignoreBlankLines {
+		a.message = i18n.T("status.blankReadOnly")
+		return
+	}
+	panes, diff := a.basePanes()
+	if a.busy || panes[0] == nil || panes[1] == nil {
+		return
+	}
+	if a.kind == kindFile && a.mode > 0 {
+		a.undoSide(a.mode - 1)
+		return
+	}
+	h := a.activeHistory()
+	h.sync(panes)
+	for len(h.undo) > 0 {
+		last := h.undo[len(h.undo)-1]
+		if last == 2 {
+			h.undo = h.undo[:len(h.undo)-1]
+			u0 := panes[0].buffer.CanUndo() && (panes[0].file == nil || !panes[0].file.ReadOnly())
+			u1 := panes[1].buffer.CanUndo() && (panes[1].file == nil || !panes[1].file.ReadOnly())
+			if u0 && u1 {
+				panes[0].buffer.Undo()
+				panes[1].buffer.Undo()
+				h.versions[0] = panes[0].buffer.Version()
+				h.versions[1] = panes[1].buffer.Version()
+				h.redo = append(h.redo, 2)
+				a.refreshComparison()
+				a.message = i18n.T("status.undone")
+				return
+			}
+			if u0 {
+				h.undo = append(h.undo, 0)
+				a.undoSide(0)
+				return
+			}
+			if u1 {
+				h.undo = append(h.undo, 1)
+				a.undoSide(1)
+				return
+			}
+			continue
+		}
+		if last >= 0 && last <= 1 && panes[last].buffer.CanUndo() {
+			a.undoSide(last)
+			return
+		}
+		h.undo = h.undo[:len(h.undo)-1]
+	}
+	active := int(diff.ActiveSide())
+	if panes[active].buffer.CanUndo() {
+		a.undoSide(active)
+	} else if panes[1-active].buffer.CanUndo() {
+		a.undoSide(1 - active)
+	}
+}
+
+func (a *workspaceState) redo() {
+	if a.ignoreBlankLines {
+		a.message = i18n.T("status.blankReadOnly")
+		return
+	}
+	panes, diff := a.basePanes()
+	if a.busy || panes[0] == nil || panes[1] == nil {
+		return
+	}
+	if a.kind == kindFile && a.mode > 0 {
+		a.redoSide(a.mode - 1)
+		return
+	}
+	h := a.activeHistory()
+	h.sync(panes)
+	for len(h.redo) > 0 {
+		last := h.redo[len(h.redo)-1]
+		if last == 2 {
+			h.redo = h.redo[:len(h.redo)-1]
+			r0 := panes[0].buffer.CanRedo() && (panes[0].file == nil || !panes[0].file.ReadOnly())
+			r1 := panes[1].buffer.CanRedo() && (panes[1].file == nil || !panes[1].file.ReadOnly())
+			if r0 && r1 {
+				panes[0].buffer.Redo()
+				panes[1].buffer.Redo()
+				h.versions[0] = panes[0].buffer.Version()
+				h.versions[1] = panes[1].buffer.Version()
+				h.undo = append(h.undo, 2)
+				a.refreshComparison()
+				a.message = i18n.T("status.redone")
+				return
+			}
+			if r0 {
+				h.redo = append(h.redo, 0)
+				a.redoSide(0)
+				return
+			}
+			if r1 {
+				h.redo = append(h.redo, 1)
+				a.redoSide(1)
+				return
+			}
+			continue
+		}
+		if last >= 0 && last <= 1 && panes[last].buffer.CanRedo() {
+			a.redoSide(last)
+			return
+		}
+		h.redo = h.redo[:len(h.redo)-1]
+	}
+	active := int(diff.ActiveSide())
+	if panes[active].buffer.CanRedo() {
+		a.redoSide(active)
+	} else if panes[1-active].buffer.CanRedo() {
+		a.redoSide(1 - active)
+	}
 }
 
 func (a *workspaceState) ensureScratch() {
@@ -707,6 +1050,8 @@ func (a *workspaceState) ensureScratch() {
 		OldEditable:        true,
 		ExternalComparison: true,
 	}
+	a.scratchHistory = editHistory{}
+	a.scratchHistory.sync(a.scratchPanes)
 }
 
 // basePanes 返回当前模式下用户可编辑的面板与差异状态。
@@ -891,6 +1236,7 @@ func (a *workspaceState) saveModeSession(kind int) {
 		paths:              a.paths,
 		panes:              a.panes,
 		diff:               a.diff,
+		history:            a.history.clone(),
 		anchors:            anchors,
 		anchorLeft:         a.anchorLeft,
 		anchorRight:        a.anchorRight,
@@ -957,6 +1303,7 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.paths = sess.paths
 	a.panes = sess.panes
 	a.diff = sess.diff
+	a.history = sess.history.clone()
 	a.anchors = sess.anchors
 	a.anchorLeft = sess.anchorLeft
 	a.anchorRight = sess.anchorRight

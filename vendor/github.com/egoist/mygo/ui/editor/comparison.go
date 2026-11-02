@@ -120,3 +120,55 @@ func (d *DiffState) ApplyHunks(hunks []DiffHunk) bool {
 	m.version++
 	return true
 }
+
+// DiffHunkBand 描述分栏视图中一个差异块在当前视口内的纵向像素范围（DIP）。
+type DiffHunkBand struct {
+	Index       int
+	Hunk        DiffHunk
+	Top, Height float32
+}
+
+// HunkBands 返回分栏模式下各差异块在视口中的纵向位置，供中间差异操作列对齐绘制。
+func (d *DiffState) HunkBands() []DiffHunkBand {
+	d.ensure()
+	if d.Layout != DiffSplit || len(d.model.hunks) == 0 {
+		return nil
+	}
+	out := make([]DiffHunkBand, 0, len(d.model.hunks))
+	scrollY := d.eds[1].scrollY
+	for i, h := range d.model.hunks {
+		nA, nB := h.A1-h.A0, h.B1-h.B0
+		if nA <= 0 && nB <= 0 {
+			continue
+		}
+		side, start, end := 1, h.B0, h.B1
+		if nA >= nB {
+			side, start, end = 0, h.A0, h.A1
+		}
+		vh := &d.eds[side].view.heights
+		if vh.n <= 0 || vh.lh <= 0 {
+			continue
+		}
+		start = max(0, min(start, vh.n-1))
+		last := max(start, min(end-1, vh.n-1))
+		top := vh.geometry(start).rows
+		gLast := vh.geometry(last)
+		bottom := gLast.below
+		_, below := vh.blocksOf(last)
+		for _, b := range below {
+			if b.kind == blockSpacer || b.kind == blockAnnotation {
+				bottom += float64(b.height)
+			}
+		}
+		if bottom < top {
+			bottom = top
+		}
+		out = append(out, DiffHunkBand{
+			Index:  i,
+			Hunk:   DiffHunk{h.A0, h.A1, h.B0, h.B1},
+			Top:    float32(top - scrollY),
+			Height: float32(bottom - top),
+		})
+	}
+	return out
+}

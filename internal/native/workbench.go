@@ -31,6 +31,7 @@ func (a *workspaceState) selectKind(kind int) {
 		a.ensureModeSessions()
 		a.stopComparison()
 		a.hunkFocus = 0
+		a.pendingFocusHunk = 0
 		a.compareRequested = false
 		currentPaths := a.paths
 		hasScratch := a.kind == kindScratch && a.scratchPanes[0] != nil && (a.scratchPanes[0].buffer.Len() > 0 || a.scratchPanes[1].buffer.Len() > 0)
@@ -91,15 +92,34 @@ func (a *workspaceState) navigateDiff(step int) {
 	if n == 0 {
 		return
 	}
-	i, _ := diff.CurrentHunk()
-	if i < 0 {
-		if step > 0 {
-			i = 0
-		} else {
-			i = n - 1
-		}
+	i := -1
+	if a.hunkFocus > 0 && a.hunkFocus <= n {
+		i = (a.hunkFocus - 1 + step + n) % n
 	} else {
-		i = (i + step + n) % n
+		cur, _ := diff.CurrentHunk()
+		if cur < 0 {
+			if step > 0 {
+				i = 0
+			} else {
+				i = n - 1
+			}
+		} else {
+			i = (cur + step + n) % n
+		}
+	}
+	a.selectHunk(i)
+}
+
+func (a *workspaceState) selectHunk(i int) {
+	panes := a.activePanes()
+	diff := a.activeDiff()
+	if panes[0] == nil || a.compareRunning || a.compareErr != nil || !diff.ComparisonReady() {
+		return
+	}
+	hunks := diff.Hunks()
+	n := len(hunks)
+	if i < 0 || i >= n {
+		return
 	}
 	diff.GoToHunk(i)
 	focusHunk(diff, hunks[i])
@@ -451,6 +471,16 @@ func (a *workspaceState) view(c *ui.Context) {
 			a.save(side)
 		}
 	})
+	c.OnShortcut(ui.Cmd, ui.KeyZ, func() {
+		if a.kind == kindFile || a.kind == kindScratch {
+			a.undo()
+		}
+	})
+	c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyZ, func() {
+		if a.kind == kindFile || a.kind == kindScratch {
+			a.redo()
+		}
+	})
 }
 
 func (a *workspaceState) renderToolbarMeta(c *ui.Context, pal uiPalette) {
@@ -554,6 +584,7 @@ func (a *workspaceState) resetCurrentMode() {
 		a.stopComparison()
 		a.panes = [2]*pane{nil, nil}
 		a.diff = editor.DiffState{}
+		a.history = editHistory{}
 		a.anchors = nil
 		a.anchorLeftSet = false
 		a.anchorRightSet = false
@@ -752,6 +783,7 @@ func (a *workspaceState) actionToolbar(c *ui.Context, pal uiPalette) {
 
 			ui.Button(c.Key("act-apply-left"), i18n.T("action.applyLeft")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(0) })
 			ui.Button(c.Key("act-apply-right"), i18n.T("action.applyRight")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(1) })
+			a.renderToolbarUndoRedo(c, "act")
 
 			findBtn := ui.Button(c.Key("act-find"), "").Label(i18n.T("action.find")).Padding(4, 8).Gap(3).Radius(6)
 			findBtn.OnClick(func() { a.activeDiff().Run(editor.Find) })
@@ -783,16 +815,20 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 
 		clearBtn := ui.Button(c.Key("scratch-clear"), i18n.T("action.clear")).Padding(4, 8).Radius(6).FontSize(11).Disabled(leftLen == 0 && rightLen == 0)
 		clearBtn.OnClick(func() {
-			leftBuf.Set("")
-			rightBuf.Set("")
+			a.scratchHistory.recordDualEdit(a.scratchPanes, func() {
+				leftBuf.Set("")
+				rightBuf.Set("")
+			})
 			a.refreshComparison()
 			a.message = i18n.T("status.clearedBoth")
 		})
 
 		sampleBtn := ui.Button(c.Key("scratch-sample"), i18n.T("action.sample")).Padding(4, 8).Radius(6).FontSize(11)
 		sampleBtn.OnClick(func() {
-			leftBuf.Set("package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare!\")\n\titems := []string{\"apple\", \"banana\", \"cherry\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"%d: %s\\n\", i, item)\n\t}\n}\n")
-			rightBuf.Set("package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare v2!\")\n\titems := []string{\"apple\", \"blueberry\", \"cherry\", \"date\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"[%d] %s\\n\", i+1, strings.ToUpper(item))\n\t}\n}\n")
+			a.scratchHistory.recordDualEdit(a.scratchPanes, func() {
+				leftBuf.Set("package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare!\")\n\titems := []string{\"apple\", \"banana\", \"cherry\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"%d: %s\\n\", i, item)\n\t}\n}\n")
+				rightBuf.Set("package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare v2!\")\n\titems := []string{\"apple\", \"blueberry\", \"cherry\", \"date\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"[%d] %s\\n\", i+1, strings.ToUpper(item))\n\t}\n}\n")
+			})
 			a.refreshComparison()
 			a.message = i18n.T("status.sampleLoaded")
 		})
@@ -801,8 +837,10 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 		swapBtn.OnClick(func() {
 			lt := leftBuf.String()
 			rt := rightBuf.String()
-			leftBuf.Set(rt)
-			rightBuf.Set(lt)
+			a.scratchHistory.recordDualEdit(a.scratchPanes, func() {
+				leftBuf.Set(rt)
+				rightBuf.Set(lt)
+			})
 			a.refreshComparison()
 			a.message = i18n.T("status.swappedSides")
 		})
@@ -836,6 +874,7 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 
 		ui.Button(c.Key("scratch-apply-left"), i18n.T("action.applyLeft")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(0) })
 		ui.Button(c.Key("scratch-apply-right"), i18n.T("action.applyRight")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(1) })
+		a.renderToolbarUndoRedo(c, "scratch")
 
 		findBtn := ui.Button(c.Key("scratch-find"), "").Label(i18n.T("action.find")).Padding(4, 8).Gap(3).Radius(6)
 		findBtn.OnClick(func() { a.activeDiff().Run(editor.Find) })
@@ -991,6 +1030,7 @@ func (a *workspaceState) textView(c *ui.Context) {
 				if a.ignoreBlankLines {
 					statusPill(c, i18n.T("pane.blankIgnored"), pal.baseAccent, pal.baseBg)
 				}
+				a.renderPaneUndoRedo(c, side)
 				saveLabel := []string{i18n.T("pane.saveLeft"), i18n.T("pane.saveRight")}[side]
 				saveBtn := ui.Button(c, "").Label(saveLabel).Shrink(0).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy || !isDirty || p.file.ReadOnly())
 				saveBtn.OnClick(func() { a.save(side) })
@@ -1048,12 +1088,15 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 			stat := i18n.TArgs("scratch.stat", leftLines, leftLen)
 			ui.Text(c, stat).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			ui.Box(c).Grow(1)
+			a.renderPaneUndoRedo(c, 0)
 
 			pasteBtn := ui.Button(c.Key("paste-left"), "").Label(i18n.T("pane.pasteLeft")).Padding(3, 8).Gap(4).Radius(5).Background(pal.subtleSurface).Border(1, pal.cardBorder)
 			pasteBtn.OnClick(func() {
 				clip := c.Services().ReadClipboard()
 				if clip != "" {
+					a.scratchHistory.sync(a.scratchPanes)
 					leftBuf.Set(clip)
+					a.scratchHistory.recordEdit(a.scratchPanes, 0)
 					a.refreshComparison()
 					a.message = i18n.TArgs("scratch.pastedLeft", len(clip))
 				} else {
@@ -1072,7 +1115,9 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 
 			clearLeftBtn := ui.Button(c.Key("clear-left"), i18n.T("pane.clear")).Padding(3, 8).Radius(5).FontSize(11).Disabled(leftLen == 0)
 			clearLeftBtn.OnClick(func() {
+				a.scratchHistory.sync(a.scratchPanes)
 				leftBuf.Set("")
+				a.scratchHistory.recordEdit(a.scratchPanes, 0)
 				a.refreshComparison()
 			})
 
@@ -1087,12 +1132,15 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 			stat := i18n.TArgs("scratch.stat", rightLines, rightLen)
 			ui.Text(c, stat).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			ui.Box(c).Grow(1)
+			a.renderPaneUndoRedo(c, 1)
 
 			pasteBtn := ui.Button(c.Key("paste-right"), "").Label(i18n.T("pane.pasteRight")).Padding(3, 8).Gap(4).Radius(5).Background(pal.subtleSurface).Border(1, pal.cardBorder)
 			pasteBtn.OnClick(func() {
 				clip := c.Services().ReadClipboard()
 				if clip != "" {
+					a.scratchHistory.sync(a.scratchPanes)
 					rightBuf.Set(clip)
+					a.scratchHistory.recordEdit(a.scratchPanes, 1)
 					a.refreshComparison()
 					a.message = i18n.TArgs("scratch.pastedRight", len(clip))
 				} else {
@@ -1111,7 +1159,9 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 
 			clearRightBtn := ui.Button(c.Key("clear-right"), i18n.T("pane.clear")).Padding(3, 8).Radius(5).FontSize(11).Disabled(rightLen == 0)
 			clearRightBtn.OnClick(func() {
+				a.scratchHistory.sync(a.scratchPanes)
 				rightBuf.Set("")
+				a.scratchHistory.recordEdit(a.scratchPanes, 1)
 				a.refreshComparison()
 			})
 
@@ -1141,5 +1191,129 @@ func (a *workspaceState) comparisonView(c *ui.Context, key string) {
 	panes := a.activePanes()
 	diff.Editable = editable && (panes[1] == nil || panes[1].file == nil || !panes[1].file.ReadOnly())
 	diff.OldEditable = editable && (panes[0] == nil || panes[0].file == nil || !panes[0].file.ReadOnly())
+	diff.CenterWidth = 40
+	diff.RenderCenter = func(c *ui.Context, col ui.Element) {
+		a.renderDiffCenter(c, col, diff, panes, editable)
+	}
 	editor.DiffView(c.Key(key), diff).Grow(1).FillWidth()
+}
+
+// renderDiffCenter 在双栏文本比较中间绘制差异块连接与焦点列，支持点击聚焦及就地向左右两侧应用当前差异块。
+func (a *workspaceState) renderDiffCenter(c *ui.Context, col ui.Element, diff *editor.DiffState, panes [2]*pane, editable bool) {
+	t := c.Theme()
+	pal := paletteFor(t)
+	col.Background(pal.subtleSurface).BorderWidth(0, 1, 0, 1).BorderColor(pal.cardBorder)
+	if a.compareRunning || a.compareErr != nil || !diff.ComparisonReady() {
+		return
+	}
+	bands := diff.HunkBands()
+	if len(bands) == 0 {
+		return
+	}
+	leftCanApply := editable && (panes[0] == nil || panes[0].file == nil || !panes[0].file.ReadOnly())
+	rightCanApply := editable && (panes[1] == nil || panes[1].file == nil || !panes[1].file.ReadOnly())
+	total := len(bands)
+	col.Children(func() {
+		for _, band := range bands {
+			band := band
+			h := max(band.Height, float32(20))
+			if band.Top+h < -100 || band.Top > 4000 {
+				continue
+			}
+			focused := a.hunkFocus == band.Index+1
+			bg := pal.diffBg.Alpha(0.55)
+			borderCol := pal.diffFg.Alpha(0.35)
+			borderW := float32(1)
+			if focused {
+				bg = pal.diffBg
+				borderCol = pal.diffFg
+				borderW = 1.5
+			}
+			posTip := i18n.TArgs("status.hunkPosition", band.Index+1, total)
+			item := ui.Row(c.Key(fmt.Sprintf("diff-band-%d", band.Index))).
+				Absolute().Left(1).Right(1).Top(band.Top).Height(h).
+				Center().Gap(2).Radius(4).
+				Background(bg).Border(borderW, borderCol).
+				Tooltip(posTip).Cursor(ui.CursorPointer)
+			item.OnClick(func() { a.selectHunk(band.Index) })
+			item.Children(func() {
+				if leftCanApply || rightCanApply {
+					btnBg := pal.cardBg.Alpha(0.88)
+					if focused {
+						btnBg = pal.cardBg
+					}
+					leftLabel := fmt.Sprintf("%s #%d", i18n.T("action.applyLeft"), band.Index+1)
+					leftBtn := ui.Button(c.Key(fmt.Sprintf("diff-band-left-%d", band.Index)), "").
+						Label(leftLabel).Tooltip(i18n.T("action.applyLeft")).
+						Size(16, 16).Padding(0).Radius(3).
+						Background(btnBg).Border(1, borderCol).
+						Disabled(!leftCanApply)
+					leftBtn.OnClick(func() { a.applyHunk(band.Index, 0) })
+					leftBtn.Children(func() {
+						ui.Icon(c, iconChevronLeft).Size(10, 10).TextColor(pal.leftAccent)
+					})
+
+					rightLabel := fmt.Sprintf("%s #%d", i18n.T("action.applyRight"), band.Index+1)
+					rightBtn := ui.Button(c.Key(fmt.Sprintf("diff-band-right-%d", band.Index)), "").
+						Label(rightLabel).Tooltip(i18n.T("action.applyRight")).
+						Size(16, 16).Padding(0).Radius(3).
+						Background(btnBg).Border(1, borderCol).
+						Disabled(!rightCanApply)
+					rightBtn.OnClick(func() { a.applyHunk(band.Index, 1) })
+					rightBtn.Children(func() {
+						ui.Icon(c, iconChevronRight).Size(10, 10).TextColor(pal.rightAccent)
+					})
+				}
+			})
+		}
+	})
+}
+
+// renderToolbarUndoRedo 在公共工具栏按需渲染跨侧撤销与重做按钮；无修改时不占位。
+func (a *workspaceState) renderToolbarUndoRedo(c *ui.Context, prefix string) {
+	disabled := a.busy || a.ignoreBlankLines
+	if a.canUndo() {
+		undoBtn := ui.Button(c.Key(prefix+"-undo"), "").Label(i18n.T("action.undo")).Padding(4, 8).Gap(3).Radius(6).Disabled(disabled)
+		undoBtn.OnClick(a.undo)
+		undoBtn.Children(func() {
+			ui.Icon(c, iconUndo).Size(11, 11)
+			ui.Text(c, i18n.T("action.undo")).FontSize(11).SingleLine()
+		})
+	}
+	if a.canRedo() {
+		redoBtn := ui.Button(c.Key(prefix+"-redo"), "").Label(i18n.T("action.redo")).Padding(4, 8).Gap(3).Radius(6).Disabled(disabled)
+		redoBtn.OnClick(a.redo)
+		redoBtn.Children(func() {
+			ui.Icon(c, iconRedo).Size(11, 11)
+			ui.Text(c, i18n.T("action.redo")).FontSize(11).SingleLine()
+		})
+	}
+}
+
+// renderPaneUndoRedo 在左右分栏头部按需渲染本侧独立的撤销与重做按钮；本侧无修改时不显示。
+func (a *workspaceState) renderPaneUndoRedo(c *ui.Context, side int) {
+	panes, _ := a.basePanes()
+	if side < 0 || side > 1 || panes[side] == nil {
+		return
+	}
+	p := panes[side]
+	disabled := a.busy || a.ignoreBlankLines || (p.file != nil && p.file.ReadOnly())
+	if p.buffer.CanUndo() {
+		label := i18n.T([]string{"pane.undoLeft", "pane.undoRight"}[side])
+		undoBtn := ui.Button(c.Key("pane-undo"), "").Label(label).Tooltip(label).Shrink(0).Padding(3, 8).Gap(3).Radius(5).Disabled(disabled)
+		undoBtn.OnClick(func() { a.undoSide(side) })
+		undoBtn.Children(func() {
+			ui.Icon(c, iconUndo).Size(11, 11)
+			ui.Text(c, i18n.T("action.undo")).FontSize(11).SingleLine()
+		})
+	}
+	if p.buffer.CanRedo() {
+		label := i18n.T([]string{"pane.redoLeft", "pane.redoRight"}[side])
+		redoBtn := ui.Button(c.Key("pane-redo"), "").Label(label).Tooltip(label).Shrink(0).Padding(3, 8).Gap(3).Radius(5).Disabled(disabled)
+		redoBtn.OnClick(func() { a.redoSide(side) })
+		redoBtn.Children(func() {
+			ui.Icon(c, iconRedo).Size(11, 11)
+			ui.Text(c, i18n.T("action.redo")).FontSize(11).SingleLine()
+		})
+	}
 }

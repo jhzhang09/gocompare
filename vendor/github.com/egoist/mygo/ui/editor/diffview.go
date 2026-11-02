@@ -84,6 +84,11 @@ type DiffState struct {
 	// editors, as State's.
 	RenderFindBar  func(c *ui.Context, bar ui.Element, f *FindBar)
 	RenderGoToLine func(c *ui.Context, bar ui.Element, g *GoToLineBar)
+	// CenterWidth and RenderCenter customize the center column between the
+	// two editors in split view; when CenterWidth <= 1 or RenderCenter is nil,
+	// a 1px divider is drawn.
+	CenterWidth  float32
+	RenderCenter func(c *ui.Context, col ui.Element)
 
 	model   diffModel
 	eds     [2]editor // the old side's and the new side's
@@ -305,14 +310,20 @@ func (d *DiffState) GoToHunk(i int) {
 	}
 	h := d.model.hunks[i]
 	side := d.ActiveSide()
-	ed := d.editorOf(side)
-	line := h.B0
-	if side == DiffOld {
-		line = h.A0
+	for _, s := range []DiffSide{DiffOld, DiffNew} {
+		ed := d.editorOf(s)
+		line := h.B0
+		if s == DiffOld {
+			line = h.A0
+		}
+		r := &ed.view.text
+		off := r.LineStart(min(line, max(0, r.LineCount()-1)))
+		rev := revealNone
+		if s == side {
+			rev = revealCenter
+		}
+		ed.setSels([]sel{ed.newSel(off, off)}, rev)
 	}
-	r := &ed.view.text
-	off := r.LineStart(min(line, r.LineCount()-1))
-	ed.setSels([]sel{ed.newSel(off, off)}, revealCenter)
 }
 
 // Run runs a command in the editor of the active side (ActiveSide), as
@@ -463,7 +474,11 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 	// The old text on the left, as code reads left to right.
 	row := ui.Row(c).Direction(ui.LeftToRight).Clip()
 	row.Draw(func(p *ui.Painter, r ui.Rect) {
-		w := (r.W - 1) / 2
+		cw := max(float32(1), d.CenterWidth)
+		if d.RenderCenter == nil {
+			cw = 1
+		}
+		w := (r.W - cw) / 2
 		for i := range d.eds {
 			d.eds[i].layout(w, r.H, p.Scale())
 		}
@@ -487,6 +502,8 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 		d.rebuildIfMoved()
 	})
 	row.Children(func() {
+		var centerCol ui.Element
+		hasCenter := false
 		for i, b := range []*Buffer{d.Old, d.New} {
 			o := opts(i == 0)
 			o.decor = &d.sides[i]
@@ -501,11 +518,26 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 			ed := d.eds[i].build(c, b, o)
 			ed.Grow(1).Basis(0).FillHeight()
 			if i == 0 {
-				ui.Box(c).Width(1).FillHeight().Background(ct.Background.Mix(t.Border, 0.6))
+				if d.CenterWidth > 1 && d.RenderCenter != nil {
+					centerCol = ui.Box(c).Key("diff-center").Width(d.CenterWidth).FillHeight().Clip()
+					hasCenter = true
+				} else {
+					ui.Box(c).Width(1).FillHeight().Background(ct.Background.Mix(t.Border, 0.6))
+				}
 			}
 			if d.eds[i].focused {
 				d.oldActive = i == 0
 			}
+		}
+		if hasCenter {
+			d.prepare()
+			for i := range d.eds {
+				d.eds[i].view.heights.lh = d.eds[i].view.lineHeight
+				d.eds[i].view.heights.setLines(d.eds[i].view.text.LineCount())
+				d.eds[i].view.heights.setHidden(d.sides[i].hide)
+				d.eds[i].view.heights.setBlocks(d.sides[i].blks)
+			}
+			d.RenderCenter(c, centerCol)
 		}
 		d.buildSeparators(c, ct)
 	})
@@ -646,6 +678,7 @@ func isDark(c ui.Color) bool {
 // as its separators, which the view builds from the last frame's layout:
 // the blocks, the wraps of the lines, the height and the scroll.
 type diffGeom struct {
+	version        uint64
 	blocks         int
 	wrapsA, wrapsB uint64
 	total, scroll  float64
@@ -657,7 +690,7 @@ func (d *DiffState) geom() diffGeom {
 		a = &d.oldView
 	}
 	b := &d.eds[1]
-	return diffGeom{d.blocksV, a.heights.wraps.version, b.view.heights.wraps.version, b.view.heights.total(), b.scrollY}
+	return diffGeom{d.model.version, d.blocksV, a.heights.wraps.version, b.view.heights.wraps.version, b.view.heights.total(), b.scrollY}
 }
 
 // rebuildIfMoved asks for the view to be built again when laying it out

@@ -1,14 +1,14 @@
 --- a/vendor/github.com/egoist/mygo/internal/diff/diff.go
 +++ b/vendor/github.com/egoist/mygo/internal/diff/diff.go
-@@ -7,6 +7,8 @@
- // lines and indentation make them read as whole blocks, with git's indent
+@@ -8,6 +8,8 @@
  // heuristic.
  package diff
-+
-+import "context"
  
++import "context"
++
  // Hunk is a change: the elements A0 to A1 of the old sequence replaced by
  // B0 to B1 of the new one. A0 == A1 is an insertion before A0, B0 == B1 a
+ // deletion.
 @@ -56,6 +58,8 @@
  
  // differ marks the elements of a and b that the hunks change.
@@ -443,7 +443,19 @@
  	// Inline highlights what changed within changed lines.
  	Inline DiffInline
  	// Indicators mark changed lines: with bars, + and -, or nothing.
-@@ -209,6 +213,11 @@
+@@ -80,6 +84,11 @@
+ 	// editors, as State's.
+ 	RenderFindBar  func(c *ui.Context, bar ui.Element, f *FindBar)
+ 	RenderGoToLine func(c *ui.Context, bar ui.Element, g *GoToLineBar)
++	// CenterWidth and RenderCenter customize the center column between the
++	// two editors in split view; when CenterWidth <= 1 or RenderCenter is nil,
++	// a 1px divider is drawn.
++	CenterWidth  float32
++	RenderCenter func(c *ui.Context, col ui.Element)
+ 
+ 	model   diffModel
+ 	eds     [2]editor // the old side's and the new side's
+@@ -209,6 +218,11 @@
  		d.partial = nil
  		d.prepared = diffPrepared{}
  	}
@@ -455,7 +467,35 @@
  	d.model.set(d.Old, d.New)
  	d.model.update()
  	// The lines revealed move with edits of the old text, as Keep makes,
-@@ -393,7 +402,7 @@
+@@ -296,14 +310,20 @@
+ 	}
+ 	h := d.model.hunks[i]
+ 	side := d.ActiveSide()
+-	ed := d.editorOf(side)
+-	line := h.B0
+-	if side == DiffOld {
+-		line = h.A0
++	for _, s := range []DiffSide{DiffOld, DiffNew} {
++		ed := d.editorOf(s)
++		line := h.B0
++		if s == DiffOld {
++			line = h.A0
++		}
++		r := &ed.view.text
++		off := r.LineStart(min(line, max(0, r.LineCount()-1)))
++		rev := revealNone
++		if s == side {
++			rev = revealCenter
++		}
++		ed.setSels([]sel{ed.newSel(off, off)}, rev)
+ 	}
+-	r := &ed.view.text
+-	off := r.LineStart(min(line, r.LineCount()-1))
+-	ed.setSels([]sel{ed.newSel(off, off)}, revealCenter)
+ }
+ 
+ // Run runs a command in the editor of the active side (ActiveSide), as
+@@ -393,7 +413,7 @@
  	// Both gutters as wide, so that both sides wrap alike.
  	digits := max(3, len(strconv.Itoa(max(d.Old.LineCount(), d.New.LineCount()))))
  	o := options{
@@ -464,6 +504,74 @@
  		wrap: d.Wrap, lineNumbers: LineNumbersOn, whitespace: WhitespaceNone, autoClose: true,
  		theme: d.Theme, bindings: d.Bindings, fitContent: d.FitContent, minDigits: digits,
  		renderFindBar: d.RenderFindBar, renderGoToLine: d.RenderGoToLine,
+@@ -454,7 +474,11 @@
+ 	// The old text on the left, as code reads left to right.
+ 	row := ui.Row(c).Direction(ui.LeftToRight).Clip()
+ 	row.Draw(func(p *ui.Painter, r ui.Rect) {
+-		w := (r.W - 1) / 2
++		cw := max(float32(1), d.CenterWidth)
++		if d.RenderCenter == nil {
++			cw = 1
++		}
++		w := (r.W - cw) / 2
+ 		for i := range d.eds {
+ 			d.eds[i].layout(w, r.H, p.Scale())
+ 		}
+@@ -478,6 +502,8 @@
+ 		d.rebuildIfMoved()
+ 	})
+ 	row.Children(func() {
++		var centerCol ui.Element
++		hasCenter := false
+ 		for i, b := range []*Buffer{d.Old, d.New} {
+ 			o := opts(i == 0)
+ 			o.decor = &d.sides[i]
+@@ -492,12 +518,27 @@
+ 			ed := d.eds[i].build(c, b, o)
+ 			ed.Grow(1).Basis(0).FillHeight()
+ 			if i == 0 {
+-				ui.Box(c).Width(1).FillHeight().Background(ct.Background.Mix(t.Border, 0.6))
++				if d.CenterWidth > 1 && d.RenderCenter != nil {
++					centerCol = ui.Box(c).Key("diff-center").Width(d.CenterWidth).FillHeight().Clip()
++					hasCenter = true
++				} else {
++					ui.Box(c).Width(1).FillHeight().Background(ct.Background.Mix(t.Border, 0.6))
++				}
+ 			}
+ 			if d.eds[i].focused {
+ 				d.oldActive = i == 0
+ 			}
+ 		}
++		if hasCenter {
++			d.prepare()
++			for i := range d.eds {
++				d.eds[i].view.heights.lh = d.eds[i].view.lineHeight
++				d.eds[i].view.heights.setLines(d.eds[i].view.text.LineCount())
++				d.eds[i].view.heights.setHidden(d.sides[i].hide)
++				d.eds[i].view.heights.setBlocks(d.sides[i].blks)
++			}
++			d.RenderCenter(c, centerCol)
++		}
+ 		d.buildSeparators(c, ct)
+ 	})
+ 	if d.FitContent {
+@@ -637,6 +678,7 @@
+ // as its separators, which the view builds from the last frame's layout:
+ // the blocks, the wraps of the lines, the height and the scroll.
+ type diffGeom struct {
++	version        uint64
+ 	blocks         int
+ 	wrapsA, wrapsB uint64
+ 	total, scroll  float64
+@@ -648,7 +690,7 @@
+ 		a = &d.oldView
+ 	}
+ 	b := &d.eds[1]
+-	return diffGeom{d.blocksV, a.heights.wraps.version, b.view.heights.wraps.version, b.view.heights.total(), b.scrollY}
++	return diffGeom{d.model.version, d.blocksV, a.heights.wraps.version, b.view.heights.wraps.version, b.view.heights.total(), b.scrollY}
+ }
+ 
+ // rebuildIfMoved asks for the view to be built again when laying it out
 --- a/vendor/github.com/egoist/mygo/ui/editor/diffmodel.go
 +++ b/vendor/github.com/egoist/mygo/ui/editor/diffmodel.go
 @@ -1,6 +1,7 @@
@@ -569,26 +677,23 @@
  	}
  	if len(short) == len(long) || len(short) == 0 || len(short)*(len(long)-len(short)+1) > 4096 {
 -		return 0
--	}
++		return 0, ctx.Err()
+ 	}
 -	score := func(off int) float64 {
 -		s := 0.0
-+		return 0, ctx.Err()
-+	}
 +	score := func(off int) (float64, error) {
 +		sum := 0.0
  		for i, x := range short {
 -			s += similarity(x, long[i+off])
--		}
--		return s
--	}
--	best, bestScore := 0, score(0)
 +			if err := ctx.Err(); err != nil {
 +				return 0, err
 +			}
 +			sum += similarity(x, long[i+off])
-+		}
+ 		}
+-		return s
 +		return sum, nil
-+	}
+ 	}
+-	best, bestScore := 0, score(0)
 +	best := 0
 +	bestScore, err := score(0)
 +	if err != nil {
@@ -597,35 +702,33 @@
  	for off := 1; off <= len(long)-len(short); off++ {
 -		if s := score(off); s > bestScore+0.5*float64(len(short)) {
 -			best, bestScore = off, s
--		}
--	}
--	return best
 +		value, err := score(off)
 +		if err != nil {
 +			return 0, err
-+		}
+ 		}
 +		if value > bestScore+0.5*float64(len(short)) {
 +			best, bestScore = off, value
 +		}
-+	}
+ 	}
+-	return best
 +	return best, nil
  }
  
  func similarity(a, b string) float64 {
-@@ -490,6 +537,10 @@
- 	text := ""
+@@ -491,6 +538,10 @@
  	if h.A1 > h.A0 {
  		text = old.Slice(old.LineStart(h.A0), old.LineEnd(h.A1-1))
-+	}
+ 	}
 +	// 空缓冲区在编辑器中有一个占位行，不能为它附加额外换行。
 +	if nw.Len() == 0 {
 +		return Edit{Start: 0, End: 0, Text: text}
- 	}
++	}
  	n := nw.LineCount()
  	switch {
+ 	case h.B1 > h.B0 && h.A1 > h.A0:
 --- /dev/null
 +++ b/vendor/github.com/egoist/mygo/ui/editor/comparison.go
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,174 @@
 +package editor
 +
 +import (
@@ -747,6 +850,58 @@
 +	m.ready = true
 +	m.version++
 +	return true
++}
++
++// DiffHunkBand 描述分栏视图中一个差异块在当前视口内的纵向像素范围（DIP）。
++type DiffHunkBand struct {
++	Index       int
++	Hunk        DiffHunk
++	Top, Height float32
++}
++
++// HunkBands 返回分栏模式下各差异块在视口中的纵向位置，供中间差异操作列对齐绘制。
++func (d *DiffState) HunkBands() []DiffHunkBand {
++	d.ensure()
++	if d.Layout != DiffSplit || len(d.model.hunks) == 0 {
++		return nil
++	}
++	out := make([]DiffHunkBand, 0, len(d.model.hunks))
++	scrollY := d.eds[1].scrollY
++	for i, h := range d.model.hunks {
++		nA, nB := h.A1-h.A0, h.B1-h.B0
++		if nA <= 0 && nB <= 0 {
++			continue
++		}
++		side, start, end := 1, h.B0, h.B1
++		if nA >= nB {
++			side, start, end = 0, h.A0, h.A1
++		}
++		vh := &d.eds[side].view.heights
++		if vh.n <= 0 || vh.lh <= 0 {
++			continue
++		}
++		start = max(0, min(start, vh.n-1))
++		last := max(start, min(end-1, vh.n-1))
++		top := vh.geometry(start).rows
++		gLast := vh.geometry(last)
++		bottom := gLast.below
++		_, below := vh.blocksOf(last)
++		for _, b := range below {
++			if b.kind == blockSpacer || b.kind == blockAnnotation {
++				bottom += float64(b.height)
++			}
++		}
++		if bottom < top {
++			bottom = top
++		}
++		out = append(out, DiffHunkBand{
++			Index:  i,
++			Hunk:   DiffHunk{h.A0, h.A1, h.B0, h.B1},
++			Top:    float32(top - scrollY),
++			Height: float32(bottom - top),
++		})
++	}
++	return out
 +}
 --- a/vendor/github.com/egoist/mygo/ui/editor/patch.go
 +++ b/vendor/github.com/egoist/mygo/ui/editor/patch.go

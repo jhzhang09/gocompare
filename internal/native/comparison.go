@@ -20,6 +20,10 @@ func (a *workspaceState) stopComparison() {
 
 // refreshComparison 只在输入版本改变时启动任务，不能在绘制回调中触发。
 func (a *workspaceState) refreshComparison() {
+	basePanes, _ := a.basePanes()
+	if basePanes[0] != nil && basePanes[1] != nil {
+		a.activeHistory().sync(basePanes)
+	}
 	panes := a.activePanes()
 	diff := a.activeDiff()
 	if panes[0] == nil || panes[1] == nil || !diff.ExternalComparison {
@@ -74,13 +78,26 @@ func (a *workspaceState) refreshComparison() {
 			if !activeDiff.ApplyComparison(result) {
 				return
 			}
-			// 差异块已重新计算，旧的定位与高亮不再对应。
-			a.hunkFocus = 0
-			activeDiff.SetSelectedLines(editor.DiffLineRange{}, false)
+			hunks := result.Hunks()
+			n := len(hunks)
+			wasApply := a.pendingFocusHunk > 0
+			if wasApply && n > 0 {
+				idx := min(a.pendingFocusHunk-1, n-1)
+				a.pendingFocusHunk = 0
+				a.hunkFocus = idx + 1
+				activeDiff.GoToHunk(idx)
+				focusHunk(activeDiff, hunks[idx])
+			} else {
+				a.pendingFocusHunk = 0
+				// 差异块已重新计算，旧的定位与高亮不再对应。
+				a.hunkFocus = 0
+				activeDiff.SetSelectedLines(editor.DiffLineRange{}, false)
+			}
 			a.compareAnchors = anchors
 			a.err = ""
-			n := len(result.Hunks())
-			if ignore {
+			if wasApply {
+				a.message = i18n.T("status.hunkApplied")
+			} else if ignore {
 				a.message = i18n.TArgs("status.ruleDiffs", n)
 				if n == 0 {
 					a.message = i18n.T("status.ruleSame")

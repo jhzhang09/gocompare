@@ -861,6 +861,114 @@ func TestNavigateAndApplyBothDirections(t *testing.T) {
 	applyVia(t, "← 应用到左侧", "same\nright only\n", "same\nright only\n")
 }
 
+func TestApplyUndoRedoBothSidesAndToolbar(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.txt")
+	right := filepath.Join(dir, "right.txt")
+	const leftText = "L1\nsame\nL2\n"
+	const rightText = "R1\nsame\nR2\n"
+	if err := os.WriteFile(left, []byte(leftText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(right, []byte(rightText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &workspaceState{paths: [2]string{left, right}}
+	a.load()
+	if a.err != "" {
+		t.Fatal(a.err)
+	}
+	tt := ui.NewTester(a.view, 1600, 880)
+	tt.Frame()
+
+	// 未发生任何修改时，不展示撤销与重做按钮，保持界面简洁。
+	if tt.HasText("撤销") || tt.HasText("重做") {
+		t.Fatal("undo/redo should not appear before any modification")
+	}
+
+	// 第 1 步：将第 1 个差异块应用到右侧（右侧变成 L1\nsame\nR2\n）。
+	if err := tt.Click("应用到右侧 →"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := a.panes[1].buffer.String(); got != "L1\nsame\nR2\n" {
+		t.Fatalf("after apply right: %q", got)
+	}
+	if _, ok := tt.Find("撤销右侧"); !ok {
+		t.Fatal("expected 撤销右侧 button after modifying right")
+	}
+	if _, ok := tt.Find("撤销左侧"); ok {
+		t.Fatal("撤销左侧 should not appear when left is untouched")
+	}
+
+	// 第 2 步：将剩余差异块（L2 vs R2）应用到左侧（左侧变成 L1\nsame\nR2\n）。
+	if err := tt.Click("← 应用到左侧"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := a.panes[0].buffer.String(); got != "L1\nsame\nR2\n" {
+		t.Fatalf("after apply left: %q", got)
+	}
+	if _, ok := tt.Find("撤销左侧"); !ok {
+		t.Fatal("expected 撤销左侧 button after modifying left")
+	}
+
+	// 第 3 步：单独点击「撤销右侧」，只撤回右侧的修改，左侧已应用的 R2 保持不变。
+	if err := tt.Click("撤销右侧"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := a.panes[1].buffer.String(); got != rightText {
+		t.Fatalf("right undo failed: %q", got)
+	}
+	if got := a.panes[0].buffer.String(); got != "L1\nsame\nR2\n" {
+		t.Fatalf("right undo should not affect left: %q", got)
+	}
+	if _, ok := tt.Find("重做右侧"); !ok {
+		t.Fatal("expected 重做右侧 button after undoing right")
+	}
+
+	// 第 4 步：点击「重做右侧」恢复右侧修改。
+	if err := tt.Click("重做右侧"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := a.panes[1].buffer.String(); got != "L1\nsame\nR2\n" {
+		t.Fatalf("right redo failed: %q", got)
+	}
+
+	// 第 5 步：通过顶部公共工具栏「撤销」依次撤回最近两次跨侧操作（先右侧、再左侧）。
+	if err := tt.Click("撤销"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.panes[1].buffer.String() != rightText || a.panes[0].buffer.String() != "L1\nsame\nR2\n" {
+		t.Fatalf("first toolbar undo: left=%q right=%q", a.panes[0].buffer.String(), a.panes[1].buffer.String())
+	}
+	if err := tt.Click("撤销"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.panes[0].buffer.String() != leftText || a.panes[1].buffer.String() != rightText {
+		t.Fatalf("second toolbar undo: left=%q right=%q", a.panes[0].buffer.String(), a.panes[1].buffer.String())
+	}
+	if _, ok := tt.Find("撤销"); ok {
+		t.Fatal("undo button should disappear once all edits are undone")
+	}
+
+	// 第 6 步：失焦状态下直接按快捷键 Cmd+Shift+Z 重做、Cmd+Z 撤销。
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyZ)
+	tt.Frame()
+	if a.panes[0].buffer.String() != "L1\nsame\nR2\n" {
+		t.Fatalf("shortcut redo: left=%q", a.panes[0].buffer.String())
+	}
+	tt.Key(ui.Cmd, ui.KeyZ)
+	tt.Frame()
+	if a.panes[0].buffer.String() != leftText {
+		t.Fatalf("shortcut undo: left=%q", a.panes[0].buffer.String())
+	}
+}
+
 func hunkCovers(hunks []editor.DiffHunk, line int) bool {
 	for _, h := range hunks {
 		if line >= h.OldStart && line < h.OldEnd {
