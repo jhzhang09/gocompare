@@ -597,3 +597,36 @@ func TestPictureFlipAppliesToComparison(t *testing.T) {
 		t.Fatal("reset must clear flips")
 	}
 }
+
+func TestPictureSliderMode(t *testing.T) {
+	dir := t.TempDir()
+	leftPath := filepath.Join(dir, "left.png")
+	rightPath := filepath.Join(dir, "right.png")
+	leftPx := [2][2]color.RGBA{
+		{{R: 200, G: 10, B: 20, A: 255}, {B: 200, A: 255}},
+		{{G: 200, A: 255}, {R: 10, A: 255}},
+	}
+	rightPx := leftPx
+	rightPx[0][0] = color.RGBA{R: 20, G: 30, B: 180, A: 255}
+	writeGridPNG(t, leftPath, leftPx)
+	writeGridPNG(t, rightPath, rightPx)
+
+	a := &workspaceState{kind: kindPicture, paths: [2]string{leftPath, rightPath}}
+	tt := ui.NewTester(a.view, 1380, 880)
+	tt.Frame()
+	if err := tt.Click("开始比较"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("卷帘"); err != nil {
+		t.Fatal(err)
+	}
+	if a.pictureMode != pictureCompare || a.pictureNote != "picture.modeSlider" {
+		t.Fatalf("expected slider mode, got mode=%d note=%q", a.pictureMode, a.pictureNote)
+	}
+	if a.pictureSideBitmaps[0] == nil || a.pictureSideBitmaps[1] == nil {
+		t.Fatal("missing side bitmaps for ImageCompare")
+	}
+	if _, ok := tt.Find("图片画布"); !ok {
+		t.Fatal("missing ImageCompare canvas")
+	}
+}

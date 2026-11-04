@@ -7,6 +7,7 @@ import (
 	"image/color"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/oneo-me/onevra/source/components"
 	"gocompare/internal/i18n"
 	"gocompare/internal/picture"
 )
@@ -23,6 +24,7 @@ const (
 	pictureDifference
 	pictureTolerance
 	pictureReplace
+	pictureCompare
 )
 
 // pictureFlip 是单侧图片的翻转状态。翻转与显示模式正交：先翻转，再按并排、叠加、差值等模式比较，
@@ -87,6 +89,7 @@ func (a *workspaceState) loadPictures() {
 			a.pictureMode = pictureSide
 			a.pictureTol = 2
 			a.pictureFlips = [2]pictureFlip{}
+			a.pictureSliderPos = 50
 			a.pictureZoom = pictureZoomFit
 			if isTiny(left) && isTiny(right) {
 				a.pictureZoom = pictureZoomGrid
@@ -109,9 +112,11 @@ func (a *workspaceState) clearPictures() {
 	a.pictureRight = nil
 	a.pictureResult = nil
 	a.pictureBitmap = nil
+	a.pictureSideBitmaps = [2]*ui.Bitmap{}
 	a.pictureNote = ""
 	a.pictureSummary = picture.Summary{}
 	a.pictureFlips = [2]pictureFlip{}
+	a.pictureSliderPos = 50
 	a.pictureRerender = false
 }
 
@@ -169,7 +174,9 @@ func (a *workspaceState) renderPicture() {
 	a.pictureGen++
 	gen := a.pictureGen
 	a.job(func(ctx context.Context) {
-		out, note, summary := buildPicture(applyFlip(left, flips[0]), applyFlip(right, flips[1]), mode, tol)
+		fLeft := applyFlip(left, flips[0])
+		fRight := applyFlip(right, flips[1])
+		out, note, summary := buildPicture(fLeft, fRight, mode, tol)
 		a.publish(func() {
 			a.busy = false
 			if gen != a.pictureGen {
@@ -182,6 +189,13 @@ func (a *workspaceState) renderPicture() {
 				a.pictureBitmap = ui.NewBitmap(out).Pixelated()
 			} else {
 				a.pictureBitmap.Update(out)
+			}
+			for i, sideImg := range []image.Image{fLeft, fRight} {
+				if a.pictureSideBitmaps[i] == nil {
+					a.pictureSideBitmaps[i] = ui.NewBitmap(sideImg).Pixelated()
+				} else {
+					a.pictureSideBitmaps[i].Update(sideImg)
+				}
 			}
 			if a.pictureRerender {
 				a.renderPicture()
@@ -224,6 +238,8 @@ func buildPicture(left, right image.Image, mode int, tol uint8) (*image.RGBA, st
 			picture.ReplaceColor(right, from, pictureReplaceColor, tol),
 		)
 		return out, "picture.modeReplace", summary
+	case pictureCompare:
+		return picture.SideBySide(left, right), "picture.modeSlider", summary
 	default:
 		return picture.SideBySide(left, right), "picture.modeSide", summary
 	}
@@ -236,15 +252,15 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 	disabled := a.busy || !loaded
 
 	modeBtn := func(label string, active bool, fn func()) {
-		b := ui.Button(c, label).Padding(3, 8).Radius(5).FontSize(11).Disabled(disabled)
-		if active && !disabled {
-			b.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35)).TextColor(pal.baseAccent).Bold()
+		btn := toggleBtn(c, label, active, disabled)
+		if btn.Clicked() {
+			fn()
 		}
-		b.OnClick(fn)
 	}
 	// 窄窗口下按钮自动换行，不会被裁掉。
-	ui.Row(c).Wrap().MinHeight(38).Padding(5, 14).Gap(5).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	ui.Row(c).Wrap().MinHeight(38).Padding(5, 14).Gap(5).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		modeBtn(i18n.T("picture.modeSide"), a.pictureMode == pictureSide, func() { a.showPicture(pictureSide) })
+		modeBtn(i18n.T("picture.modeSlider"), a.pictureMode == pictureCompare, func() { a.showPicture(pictureCompare) })
 		modeBtn(i18n.T("picture.modeOverlay"), a.pictureMode == pictureOverlay, func() { a.showPicture(pictureOverlay) })
 		modeBtn(i18n.T("picture.modeDifference"), a.pictureMode == pictureDifference, func() { a.showPicture(pictureDifference) })
 		modeBtn(i18n.T("picture.modeTolerance"), a.pictureMode == pictureTolerance, func() { a.showPicture(pictureTolerance) })
@@ -277,12 +293,14 @@ func (a *workspaceState) pictureView(c *ui.Context) {
 // pictureStatusRow 显示容差滑块和缓存的差异统计（翻转开关在上方模式工具栏）；统计在后台随画布一起计算，绘制时不扫描像素。
 func (a *workspaceState) pictureStatusRow(c *ui.Context, pal uiPalette, disabled bool) {
 	t := c.Theme()
-	ui.Row(c).Wrap().MinHeight(34).Padding(5, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	ui.Row(c).Wrap().MinHeight(34).Padding(5, 14).Gap(8).AlignItems(ui.Center).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		ui.Text(c, i18n.TArgs("picture.toleranceValue", a.pictureTol)).Shrink(0).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		a.pictureTolSlider = float64(a.pictureTol)
-		ui.Slider(c, &a.pictureTolSlider, 0, 255).Width(160).Shrink(0).Disabled(disabled).Label(i18n.T("picture.toleranceSlider")).OnChange(func() {
+		sl := components.Slider(c, &a.pictureTolSlider, 0, 255).Label(i18n.T("picture.toleranceSlider"))
+		sl.Width(160).Shrink(0).Disabled(disabled)
+		if sl.Changed() {
 			a.setPictureTolerance(uint8(a.pictureTolSlider + 0.5))
-		})
+		}
 		ui.Box(c).Grow(1)
 		lb, rb := a.pictureLeft.Bounds(), a.pictureRight.Bounds()
 		statusPill(c, fmt.Sprintf("%d×%d vs %d×%d px", lb.Dx(), lb.Dy(), rb.Dx(), rb.Dy()), pal.sameFg, pal.sameBg)
@@ -333,11 +351,10 @@ func flipNote(f pictureFlip) string {
 
 // pictureFlipControls 为左右两侧各放一组水平／垂直翻转开关，明确翻转的是哪一张，再点一次即恢复。
 func (a *workspaceState) pictureFlipControls(c *ui.Context, pal uiPalette, disabled bool) {
-	t := c.Theme()
 	for side := 0; side < 2; side++ {
 		side := side
 		// 状态栏空间不足时由右侧的统计药丸收缩，翻转开关保持完整、两组之间留出间距。
-		ui.Row(c).Gap(3).Shrink(0).Margin(0, 6, 0, 0).Children(func() {
+		ui.Row(c).Gap(3).Shrink(0).Margin(0, 6, 0, 0).AlignItems(ui.Center).Children(func() {
 			sideBadge(c, side, pal)
 			for _, vertical := range []bool{false, true} {
 				vertical := vertical
@@ -347,19 +364,10 @@ func (a *workspaceState) pictureFlipControls(c *ui.Context, pal uiPalette, disab
 					active = a.pictureFlips[side].V
 					textKey, labelKey = "picture.flipV", []string{"picture.flipLeftV", "picture.flipRightV"}[side]
 				}
-				b := ui.Button(c, "").Label(i18n.T(labelKey)).Padding(2, 6).Radius(5).Disabled(disabled)
-				if active && !disabled {
-					b.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35))
+				btn := toggleBtn(c.Key(labelKey), i18n.T(textKey), active, disabled).Label(i18n.T(labelKey))
+				if btn.Clicked() {
+					a.toggleFlip(side, vertical)
 				}
-				b.OnClick(func() { a.toggleFlip(side, vertical) })
-				b.Children(func() {
-					txt := ui.Text(c, i18n.T(textKey)).FontSize(10).SingleLine()
-					if active && !disabled {
-						txt.TextColor(pal.baseAccent).Bold()
-					} else {
-						txt.TextColor(t.Text)
-					}
-				})
 			}
 		})
 	}
@@ -372,7 +380,7 @@ func (a *workspaceState) pictureCanvas(c *ui.Context, pal uiPalette) {
 	sideBySide := a.pictureMode == pictureSide || a.pictureMode == pictureReplace
 	legend := func(width float32, side int, img image.Image) {
 		// width > 0 按图片宽度对齐；0 平分可用宽度；负数按内容自适应。
-		row := ui.Row(c).Gap(4)
+		row := ui.Row(c).Gap(4).AlignItems(ui.Center)
 		switch {
 		case width > 0:
 			row.Width(width)
@@ -389,6 +397,36 @@ func (a *workspaceState) pictureCanvas(c *ui.Context, pal uiPalette) {
 		})
 	}
 
+	if a.pictureMode == pictureCompare && a.pictureSideBitmaps[0] != nil && a.pictureSideBitmaps[1] != nil {
+		if a.pictureSliderPos < 0 || a.pictureSliderPos > 100 {
+			a.pictureSliderPos = 50
+		}
+		ui.Column(c).Grow(1).FillWidth().Padding(12, 16).Gap(6).Children(func() {
+			ui.Row(c).FillWidth().Children(func() {
+				legend(0, 0, a.pictureLeft)
+				legend(0, 1, a.pictureRight)
+			})
+			cmp := components.ImageCompare(
+				c,
+				&a.pictureSliderPos,
+				func() {
+					components.Image(c, a.pictureSideBitmaps[0]).Fill().Fit(ui.Contain)
+				},
+				func() {
+					components.Image(c, a.pictureSideBitmaps[1]).Fill().Fit(ui.Contain)
+				},
+				components.ImageCompareOptions{
+					BeforeLabel: i18n.T("picture.leftImage"),
+					AfterLabel:  i18n.T("picture.rightImage"),
+					AspectRatio: -1,
+					Default:     50,
+				},
+			)
+			cmp.Element.Grow(1).FillWidth().Label(i18n.T("a11y.pictureCanvas"))
+		})
+		return
+	}
+
 	if a.pictureZoom == pictureZoomFit {
 		// 适应窗口交给框架按可用区域等比缩放：小图放大（像素化显示），大图只缩小不放大。
 		fit := ui.ScaleDown
@@ -402,7 +440,7 @@ func (a *workspaceState) pictureCanvas(c *ui.Context, pal uiPalette) {
 					legend(0, 1, a.pictureRight)
 				})
 			}
-			ui.Image(c, a.pictureBitmap).Fit(fit).Grow(1).FillWidth().Label(i18n.T("a11y.pictureCanvas"))
+			components.Image(c, a.pictureBitmap).Fit(fit).Grow(1).FillWidth().Label(i18n.T("a11y.pictureCanvas"))
 		})
 		return
 	}
@@ -433,7 +471,7 @@ func (a *workspaceState) pictureCanvas(c *ui.Context, pal uiPalette) {
 					})
 				}
 			}
-			ui.Image(c, a.pictureBitmap).Size(w, h).MaxWidth(w).MaxHeight(h).AlignSelf(ui.Start).Label(i18n.T("a11y.pictureCanvas"))
+			components.Image(c, a.pictureBitmap).Size(w, h).MaxWidth(w).MaxHeight(h).AlignSelf(ui.Start).Label(i18n.T("a11y.pictureCanvas"))
 		})
 	})
 }

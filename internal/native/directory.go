@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/oneo-me/onevra/source/components"
 	"gocompare/internal/compare"
 	"gocompare/internal/dirmerge"
 	"gocompare/internal/i18n"
@@ -185,10 +186,11 @@ func (a *workspaceState) directoryView(c *ui.Context) {
 	}
 
 	// 搜索过滤与同步操作栏
-	ui.Row(c).Height(38).Padding(0, 14).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		ui.Icon(c, iconSearch).Size(13, 13).TextColor(t.TextMuted)
-		ui.TextInput(c.Key("search-files"), &a.dirSearch).Placeholder(i18n.T("dir.filterPlaceholder")).Label(i18n.T("dir.searchLabel")).Grow(1).MinWidth(130)
-		ui.Checkbox(c, &a.onlyDifferences, i18n.T("dir.onlyDiff"))
+	ui.Row(c).Height(38).Padding(0, 14).Gap(8).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		components.TextBox(c.Key("search-files"), &a.dirSearch, components.TextBoxOptions{
+			LeadingIcon: iconSearch,
+		}).Placeholder(i18n.T("dir.filterPlaceholder")).Label(i18n.T("dir.searchLabel")).Grow(1).MinWidth(130).Height(26)
+		components.Checkbox(c, &a.onlyDifferences, i18n.T("dir.onlyDiff"))
 		statusPill(c, i18n.TArgs("dir.items", len(rows)), pal.baseAccent, pal.baseBg)
 		if changed > 0 {
 			statusPill(c, i18n.TArgs("dir.diffCount", changed), pal.diffFg, pal.diffBg)
@@ -204,46 +206,37 @@ func (a *workspaceState) directoryView(c *ui.Context) {
 			localTip = i18n.T("dir.remoteLocalOnly")
 		}
 		a.normalizeSyncChoice()
-		ui.Select(c, &a.syncChoice, syncOptions()).Disabled(localOnly)
-		syncBtn := ui.Button(c, "").Label(i18n.T("sync.preview")).Padding(3, 8).Gap(4).Radius(5).Disabled(localOnly).Tooltip(localTip)
-		syncBtn.OnClick(a.previewSync)
-		syncBtn.Children(func() {
-			ui.Icon(c, iconSync).Size(11, 11)
-			ui.Text(c, i18n.T("sync.preview")).FontSize(11).SingleLine()
-		})
-		dirMergeBtn := ui.Button(c, "").Label(i18n.T("dirmerge.action")).Padding(3, 8).Gap(4).Radius(5).Disabled(localOnly).Tooltip(localTip)
-		dirMergeBtn.OnClick(a.previewDirMerge)
-		dirMergeBtn.Children(func() {
-			ui.Icon(c, iconGitMerge).Size(11, 11)
-			ui.Text(c, i18n.T("dirmerge.action")).FontSize(11).SingleLine()
-		})
+		simpleSelect(c, &a.syncChoice, syncOptions(), localOnly)
+		if toolbarBtn(c, i18n.T("sync.preview"), iconSync, components.ButtonSecondary, localOnly).Tooltip(localTip).Clicked() {
+			a.previewSync()
+		}
+		if toolbarBtn(c, i18n.T("dirmerge.action"), iconGitMerge, components.ButtonSecondary, localOnly).Tooltip(localTip).Clicked() {
+			a.previewDirMerge()
+		}
 		if a.lastJournal != "" && !a.syncRolledBack {
-			undoBtn := ui.Button(c, "").Label(i18n.T("sync.undo")).Padding(3, 8).Gap(4).Radius(5).Disabled(localOnly)
-			undoBtn.OnClick(a.undoSync)
-			undoBtn.Children(func() {
-				ui.Icon(c, iconUndo).Size(11, 11)
-				ui.Text(c, i18n.T("sync.undo")).FontSize(11).SingleLine()
-			})
+			if toolbarBtn(c, i18n.T("sync.undo"), iconUndo, components.ButtonSecondary, localOnly).Clicked() {
+				a.undoSync()
+			}
 		}
 		if a.lastJournal != "" {
-			ui.Button(c, i18n.T("sync.journal")).Padding(3, 8).Radius(5).FontSize(11).OnClick(func() {
+			if compactBtn(c, i18n.T("sync.journal"), nil, components.ButtonSecondary, false).Clicked() {
 				if err := mygo.Shell.OpenPath(a.lastJournal); err != nil {
 					a.err = err.Error()
 				}
-			})
+			}
 		}
 	})
 
 	// 表头
-	ui.Row(c).Height(30).Padding(0, 14).Gap(10).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		ui.Row(c).Grow(1).Basis(0).Gap(6).Children(func() {
+	ui.Row(c).Height(30).Padding(0, 14).Gap(10).AlignItems(ui.Center).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Row(c).Grow(1).Basis(0).Gap(6).AlignItems(ui.Center).Children(func() {
 			sideBadge(c, 0, pal)
 			ui.Text(c, i18n.T("dir.leftHeader")).FontSize(11).Bold().TextColor(t.TextMuted)
 		})
 		ui.Row(c).Width(88).Center().Children(func() {
 			ui.Text(c, i18n.T("dir.resultHeader")).FontSize(11).Bold().TextColor(t.TextMuted)
 		})
-		ui.Row(c).Grow(1).Basis(0).Gap(6).Children(func() {
+		ui.Row(c).Grow(1).Basis(0).Gap(6).AlignItems(ui.Center).Children(func() {
 			sideBadge(c, 1, pal)
 			ui.Text(c, i18n.T("dir.rightHeader")).FontSize(11).Bold().TextColor(t.TextMuted)
 		})
@@ -275,14 +268,14 @@ func (a *workspaceState) directoryView(c *ui.Context) {
 		if row.Index%2 == 1 {
 			rowBg = pal.subtleSurface.Alpha(0.35)
 		}
-		ui.Row(rc).Height(34).Padding(0, 14).Gap(10).Background(rowBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder.Alpha(0.5)).Children(func() {
+		ui.Row(rc).Height(34).Padding(0, 14).Gap(10).AlignItems(ui.Center).Background(rowBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder.Alpha(0.5)).Children(func() {
 			for side, m := range []*compare.Metadata{entry.Left, entry.Right} {
 				if side == 1 {
 					ui.Row(rc).Width(88).Center().Children(func() {
 						statusPill(rc, statusLabel(entry.Status), fg, bg)
 					})
 				}
-				ui.Row(rc).Grow(1).Basis(0).MinWidth(0).Gap(5).Children(func() {
+				ui.Row(rc).Grow(1).Basis(0).MinWidth(0).Gap(5).AlignItems(ui.Center).Children(func() {
 					if m == nil {
 						ui.Text(rc, "—").Grow(1).TextColor(t.TextMuted)
 						return
@@ -407,11 +400,16 @@ func (a *workspaceState) syncPreviewView(c *ui.Context) {
 	t := c.Theme()
 	pal := paletteFor(t)
 	plan := a.syncPlan
-	ui.Row(c).Height(38).Padding(0, 16).Gap(10).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		ui.Button(c, i18n.T("sync.back")).Padding(4, 9).Radius(5).FontSize(11).OnClick(func() { a.syncPlan = nil; a.directoryList = ui.ListState{} })
+	ui.Row(c).Height(38).Padding(0, 16).Gap(10).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		if compactBtn(c, i18n.T("sync.back"), nil, components.ButtonSecondary, false).Clicked() {
+			a.syncPlan = nil
+			a.directoryList = ui.ListState{}
+		}
 		statusPill(c, i18n.TArgs("sync.pending", len(plan.Actions)), pal.diffFg, pal.diffBg)
 		ui.Text(c, i18n.T("sync.backupNote")).Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
-		ui.PrimaryButton(c, i18n.T("sync.execute")).Padding(4, 10).Radius(5).FontSize(11).Disabled(a.busy || len(plan.Actions) == 0).OnClick(func() { a.confirmSync = true })
+		if compactBtn(c, i18n.T("sync.execute"), nil, components.ButtonPrimary, a.busy || len(plan.Actions) == 0).Clicked() {
+			a.confirmSync = true
+		}
 	})
 	if len(plan.Actions) == 0 {
 		ui.Column(c).Grow(1).FillWidth().Center().Gap(6).Children(func() {
@@ -430,8 +428,8 @@ func (a *workspaceState) syncPreviewView(c *ui.Context) {
 		} else if item.Kind == "create-directory" {
 			fg, bg = pal.successFg, pal.successBg
 		}
-		ui.Row(rc).Height(34).Padding(0, 16).Gap(12).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder.Alpha(0.4)).Children(func() {
-			ui.Row(rc).Width(80).Children(func() {
+		ui.Row(rc).Height(34).Padding(0, 16).Gap(12).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder.Alpha(0.4)).Children(func() {
+			ui.Row(rc).Width(80).AlignItems(ui.Center).Children(func() {
 				statusPill(rc, actionText, fg, bg)
 			})
 			ui.Text(rc, item.Path).Grow(1).Bold().FontSize(12).SingleLine()
@@ -537,8 +535,11 @@ func (a *workspaceState) dirMergePreviewView(c *ui.Context) {
 			conflicts++
 		}
 	}
-	ui.Row(c).Height(38).Padding(0, 16).Gap(10).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		ui.Button(c, i18n.T("sync.back")).Padding(4, 9).Radius(5).FontSize(11).OnClick(func() { a.dirMergeDecisions = nil; a.directoryList = ui.ListState{} })
+	ui.Row(c).Height(38).Padding(0, 16).Gap(10).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		if compactBtn(c, i18n.T("sync.back"), nil, components.ButtonSecondary, false).Clicked() {
+			a.dirMergeDecisions = nil
+			a.directoryList = ui.ListState{}
+		}
 		statusPill(c, i18n.TArgs("dirmerge.items", len(decisions)), pal.baseAccent, pal.baseBg)
 		if conflicts > 0 {
 			statusPill(c, i18n.TArgs("dirmerge.conflicts", conflicts), pal.dangerFg, pal.dangerBg)
@@ -574,7 +575,7 @@ func (a *workspaceState) dirMergePreviewView(c *ui.Context) {
 		if row.Index%2 == 1 {
 			rowBg = pal.subtleSurface.Alpha(0.35)
 		}
-		ui.Row(rc).Height(34).Padding(0, 14).Gap(10).Background(rowBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder.Alpha(0.5)).Children(func() {
+		ui.Row(rc).Height(34).Padding(0, 14).Gap(10).AlignItems(ui.Center).Background(rowBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder.Alpha(0.5)).Children(func() {
 			statusPill(rc, i18n.T("dirmerge.kind."+item.Kind), fg, bg)
 			ui.Text(rc, item.Path).FontSize(12).Grow(1).SingleLine()
 			if reason := dirMergeReason(item.Reason); reason != "" {

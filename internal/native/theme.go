@@ -1,39 +1,49 @@
 package native
 
-import "github.com/egoist/mygo/ui"
+import (
+	"github.com/egoist/mygo/ui"
+	"github.com/oneo-me/onevra/source/components"
+	"github.com/oneo-me/onevra/source/icons/lucide"
+	"gocompare/internal/config"
+)
 
-// 预解析矢量 SVG 图标（极简设计风格）
+// 矢量 SVG 图标（基于 Onevra Lucide 图标集）
 var (
-	iconTextDiff   = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><line x1="13" y1="8" x2="18" y2="8"/><line x1="13" y1="12" x2="18" y2="12"/><line x1="13" y1="16" x2="16" y2="16"/><line x1="5" y1="8" x2="7" y2="8"/><line x1="5" y1="12" x2="7" y2="12"/></svg>`))
-	iconFileDiff   = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>`))
-	iconFolderDiff = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="9" y1="14" x2="15" y2="14"/></svg>`))
-	iconGitMerge   = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>`))
-	iconImageDiff  = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`))
-	iconMediaTag   = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`))
-	iconVersionReg = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>`))
-	iconRemote     = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>`))
-	iconTable      = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg>`))
+	iconTextDiff   = lucide.FileDiff()
+	iconFileDiff   = lucide.FileText()
+	iconFolderDiff = lucide.Folder()
+	iconGitMerge   = lucide.GitMerge()
+	iconImageDiff  = lucide.Image()
+	iconMediaTag   = lucide.Music()
+	iconVersionReg = lucide.ShieldCheck()
+	iconRemote     = lucide.Server()
+	iconTable      = lucide.Table()
 
-	iconCompare      = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>`))
-	iconSwap         = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`))
-	iconChevronUp    = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`))
-	iconChevronDown  = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`))
-	iconChevronLeft  = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`))
-	iconChevronRight = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`))
-	iconSearch       = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`))
-	iconSliders      = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>`))
-	iconFolderOpen   = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`))
-	iconSave         = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`))
-	iconFile         = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>`))
-	iconCheck        = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`))
-	iconAlert        = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`))
-	iconExternal     = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`))
-	iconSync         = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`))
-	iconUndo         = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`))
-	iconRedo         = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`))
-	iconReset        = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>`))
-	iconAnchor       = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>`))
-	iconDrop         = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`))
+	iconCompare      = lucide.Play()
+	iconSwap         = lucide.ArrowLeftRight()
+	iconChevronUp    = lucide.ChevronUp()
+	iconChevronDown  = lucide.ChevronDown()
+	iconChevronLeft  = lucide.ChevronLeft()
+	iconChevronRight = lucide.ChevronRight()
+	iconSearch       = lucide.Search()
+	iconSliders      = lucide.SlidersHorizontal()
+	iconFolderOpen   = lucide.FolderOpen()
+	iconSave         = lucide.Save()
+	iconFile         = lucide.File()
+	iconCheck        = lucide.Check()
+	iconAlert        = lucide.TriangleAlert()
+	iconExternal     = lucide.ExternalLink()
+	iconSync         = lucide.RefreshCw()
+	iconUndo         = lucide.Undo2()
+	iconRedo         = lucide.Redo2()
+	iconReset        = lucide.RotateCcw()
+	iconAnchor       = lucide.Anchor()
+	iconDrop         = lucide.Download()
+	iconInfo         = lucide.Info()
+	iconPalette      = lucide.Palette()
+	iconKeyboard     = lucide.Keyboard()
+	iconGlobe        = lucide.Globe()
+	iconUser         = lucide.UserRound()
 )
 
 var modeIcons = []*ui.SVG{
@@ -45,9 +55,244 @@ var modeIcons = []*ui.SVG{
 	iconVersionReg,
 }
 
-// uiPalette 定义极简高级调色板
+// 预设主题配色标识
+const (
+	paletteClassic  = "classic"
+	paletteEmerald  = "emerald"
+	paletteViolet   = "violet"
+	paletteGraphite = "graphite"
+	paletteAmber    = "amber"
+)
+
+var paletteKeys = []string{
+	paletteClassic,
+	paletteEmerald,
+	paletteViolet,
+	paletteGraphite,
+	paletteAmber,
+}
+
+func paletteIndexOf(name string) int {
+	for i, k := range paletteKeys {
+		if k == name {
+			return i
+		}
+	}
+	return 0
+}
+
+func paletteNameOf(idx int) string {
+	if idx >= 0 && idx < len(paletteKeys) {
+		return paletteKeys[idx]
+	}
+	return paletteClassic
+}
+
+// palettePreviewColor 返回各主题预设在设置面板中的代表色圆点。
+func palettePreviewColor(idx int) ui.Color {
+	switch paletteNameOf(idx) {
+	case paletteEmerald:
+		return ui.Hex("#059669")
+	case paletteViolet:
+		return ui.Hex("#6366f1")
+	case paletteGraphite:
+		return ui.Hex("#52525b")
+	case paletteAmber:
+		return ui.Hex("#d97706")
+	default:
+		return ui.Hex("#2563eb")
+	}
+}
+
+// buildPresetTheme 根据预设名和日间/夜间状态构造完整 ui.Theme。
+func buildPresetTheme(preset string, dark bool) *ui.Theme {
+	black := ui.RGB(0, 0, 0)
+	white := ui.RGB(255, 255, 255)
+	if dark {
+		t := ui.DarkTheme()
+		t.Dark = true
+		t.Radius = 7
+		switch preset {
+		case paletteEmerald:
+			accent := ui.Hex("#10b981")
+			t.Background = ui.Hex("#0c1713")
+			t.Surface = ui.Hex("#13241e")
+			t.SurfaceHover = ui.Hex("#1b322a")
+			t.SurfacePressed = ui.Hex("#234036")
+			t.Border = ui.Hex("#254238")
+			t.Text = ui.Hex("#ecfdf5")
+			t.TextMuted = ui.Hex("#8fb8a8")
+			t.Accent = accent
+			t.AccentHover = accent.Mix(white, 0.14)
+			t.AccentPressed = accent.Mix(black, 0.14)
+			t.AccentText = ui.Hex("#062118")
+		case paletteViolet:
+			accent := ui.Hex("#818cf8")
+			t.Background = ui.Hex("#11101d")
+			t.Surface = ui.Hex("#1a182b")
+			t.SurfaceHover = ui.Hex("#24223a")
+			t.SurfacePressed = ui.Hex("#2e2b49")
+			t.Border = ui.Hex("#322f4f")
+			t.Text = ui.Hex("#f5f3ff")
+			t.TextMuted = ui.Hex("#a5a1c2")
+			t.Accent = accent
+			t.AccentHover = accent.Mix(white, 0.14)
+			t.AccentPressed = accent.Mix(black, 0.14)
+			t.AccentText = ui.Hex("#131126")
+		case paletteGraphite:
+			accent := ui.Hex("#d4d4d8")
+			t.Background = ui.Hex("#121214")
+			t.Surface = ui.Hex("#1c1c1f")
+			t.SurfaceHover = ui.Hex("#27272a")
+			t.SurfacePressed = ui.Hex("#323236")
+			t.Border = ui.Hex("#323238")
+			t.Text = ui.Hex("#f4f4f5")
+			t.TextMuted = ui.Hex("#a1a1aa")
+			t.Accent = accent
+			t.AccentHover = accent.Mix(white, 0.2)
+			t.AccentPressed = accent.Mix(black, 0.15)
+			t.AccentText = ui.Hex("#18181b")
+		case paletteAmber:
+			accent := ui.Hex("#f59e0b")
+			t.Background = ui.Hex("#171410")
+			t.Surface = ui.Hex("#221e18")
+			t.SurfaceHover = ui.Hex("#2e2820")
+			t.SurfacePressed = ui.Hex("#3a3228")
+			t.Border = ui.Hex("#3d352a")
+			t.Text = ui.Hex("#f7f2e8")
+			t.TextMuted = ui.Hex("#b5a895")
+			t.Accent = accent
+			t.AccentHover = accent.Mix(white, 0.14)
+			t.AccentPressed = accent.Mix(black, 0.14)
+			t.AccentText = ui.Hex("#1f1608")
+		default: // classic
+			accent := ui.Hex("#3b82f6")
+			t.Background = ui.Hex("#0f172a")
+			t.Surface = ui.Hex("#1e293b")
+			t.SurfaceHover = ui.Hex("#283548")
+			t.SurfacePressed = ui.Hex("#334155")
+			t.Border = ui.Hex("#334155")
+			t.Text = ui.Hex("#f8fafc")
+			t.TextMuted = ui.Hex("#94a3b8")
+			t.Accent = accent
+			t.AccentHover = accent.Mix(white, 0.14)
+			t.AccentPressed = accent.Mix(black, 0.14)
+			t.AccentText = ui.Hex("#ffffff")
+		}
+		t.Danger = ui.Hex("#f87171")
+		t.Warning = ui.Hex("#fbbf24")
+		t.Success = ui.Hex("#34d399")
+		t.Selection = t.Accent.Alpha(0.26)
+		t.Focus = t.Accent.Alpha(0.75)
+		t.Scrollbar = t.Text.Alpha(0.32)
+		return t
+	}
+
+	t := ui.LightTheme()
+	t.Radius = 7
+	switch preset {
+	case paletteEmerald:
+		accent := ui.Hex("#059669")
+		t.Background = ui.Hex("#f4f9f6")
+		t.Surface = ui.Hex("#ffffff")
+		t.SurfaceHover = ui.Hex("#eaf3ee")
+		t.SurfacePressed = ui.Hex("#dbe9e1")
+		t.Border = ui.Hex("#d5e6dd")
+		t.Text = ui.Hex("#0f291e")
+		t.TextMuted = ui.Hex("#527364")
+		t.Accent = accent
+		t.AccentHover = accent.Mix(black, 0.12)
+		t.AccentPressed = accent.Mix(black, 0.22)
+		t.AccentText = ui.Hex("#ffffff")
+	case paletteViolet:
+		accent := ui.Hex("#6366f1")
+		t.Background = ui.Hex("#f7f6fc")
+		t.Surface = ui.Hex("#ffffff")
+		t.SurfaceHover = ui.Hex("#eeecfa")
+		t.SurfacePressed = ui.Hex("#e2def5")
+		t.Border = ui.Hex("#e0dcf0")
+		t.Text = ui.Hex("#1e1b4b")
+		t.TextMuted = ui.Hex("#636087")
+		t.Accent = accent
+		t.AccentHover = accent.Mix(black, 0.12)
+		t.AccentPressed = accent.Mix(black, 0.22)
+		t.AccentText = ui.Hex("#ffffff")
+	case paletteGraphite:
+		accent := ui.Hex("#27272a")
+		t.Background = ui.Hex("#f8f8f9")
+		t.Surface = ui.Hex("#ffffff")
+		t.SurfaceHover = ui.Hex("#f1f1f3")
+		t.SurfacePressed = ui.Hex("#e4e4e7")
+		t.Border = ui.Hex("#e4e4e7")
+		t.Text = ui.Hex("#18181b")
+		t.TextMuted = ui.Hex("#71717a")
+		t.Accent = accent
+		t.AccentHover = accent.Mix(white, 0.15)
+		t.AccentPressed = accent.Mix(black, 0.2)
+		t.AccentText = ui.Hex("#ffffff")
+	case paletteAmber:
+		accent := ui.Hex("#d97706")
+		t.Background = ui.Hex("#fcfaf5")
+		t.Surface = ui.Hex("#ffffff")
+		t.SurfaceHover = ui.Hex("#f5efe2")
+		t.SurfacePressed = ui.Hex("#ebe2ce")
+		t.Border = ui.Hex("#e6dcc8")
+		t.Text = ui.Hex("#292116")
+		t.TextMuted = ui.Hex("#786b59")
+		t.Accent = accent
+		t.AccentHover = accent.Mix(black, 0.12)
+		t.AccentPressed = accent.Mix(black, 0.22)
+		t.AccentText = ui.Hex("#ffffff")
+	default: // classic
+		accent := ui.Hex("#2563eb")
+		t.Background = ui.Hex("#f8fafc")
+		t.Surface = ui.Hex("#ffffff")
+		t.SurfaceHover = ui.Hex("#f1f5f9")
+		t.SurfacePressed = ui.Hex("#e2e8f0")
+		t.Border = ui.Hex("#e2e8f0")
+		t.Text = ui.Hex("#0f172a")
+		t.TextMuted = ui.Hex("#64748b")
+		t.Accent = accent
+		t.AccentHover = accent.Mix(black, 0.12)
+		t.AccentPressed = accent.Mix(black, 0.22)
+		t.AccentText = ui.Hex("#ffffff")
+	}
+	t.Danger = ui.Hex("#dc2626")
+	t.Warning = ui.Hex("#d97706")
+	t.Success = ui.Hex("#059669")
+	t.Selection = t.Accent.Alpha(0.20)
+	t.Focus = t.Accent.Alpha(0.55)
+	t.Scrollbar = t.Text.Alpha(0.28)
+	return t
+}
+
+// activeTheme 返回当前配置下的主题（供 Shell.Theme 与无 Shell 视图共用）。
+func activeTheme(c *ui.Context) *ui.Theme {
+	preset := config.Current().Palette
+	t := buildPresetTheme(preset, c.Theme().Dark)
+	p := c.Preferences()
+	if p.HighContrast {
+		t.Border = t.Border.Mix(t.Text, 0.45)
+		t.TextMuted = t.TextMuted.Mix(t.Text, 0.4)
+		t.Focus.A = 255
+		t.Scrollbar = t.Scrollbar.Alpha(1.6)
+	}
+	if s := p.TextScale; s > 0 && s != 1 {
+		t.FontSize *= s
+	}
+	return t
+}
+
+// applyOnevraTheme 将当前活动主题应用到当前帧，并返回主题实例。
+func applyOnevraTheme(c *ui.Context) *ui.Theme {
+	t := activeTheme(c)
+	c.SetTheme(t)
+	return t
+}
+
+// uiPalette 定义融合 Onevra 基底与 GoCompare 语义差异色的调色板
 type uiPalette struct {
-	// 侧边栏（与系统环境紧密融合）
+	// 侧边栏（与 Onevra 表面层次融合）
 	sidebarBg         ui.Color
 	sidebarBorder     ui.Color
 	sidebarItemHover  ui.Color
@@ -88,88 +333,91 @@ type uiPalette struct {
 func paletteFor(t *ui.Theme) uiPalette {
 	if t.Dark {
 		return uiPalette{
-			// 暗色模式：采用深灰底与半透明分层，告别单调高饱和死黑
-			sidebarBg:         ui.Hex("#18181b"),
-			sidebarBorder:     ui.RGBA(255, 255, 255, 0.08),
-			sidebarItemHover:  ui.RGBA(255, 255, 255, 0.06),
-			sidebarItemActive: ui.Hex("#27272a"),
-			sidebarText:       ui.Hex("#fafafa"),
-			sidebarMuted:      ui.RGBA(255, 255, 255, 0.48),
-			sidebarBtnBg:      ui.Hex("#202023"),
-			sidebarBtnBorder:  ui.RGBA(255, 255, 255, 0.10),
+			sidebarBg:         t.Surface,
+			sidebarBorder:     t.Border,
+			sidebarItemHover:  t.SurfaceHover,
+			sidebarItemActive: t.Accent.Alpha(0.15),
+			sidebarText:       t.Text,
+			sidebarMuted:      t.TextMuted,
+			sidebarBtnBg:      t.SurfaceHover,
+			sidebarBtnBorder:  t.Border,
 
-			appBg:         ui.Hex("#121214"),
-			headerBg:      ui.Hex("#18181b"),
-			subtleSurface: ui.Hex("#1c1c1f"),
-			cardBg:        ui.Hex("#202024"),
-			cardBorder:    ui.RGBA(255, 255, 255, 0.09),
+			appBg:         t.Background,
+			headerBg:      t.Surface,
+			subtleSurface: t.Background.Mix(t.Surface, 0.55),
+			cardBg:        t.Surface,
+			cardBorder:    t.Border,
 
-			leftAccent:  ui.Hex("#5ecc71"),
-			leftBg:      ui.Hex("#1f3325"),
+			leftAccent:  ui.Hex("#4ade80"),
+			leftBg:      ui.Hex("#162c20"),
 			rightAccent: ui.Hex("#c084fc"),
-			rightBg:     ui.Hex("#2d1f3d"),
-			baseAccent:  ui.Hex("#60a5fa"),
-			baseBg:      ui.Hex("#172554"),
+			rightBg:     ui.Hex("#2b1c3b"),
+			baseAccent:  t.Accent,
+			baseBg:      t.Accent.Alpha(0.18),
 
-			sameFg:    ui.RGBA(255, 255, 255, 0.50),
-			sameBg:    ui.RGBA(255, 255, 255, 0.06),
-			diffFg:    ui.Hex("#fbbf24"),
-			diffBg:    ui.Hex("#3d2c12"),
-			dangerFg:  ui.Hex("#ff6762"),
-			dangerBg:  ui.Hex("#3e1f23"),
-			successFg: ui.Hex("#5ecc71"),
-			successBg: ui.Hex("#173121"),
+			sameFg:    t.TextMuted,
+			sameBg:    t.Text.Alpha(0.06),
+			diffFg:    t.Warning,
+			diffBg:    ui.Hex("#3b2a10"),
+			dangerFg:  t.Danger,
+			dangerBg:  ui.Hex("#3b1c22"),
+			successFg: t.Success,
+			successBg: ui.Hex("#152e20"),
 
-			pillBg:     ui.RGBA(255, 255, 255, 0.06),
-			pillBorder: ui.RGBA(255, 255, 255, 0.10),
+			pillBg:     t.Text.Alpha(0.06),
+			pillBorder: t.Border,
 		}
 	}
 	return uiPalette{
-		// 亮色模式：采用温润暖白 (#f8f8f6) 与原生灰阶 (#f0f0ee)
-		sidebarBg:         ui.Hex("#f0f0ee"),
-		sidebarBorder:     ui.RGBA(0, 0, 0, 0.07),
-		sidebarItemHover:  ui.RGBA(0, 0, 0, 0.04),
-		sidebarItemActive: ui.Hex("#ffffff"),
-		sidebarText:       ui.Hex("#18181b"),
-		sidebarMuted:      ui.RGBA(0, 0, 0, 0.50),
-		sidebarBtnBg:      ui.Hex("#ffffff"),
-		sidebarBtnBorder:  ui.RGBA(0, 0, 0, 0.09),
+		sidebarBg:         t.Background.Mix(t.Text, 0.025),
+		sidebarBorder:     t.Border,
+		sidebarItemHover:  t.SurfaceHover,
+		sidebarItemActive: t.Accent.Alpha(0.10),
+		sidebarText:       t.Text,
+		sidebarMuted:      t.TextMuted,
+		sidebarBtnBg:      t.Surface,
+		sidebarBtnBorder:  t.Border,
 
-		appBg:         ui.Hex("#f8f8f6"),
-		headerBg:      ui.Hex("#ffffff"),
-		subtleSurface: ui.Hex("#f4f4f2"),
-		cardBg:        ui.Hex("#ffffff"),
-		cardBorder:    ui.RGBA(0, 0, 0, 0.08),
+		appBg:         t.Background,
+		headerBg:      t.Surface,
+		subtleSurface: t.Background.Mix(t.Text, 0.02),
+		cardBg:        t.Surface,
+		cardBorder:    t.Border,
 
-		leftAccent:  ui.Hex("#0dbe4e"),
-		leftBg:      ui.Hex("#e6f9ed"),
-		rightAccent: ui.Hex("#8b5cf6"),
-		rightBg:     ui.Hex("#f5f3ff"),
-		baseAccent:  ui.Hex("#2563eb"),
-		baseBg:      ui.Hex("#eff6ff"),
+		leftAccent:  ui.Hex("#15803d"),
+		leftBg:      ui.Hex("#dcfce7"),
+		rightAccent: ui.Hex("#7c3aed"),
+		rightBg:     ui.Hex("#f3e8ff"),
+		baseAccent:  t.Accent,
+		baseBg:      t.Accent.Alpha(0.10),
 
-		sameFg:    ui.RGBA(0, 0, 0, 0.55),
-		sameBg:    ui.RGBA(0, 0, 0, 0.05),
-		diffFg:    ui.Hex("#b45309"),
+		sameFg:    t.TextMuted,
+		sameBg:    t.Text.Alpha(0.05),
+		diffFg:    t.Warning,
 		diffBg:    ui.Hex("#fef3c7"),
-		dangerFg:  ui.Hex("#e11d48"),
+		dangerFg:  t.Danger,
 		dangerBg:  ui.Hex("#ffe4e6"),
-		successFg: ui.Hex("#15803d"),
+		successFg: t.Success,
 		successBg: ui.Hex("#dcfce7"),
 
-		pillBg:     ui.RGBA(0, 0, 0, 0.04),
-		pillBorder: ui.RGBA(0, 0, 0, 0.07),
+		pillBg:     t.Text.Alpha(0.04),
+		pillBorder: t.Border,
 	}
 }
 
-// statusPill 极简圆角药丸徽章
+// statusPill 使用 Onevra Badge 组件渲染极简圆角药丸徽章（覆盖默认 AlignSelf(Start) 为 Center，避免在水平行中上浮）
 func statusPill(c *ui.Context, text string, fg, bg ui.Color) {
-	ui.Row(c).Shrink(0).Padding(2, 7).Radius(12).Background(bg).Border(1, fg.Alpha(0.20)).Children(func() {
-		ui.Text(c, text).FontSize(11).Bold().TextColor(fg).SingleLine()
-	})
+	components.Badge(c, text).
+		AlignSelf(ui.Center).
+		Shrink(0).
+		FontSize(11).
+		Padding(2, 7).
+		Background(bg).
+		TextColor(fg).
+		Border(1, fg.Alpha(0.22))
 }
 
-// sideBadge 左右侧专属高亮标记胶囊
+// sideBadge 左右侧专属高亮标记胶囊（覆盖默认 AlignSelf(Start) 为 Center，保证在行内垂直居中）
 func sideBadge(c *ui.Context, side int, pal uiPalette) {
 	label := "LEFT"
 	fg, bg := pal.leftAccent, pal.leftBg
@@ -180,7 +428,113 @@ func sideBadge(c *ui.Context, side int, pal uiPalette) {
 		label = "BASE"
 		fg, bg = pal.baseAccent, pal.baseBg
 	}
-	ui.Row(c).Shrink(0).Padding(1, 5).Radius(4).Background(bg).Border(1, fg.Alpha(0.25)).Children(func() {
-		ui.Text(c, label).FontSize(9).Bold().TextColor(fg).SingleLine()
+	components.Badge(c, label).
+		AlignSelf(ui.Center).
+		Shrink(0).
+		FontSize(9).
+		Padding(2, 5).
+		Radius(4).
+		Background(bg).
+		TextColor(fg).
+		Border(1, fg.Alpha(0.25))
+}
+
+// toolbarBtn 使用 Onevra Button 组件创建紧凑型工具栏按钮（适配 900px+ 视口）。
+func toolbarBtn(c *ui.Context, label string, icon *ui.SVG, variant components.ButtonVariant, disabled bool) ui.Element {
+	btn := components.Button(c, "", variant).
+		Label(label).
+		Padding(4, 9).
+		Gap(4).
+		Radius(6).
+		Disabled(disabled)
+	if disabled {
+		btn.Opacity(0.45)
+	}
+	btn.Children(func() {
+		if icon != nil {
+			components.Icon(c, icon).Size(11, 11)
+		}
+		txt := components.Text(c, label).FontSize(11).SingleLine()
+		if variant == components.ButtonPrimary {
+			txt.Bold()
+		}
 	})
+	return btn
+}
+
+// compactBtn 使用 Onevra Button 组件创建面板头部/子栏紧凑按钮。
+func compactBtn(c *ui.Context, label string, icon *ui.SVG, variant components.ButtonVariant, disabled bool) ui.Element {
+	btn := components.Button(c, "", variant).
+		Label(label).
+		Shrink(0).
+		Padding(3, 8).
+		Gap(3).
+		Radius(5).
+		Disabled(disabled)
+	if disabled {
+		btn.Opacity(0.45)
+	}
+	btn.Children(func() {
+		if icon != nil {
+			components.Icon(c, icon).Size(11, 11)
+		}
+		txt := components.Text(c, label).FontSize(11).SingleLine()
+		if variant == components.ButtonPrimary {
+			txt.Bold()
+		}
+	})
+	return btn
+}
+
+// dangerBtn 使用 Onevra Button 组件创建危险/取消语义按钮。
+func dangerBtn(c *ui.Context, label string, icon *ui.SVG, pal uiPalette, disabled bool) ui.Element {
+	btn := components.Button(c, "", components.ButtonSecondary).
+		Label(label).
+		Shrink(0).
+		Padding(4, 8).
+		Gap(4).
+		Radius(6).
+		Background(pal.dangerBg).
+		Border(1, pal.dangerFg.Alpha(0.28)).
+		TextColor(pal.dangerFg).
+		Disabled(disabled)
+	if disabled {
+		btn.Opacity(0.45)
+	}
+	btn.Children(func() {
+		if icon != nil {
+			components.Icon(c, icon).Size(11, 11).TextColor(pal.dangerFg)
+		}
+		components.Text(c, label).FontSize(11).Bold().TextColor(pal.dangerFg).SingleLine()
+	})
+	return btn
+}
+
+// toggleBtn 使用 Onevra Button 组件创建支持激活高亮状态的紧凑切换按钮。
+func toggleBtn(c *ui.Context, label string, active, disabled bool) ui.Element {
+	pal := paletteFor(c.Theme())
+	btn := compactBtn(c, label, nil, components.ButtonSecondary, disabled)
+	if active && !disabled {
+		btn.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35)).TextColor(pal.baseAccent)
+	}
+	return btn
+}
+
+// simpleSelect 使用 Onevra Select 组件渲染紧凑下拉选择框，返回其 Trigger 元素（可调用 .Changed() 或 .Grow()）。
+func simpleSelect(c *ui.Context, selected *string, options []string, disabled bool) ui.Element {
+	sel := components.Select(c, selected)
+	sel.Trigger.Disabled(disabled).Padding(4, 22, 4, 8)
+	sel.Trigger.Children(func() {
+		components.Text(c, *selected).FontSize(11).SingleLine()
+	})
+	sel.Popup(func(panel ui.Element) {
+		for _, opt := range options {
+			opt := opt
+			item := sel.Item(opt)
+			item.Children(func() {
+				components.Text(c, opt).FontSize(11).SingleLine()
+			})
+		}
+	})
+	return sel.Trigger
 }

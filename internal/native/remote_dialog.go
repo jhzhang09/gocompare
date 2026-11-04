@@ -11,6 +11,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/oneo-me/onevra/source/components"
 	"gocompare/internal/config"
 	"gocompare/internal/i18n"
 	"gocompare/internal/remote"
@@ -474,22 +475,25 @@ func (a *workspaceState) remoteDialogView(c *ui.Context, pal uiPalette) {
 	if d == nil {
 		return
 	}
-	ui.Modal(c, &d.opened, func() {
-		card := ui.Column(c).Width(620).Padding(20, 22).Gap(12).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.22))
+	titles := []string{"remote.dialogTitleLeft", "remote.dialogTitleRight"}
+	if d.pickDir {
+		titles = []string{"remote.dirTitleLeft", "remote.dirTitleRight"}
+	}
+	components.Dialog(c, &d.opened, components.DialogOptions{Label: i18n.T(titles[d.side])}, func(panel ui.Element) {
+		panel.Width(620)
+		card := ui.Column(c).FillWidth().Gap(12)
 		if d.browse {
 			// 浏览页固定高度，目录切换时对话框不跳动；表单页按内容自适应。
-			card.Height(560)
+			card.Height(520)
 		}
 		card.Children(func() {
 			ui.Row(c).FillWidth().Gap(8).Children(func() {
 				ui.Icon(c, iconFolderOpen).Size(16, 16).TextColor(pal.baseAccent)
-				titles := []string{"remote.dialogTitleLeft", "remote.dialogTitleRight"}
-				if d.pickDir {
-					titles = []string{"remote.dirTitleLeft", "remote.dirTitleRight"}
-				}
 				ui.Text(c, i18n.T(titles[d.side])).FontSize(15).Bold()
 				ui.Box(c).Grow(1)
-				ui.Button(c, "✕").Label(i18n.T("dialog.cancel")).Padding(2, 6).Radius(4).FontSize(11).OnClick(a.closeRemoteDialog)
+				if compactBtn(c, "✕", nil, components.ButtonSecondary, false).Label(i18n.T("dialog.cancel")).Clicked() {
+					a.closeRemoteDialog()
+				}
 			})
 			if d.browse {
 				a.remoteBrowseView(c, pal, d)
@@ -513,13 +517,16 @@ func (a *workspaceState) remoteFormView(c *ui.Context, pal uiPalette, d *remoteD
 				for _, b := range d.recents {
 					b := b
 					label := b.Scheme + "  " + bookmarkTitle(b)
-					ui.Button(c, label).Padding(3, 8).Radius(5).FontSize(11).OnClick(func() { d.fillFromBookmark(b); a.remoteConnect() })
+					if compactBtn(c, label, nil, components.ButtonSecondary, false).Clicked() {
+						d.fillFromBookmark(b)
+						a.remoteConnect()
+					}
 				}
 			})
 			ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
 		}
 		formRow(c, i18n.T("remote.protocol"), func() {
-			sel := ui.Select(c, &d.protocol, protocolLabels()).Grow(1)
+			sel := simpleSelect(c, &d.protocol, protocolLabels(), false).Grow(1)
 			if sel.Changed() {
 				d.port, d.err = "", ""
 			}
@@ -534,7 +541,7 @@ func (a *workspaceState) remoteFormView(c *ui.Context, pal uiPalette, d *remoteD
 				if d.sshChoice == "" {
 					d.sshChoice = options[0]
 				}
-				if ui.Select(c, &d.sshChoice, options).Grow(1).Changed() {
+				if simpleSelect(c, &d.sshChoice, options, false).Grow(1).Changed() {
 					for _, h := range d.sshHosts {
 						if h.Alias == d.sshChoice {
 							d.host, d.port, d.user, d.identity = h.HostName, h.Port, h.User, h.IdentityFile
@@ -544,19 +551,44 @@ func (a *workspaceState) remoteFormView(c *ui.Context, pal uiPalette, d *remoteD
 			})
 		}
 		formRow(c, i18n.T("remote.host"), func() {
-			ui.TextInput(c.Key("remote-host"), &d.host).Grow(1).MinWidth(0).Placeholder(i18n.T("remote.hostPlaceholder")).Label(i18n.T("remote.host")).OnSubmit(a.remoteConnect)
+			hostBox := components.TextBox(c.Key("remote-host"), &d.host, components.TextBoxOptions{}).
+				Placeholder(i18n.T("remote.hostPlaceholder")).
+				Grow(1).MinWidth(0).Label(i18n.T("remote.host"))
+			if hostBox.Submitted() {
+				a.remoteConnect()
+			}
 			ui.Text(c, i18n.T("remote.port")).FontSize(12).TextColor(t.TextMuted)
-			ui.TextInput(c.Key("remote-port"), &d.port).Width(70).Placeholder(remote.DefaultPort(scheme)).Label(i18n.T("remote.port")).OnSubmit(a.remoteConnect)
+			portBox := components.TextBox(c.Key("remote-port"), &d.port, components.TextBoxOptions{}).
+				Placeholder(remote.DefaultPort(scheme)).
+				Width(76).Label(i18n.T("remote.port"))
+			if portBox.Submitted() {
+				a.remoteConnect()
+			}
 		})
 		formRow(c, i18n.T("remote.user"), func() {
-			ui.TextInput(c.Key("remote-user"), &d.user).Grow(1).MinWidth(0).Placeholder(i18n.T("remote.userPlaceholder")).Label(i18n.T("remote.user")).OnSubmit(a.remoteConnect)
+			userBox := components.TextBox(c.Key("remote-user"), &d.user, components.TextBoxOptions{}).
+				Placeholder(i18n.T("remote.userPlaceholder")).
+				Grow(1).MinWidth(0).Label(i18n.T("remote.user"))
+			if userBox.Submitted() {
+				a.remoteConnect()
+			}
 		})
 		if scheme == "smb" {
 			formRow(c, i18n.T("remote.domain"), func() {
-				ui.TextInput(c.Key("remote-domain"), &d.domain).Grow(1).MinWidth(0).Placeholder(i18n.T("remote.domainPlaceholder")).Label(i18n.T("remote.domain")).OnSubmit(a.remoteConnect)
+				domBox := components.TextBox(c.Key("remote-domain"), &d.domain, components.TextBoxOptions{}).
+					Placeholder(i18n.T("remote.domainPlaceholder")).
+					Grow(1).MinWidth(0).Label(i18n.T("remote.domain"))
+				if domBox.Submitted() {
+					a.remoteConnect()
+				}
 			})
 			formRow(c, i18n.T("remote.share"), func() {
-				ui.TextInput(c.Key("remote-share"), &d.share).Grow(1).MinWidth(0).Placeholder(i18n.T("remote.sharePlaceholder")).Label(i18n.T("remote.share")).OnSubmit(a.remoteConnect)
+				shareBox := components.TextBox(c.Key("remote-share"), &d.share, components.TextBoxOptions{}).
+					Placeholder(i18n.T("remote.sharePlaceholder")).
+					Grow(1).MinWidth(0).Label(i18n.T("remote.share"))
+				if shareBox.Submitted() {
+					a.remoteConnect()
+				}
 			})
 		}
 		formRow(c, i18n.T("remote.passwordPlaceholder"), func() {
@@ -564,20 +596,32 @@ func (a *workspaceState) remoteFormView(c *ui.Context, pal uiPalette, d *remoteD
 			if scheme == "sftp" {
 				placeholder = i18n.T("remote.sftpPasswordPlaceholder")
 			}
-			ui.TextInput(c.Key("remote-pass"), &d.password).Password().Grow(1).MinWidth(0).Placeholder(placeholder).Label(i18n.T("remote.passwordPlaceholder")).OnSubmit(a.remoteConnect)
+			passBox := components.TextBox(c.Key("remote-pass"), &d.password, components.TextBoxOptions{}).
+				Password().Placeholder(placeholder).
+				Grow(1).MinWidth(0).Label(i18n.T("remote.passwordPlaceholder"))
+			if passBox.Submitted() {
+				a.remoteConnect()
+			}
 		})
 		if scheme == "sftp" {
 			formRow(c, i18n.T("remote.identity"), func() {
-				ui.TextInput(c.Key("remote-identity"), &d.identity).Grow(1).MinWidth(0).Placeholder(i18n.T("remote.identityPlaceholder")).Label(i18n.T("remote.identity"))
-				ui.Button(c, i18n.T("action.browse")).Padding(3, 8).Radius(5).FontSize(11).OnClick(func() {
+				components.TextBox(c.Key("remote-identity"), &d.identity, components.TextBoxOptions{}).
+					Placeholder(i18n.T("remote.identityPlaceholder")).
+					Grow(1).MinWidth(0).Label(i18n.T("remote.identity"))
+				if compactBtn(c, i18n.T("action.browse"), nil, components.ButtonSecondary, false).Clicked() {
 					paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: i18n.T("remote.identity")})
 					if err == nil && len(paths) > 0 {
 						d.identity = paths[0]
 					}
-				})
+				}
 			})
 			formRow(c, i18n.T("remote.passphrase"), func() {
-				ui.TextInput(c.Key("remote-passphrase"), &d.passphrase).Password().Grow(1).MinWidth(0).Placeholder(i18n.T("remote.passphrasePlaceholder")).Label(i18n.T("remote.passphrase")).OnSubmit(a.remoteConnect)
+				ppBox := components.TextBox(c.Key("remote-passphrase"), &d.passphrase, components.TextBoxOptions{}).
+					Password().Placeholder(i18n.T("remote.passphrasePlaceholder")).
+					Grow(1).MinWidth(0).Label(i18n.T("remote.passphrase"))
+				if ppBox.Submitted() {
+					a.remoteConnect()
+				}
 			})
 			ui.Text(c, i18n.T("remote.sftpHint")).FontSize(11).TextColor(t.TextMuted)
 		} else {
@@ -587,12 +631,16 @@ func (a *workspaceState) remoteFormView(c *ui.Context, pal uiPalette, d *remoteD
 			ui.Text(c, d.err).FontSize(12).TextColor(pal.dangerFg).Selectable()
 		}
 		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
-			ui.Button(c, i18n.T("dialog.cancel")).Padding(5, 14).Radius(6).FontSize(12).OnClick(a.closeRemoteDialog)
+			if components.Button(c, i18n.T("dialog.cancel"), components.ButtonSecondary).Clicked() {
+				a.closeRemoteDialog()
+			}
 			label := i18n.T("remote.connect")
 			if d.loading {
 				label = i18n.T("remote.connecting")
 			}
-			ui.PrimaryButton(c, label).Padding(5, 14).Radius(6).FontSize(12).Disabled(d.loading || strings.TrimSpace(d.host) == "").OnClick(a.remoteConnect)
+			if components.Button(c, label, components.ButtonPrimary).Disabled(d.loading || strings.TrimSpace(d.host) == "").Clicked() {
+				a.remoteConnect()
+			}
 		})
 	})
 }
@@ -623,28 +671,37 @@ func (a *workspaceState) remoteBrowseView(c *ui.Context, pal uiPalette, d *remot
 	t := c.Theme()
 	ui.Row(c).FillWidth().Gap(8).Children(func() {
 		ui.Text(c, d.ep.Scheme+"://"+bookmarkTitle(config.RemoteBookmark{Host: d.ep.Host, User: d.ep.User, Port: d.ep.Port})).FontSize(12).Bold().Grow(1).MinWidth(0).SingleLine()
-		ui.Button(c, i18n.T("remote.changeConnection")).Padding(3, 8).Radius(5).FontSize(11).OnClick(func() {
+		if compactBtn(c, i18n.T("remote.changeConnection"), nil, components.ButtonSecondary, false).Clicked() {
 			if d.cancel != nil {
 				d.cancel()
 			}
 			d.browse, d.loading, d.err = false, false, ""
-		})
+		}
 	})
 	if d.noList {
 		ui.Column(c).Grow(1).FillWidth().Gap(8).Children(func() {
 			ui.Text(c, i18n.T("remote.noList")).FontSize(12).TextColor(t.TextMuted)
-			ui.TextInput(c.Key("remote-manual"), &d.manual).FillWidth().Placeholder(i18n.T("remote.manualPlaceholder")).Label(i18n.T("remote.manualPlaceholder")).OnSubmit(a.remoteChoose)
+			manBox := components.TextBox(c.Key("remote-manual"), &d.manual, components.TextBoxOptions{}).
+				Placeholder(i18n.T("remote.manualPlaceholder")).
+				FillWidth().Label(i18n.T("remote.manualPlaceholder"))
+			if manBox.Submitted() {
+				a.remoteChoose()
+			}
 		})
 	} else {
 		items, jumps := d.crumbs()
 		ui.Row(c).FillWidth().Gap(6).Children(func() {
-			ui.Button(c, "↑").Label(i18n.T("remote.up")).Tooltip(i18n.T("remote.up")).Padding(2, 8).Radius(5).FontSize(12).Disabled(d.loading || len(items) <= 1).OnClick(a.remoteUp)
+			if compactBtn(c, "↑", nil, components.ButtonSecondary, d.loading || len(items) <= 1).Label(i18n.T("remote.up")).Tooltip(i18n.T("remote.up")).Clicked() {
+				a.remoteUp()
+			}
 			chosen := len(items) - 1
-			if ui.Breadcrumbs(c, items, &chosen).Label(i18n.T("remote.location")).Grow(1).MinWidth(0).Changed() && !d.loading {
+			bc := components.Breadcrumbs(c, items, &chosen)
+			bc.Element.Label(i18n.T("remote.location")).Grow(1).MinWidth(0)
+			if bc.Changed() && !d.loading {
 				jumps[chosen](a)
 			}
 			if d.loading {
-				ui.Spinner(c).Size(14, 14)
+				components.Spinner(c, components.SpinnerRing).Size(14, 14)
 			}
 		})
 		entries := d.entries
@@ -703,11 +760,15 @@ func (a *workspaceState) remoteBrowseView(c *ui.Context, pal uiPalette, d *remot
 			shown = i18n.T("remote.selectHint")
 		}
 		ui.Text(c, shown).FontSize(11).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(shown)
-		ui.Button(c, i18n.T("dialog.cancel")).Padding(5, 14).Radius(6).FontSize(12).OnClick(a.closeRemoteDialog)
+		if components.Button(c, i18n.T("dialog.cancel"), components.ButtonSecondary).Clicked() {
+			a.closeRemoteDialog()
+		}
 		choose := i18n.T("remote.choose")
 		if d.pickDir {
 			choose = i18n.T("remote.chooseDir")
 		}
-		ui.PrimaryButton(c, choose).Padding(5, 14).Radius(6).FontSize(12).Disabled(!d.canChoose()).OnClick(a.remoteChoose)
+		if components.Button(c, choose, components.ButtonPrimary).Disabled(!d.canChoose()).Clicked() {
+			a.remoteChoose()
+		}
 	})
 }

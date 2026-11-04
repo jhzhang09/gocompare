@@ -4,9 +4,9 @@
 
 # GoCompare
 
-**A native, cross-platform file and folder comparison tool written in Go.**
+**A fast, native, cross-platform file and folder comparison workbench written in Go.**
 
-Compare text, files, folders, tables and images — locally or on SFTP, SMB, FTP and WebDAV servers — merge three-way, and sync directories safely, in a fast native window or from the command line.
+Compare text, source files, directories, spreadsheets, images, audio tags, executables, and registry exports — locally or directly over SFTP, SMB, FTP/FTPS, and WebDAV — merge three-way conflicts, and synchronize folders safely from a native desktop window or the command line.
 
 [![Checks](https://github.com/jhzhang09/gocompare/actions/workflows/check.yml/badge.svg)](https://github.com/jhzhang09/gocompare/actions/workflows/check.yml)
 [![Release](https://img.shields.io/github/v/release/jhzhang09/gocompare?include_prereleases&sort=semver)](https://github.com/jhzhang09/gocompare/releases)
@@ -22,114 +22,139 @@ Compare text, files, folders, tables and images — locally or on SFTP, SMB, FTP
 
 ## Why GoCompare
 
-- **Native, not a web view.** Built with [MyGo](https://github.com/egoist/mygo): pure Go, no Electron, WebView, Node.js or cgo. One small binary per platform, cross-compiled from any machine.
-- **Safe by default.** Saves never overwrite a file that changed on disk, folder sync always previews first, backs up before overwriting or deleting, and rolls back on failure.
-- **Local or remote, same workflow.** Compare a file or a whole folder on your machine against one on an SFTP, SMB, FTP or WebDAV server — pick it in a dialog, edit, and save back safely.
-- **GUI and CLI share one core.** Everything you can do in the window you can script, with stable exit codes for CI and Git.
+- **True native desktop UI, zero web view.** Built with [MyGo](https://github.com/egoist/mygo) and [Onevra](https://github.com/oneo-me/onevra): pure Go, no Electron, no WebView, no Node.js, and no runtime dependencies. Launches instantly as a single lightweight binary per platform.
+- **Refined workbench experience.** Powered by Onevra's responsive `sidebar.Shell` with macOS traffic-light titlebar integration, crisp Lucide vector icons, 5 curated color themes (**Classic Blue**, **Emerald**, **Violet**, **Graphite**, **Warm Amber**) across Light/Dark/System modes, and full keyboard shortcut navigation.
+- **Safe by default.** File saves are atomic and conflict-aware, refusing to overwrite external changes on disk or remote servers. Folder synchronization follows a strict **Plan → Confirm → Execute** pipeline with automatic backups, journals, rollback on failure, and one-click undo.
+- **Local and remote in one workflow.** Browse and compare files or entire directory trees over **SFTP, SMB, FTP/FTPS, and WebDAV** right inside the app, with SSH config import, host-key fingerprint verification, and memory-only credential handling.
+- **One core for GUI and CLI.** Every comparison, merge, and sync engine powers both the desktop workbench (`gocompare`) and the scriptable command-line tool (`gocompare-cli`) with deterministic exit codes for Git and CI pipelines.
 
-> [!NOTE]
-> GoCompare is in early development (pre-1.0). Core comparison, merge and sync paths are well tested, but some features are still partial — see the [feature matrix](docs/feature-parity.md). Feedback and bug reports are very welcome.
-
-## Features
-
-| Mode | What it does |
-|---|---|
-| **Text compare** | Paste or type into two panes and see differences instantly, with word-level highlights, a center diff gutter for click-to-focus and inline `←` / `→` hunk merging, visual applied-change markers (`← ✓` / `✓ →`), and on-demand per-side & global undo/redo/restore. Swap, copy, clear and save either side. |
-| **File compare** | Side-by-side diff with **both sides editable**, a center diff gutter with aligned hunk bands, inline `←` / `→` merge buttons and `← ✓` / `✓ →` applied badges, line & gutter highlights for applied changes, per-pane & cross-side undo/redo and one-click restore, find & replace, manual alignment anchors, ignore whitespace / blank lines. Previous / Next Difference and hunk apply preserve focus and advance smoothly ("2 / 7"). Detects UTF-8, UTF-16 (BOM) and GBK and preserves encoding, BOM and line endings on save. Word (.docx) and PDF files open as read-only extracted text. |
-| **Folder compare** | Recursive tree with collapse, filter and "only differences". Optionally compares permissions and modification times and follows symlinks safely. Either side can be a remote folder. |
-| **Remote sources (all modes)** | Click **Remote…** next to a path in any comparison mode (files, folders, merges, tables, images, media, versions) to connect to **SFTP, SMB, FTP/FTPS or WebDAV**, then browse and pick a file or folder — no URLs to type. SFTP hosts can be imported from `~/.ssh/config` and sign in with a password, a private key (with passphrase), ssh-agent or your default keys; unknown host keys are shown for you to verify. Recent connections are remembered without passwords. S3, Dropbox, OneDrive and SVN work through URLs. |
-| **Drag & drop auto-fill** | Drag files or folders directly onto the path capsules or into the empty view to auto-fill. Dropping two items at once populates both sides and begins comparison immediately. Dropping a folder in File Compare automatically switches to Directory Compare. |
-| **Folder sync** | Update left/right/both or mirror. Always previews a plan; executes with backups, a journal, automatic rollback on failure and one-click undo. |
-| **Table compare** | CSV, TSV, Excel (.xlsx) and HTML tables, cell by cell. The CLI adds key columns, column mapping and numeric tolerance. |
-| **Three-way merge** | Base / left / right aligned columns, take left / right / both / base per conflict, edit the output freely. Also works as a Git `mergetool`. |
-| **Picture compare** | PNG, JPEG, GIF: side by side, overlay, pixel difference, a 0–255 tolerance map that marks real changes in red, background color replacement and per-side flipping. |
-| **Media tags** | Compares ID3v2.3 / v2.4 title, artist and album without decoding audio. |
-| **Version & registry** | Compares PE `FileVersion` resources and Windows `.reg` exports (UTF-16 or UTF-8) without touching the live registry. |
-| **Sessions & i18n** | Save and reopen comparison sessions. UI in English, 简体中文 and 繁體中文; light, dark or system theme. Checks GitHub for new releases from Settings. |
+## Screenshots
 
 <table>
   <tr>
-    <td><img src="docs/images/folder-compare.png" alt="Folder compare"></td>
-    <td><img src="docs/images/picture-compare.png" alt="Picture compare with tolerance map"></td>
+    <td width="50%"><img src="docs/images/folder-compare.png" alt="Folder compare"></td>
+    <td width="50%"><img src="docs/images/table-compare.png" alt="Table compare in Emerald theme"></td>
   </tr>
   <tr>
-    <td align="center">Folder compare</td>
-    <td align="center">Picture compare (tolerance map)</td>
+    <td align="center"><b>Folder Compare</b> — Recursive tree, attribute filter & safe sync preview</td>
+    <td align="center"><b>Table Compare</b> — Multi-sheet Excel/CSV diff with cell cards (Emerald theme)</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/picture-compare.png" alt="Picture compare with tolerance map"></td>
+    <td width="50%"><img src="docs/images/themes-settings.png" alt="Preferences, Color Themes & Shortcuts"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Picture Compare</b> — Interactive split slider & pixel tolerance map (Dark mode)</td>
+    <td align="center"><b>Preferences & Themes</b> — 5 color schemes, shortcuts & updater (Violet theme)</td>
   </tr>
 </table>
 
-## Remote files and drag-and-drop
+## Features
 
-All comparison modes (**File compare**, **Folder compare**, **Text merge**, **Table compare**, **Picture compare**, **Media tags**, and **Version compare**) can connect directly to servers or load dropped files. Either side — or both — can be remote.
+| Mode | Capabilities |
+|---|---|
+| **Text Compare** | Instant scratchpad diff with word-level inline highlights, a center diff gutter for click-to-focus and inline `←` / `→` hunk merging, visual applied-change badges (`← ✓` / `✓ →`), and on-demand per-side & cross-side undo/redo/restore. Swap, copy, clear, or save either side. |
+| **File Compare** | Side-by-side editor with **both sides editable**, aligned center diff bands, inline `←` / `→` hunk apply and `← ✓` / `✓ →` applied markers, line & gutter highlights for applied edits, per-pane & global undo/redo and one-click baseline restore, find & replace, manual alignment anchors, and whitespace/blank-line filters. Automatically detects UTF-8, UTF-16 (BOM), and GBK while preserving encoding, BOM, and line endings on save. Extracts read-only text from `.docx` and `.pdf` files. |
+| **Folder Compare** | Recursive tree comparison with collapsible folders, glob filtering, and "Only differences" toggle. Optionally compares Unix permissions and modification timestamps, and safely records or follows symlinks. Double-click any file row to inspect its content diff. |
+| **Folder Sync & Merge** | Update left, update right, update both, or mirror. Always generates a read-only preview plan first; executes with pre-change backups, a step journal, automatic rollback on error, and one-click undo. Two-way and three-way folder merge resolves file-level conflicts. |
+| **Three-Way Text Merge** | Base / Left / Right aligned columns with per-conflict resolution (`Take Left`, `Take Right`, `Take Both`, `Take Base`), live output editor, independent merge window launcher, and full Git `mergetool` integration. |
+| **Table Compare** | Cell-by-cell comparison for CSV, TSV, Excel (`.xlsx`), and HTML tables. Multi-sheet workbooks align sheets by name with interactive sheet tabs, Excel `A1`/`B2` coordinates, side-by-side cell diff cards, and 50-item pagination. CLI adds composite key columns, column mapping, and numeric tolerance. |
+| **Picture Compare** | Pixel-level comparison for PNG, JPEG, and GIF: **Side by Side**, interactive **Slider** split curtain (`ImageCompare`), **Overlay**, **Difference**, **0–255 Tolerance** map (highlighting out-of-tolerance pixels in red), **Replace Color**, zoom presets (`Fit`, `1:1`, `200%`, `Pixel Grid`), and independent horizontal/vertical flipping per side. |
+| **Media Tags** | Inspects and compares audio metadata across MP3 (`ID3v2.3` / `ID3v2.4` / `ID3v1`), FLAC (`Vorbis Comment` & cover art), M4A/MP4 (`ilst`), WAV (`LIST/INFO` & ID3), and OGG/Opus without decoding audio streams. |
+| **Version & Registry** | Compares Windows PE executables/installers (`RT_VERSION`, architecture, `ProductName`, `CompanyName`, SHA-256 fallback) and Windows `.reg` exports (`Windows Registry Editor Version 5.00` & `REGEDIT4` in UTF-16/UTF-8) with `Left only` / `Right only` / `Modified` classification. |
+| **Remote & Drag-and-Drop** | Every mode includes a **Remote…** browser for SFTP, SMB, FTP/FTPS, and WebDAV, plus drag-and-drop auto-fill onto path capsules or the empty workspace card. |
+
+## Themes, Appearance & Shortcuts
+
+GoCompare provides a customizable native workspace accessible via **Settings** (`⌘,` on macOS, `Ctrl+,` on Windows/Linux):
+
+- **5 Color Themes**: **Classic Blue**, **Emerald**, **Violet**, **Graphite**, and **Warm Amber**.
+- **Appearance Modes**: **Light**, **Dark**, or **System** (automatically follows OS appearance changes in real time).
+- **Interface Languages**: **English**, **简体中文**, and **繁體中文**.
+
+| Action | macOS | Windows / Linux |
+|---|---|---|
+| Open / Close Preferences | `⌘,` | `Ctrl+,` |
+| Save Active Side / Merge Output | `⌘S` | `Ctrl+S` |
+| Undo | `⌘Z` | `Ctrl+Z` |
+| Redo | `⇧⌘Z` | `Ctrl+Shift+Z` |
+| Find in Diff Editor | `⌘F` | `Ctrl+F` |
+
+## Remote Files & Drag-and-Drop
+
+All comparison modes (**File Compare**, **Folder Compare**, **Text Merge**, **Table Compare**, **Picture Compare**, **Media Tags**, and **Version & Registry**) can connect directly to remote servers or load dropped files. Either side — or both — can be remote.
 
 ### Remote connections
 
 1. Click **Remote…** next to the left or right path in any mode.
-2. Choose the protocol and enter the host and user name. For SFTP you can also import a host from `~/.ssh/config`.
-3. Enter a password, or choose a private key (fill in its passphrase if it has one). Leave both empty to use ssh-agent or your default keys.
-4. Click **Connect**, browse the server, and pick a file (**Open**) or a folder (**Choose this folder**). If the other side is already set, the comparison starts right away.
+2. Choose the protocol and enter the host and user name. For SFTP you can also import a host directly from `~/.ssh/config`.
+3. Enter a password, or choose a private key (fill in its passphrase if encrypted). Leave both empty to use `ssh-agent` or your default `~/.ssh/id_*` keys.
+4. Click **Connect**, browse the remote directory tree, and pick a file (**Open**) or folder (**Choose this folder**). If the other side is already set, comparison begins immediately.
 
-| Protocol | Browse in the dialog | Sign-in |
+| Protocol | Interactive Browser | Authentication |
 |---|---|---|
-| SFTP (SSH) | Yes | Password, private key (+ passphrase), ssh-agent, `~/.ssh/id_*` |
-| SMB (Windows share / NAS) | Yes, including the list of shares | User, password, optional domain (NTLMv2) |
-| FTP / FTPS | Yes (servers with MLSD) | User and password |
-| WebDAV / WebDAV over HTTPS | Yes | User and password (Basic) |
-| S3, Dropbox, OneDrive, SVN | Type the URL into the path field | Credentials in the URL |
+| SFTP (SSH) | Yes | Password, private key (+ passphrase), `ssh-agent`, `~/.ssh/id_*` |
+| SMB (Windows Share / NAS) | Yes (including share enumeration) | Username, password, optional domain (NTLMv2) |
+| FTP / FTPS | Yes (servers supporting `MLSD`) | Username and password |
+| WebDAV / WebDAV over HTTPS | Yes | Username and password (HTTP Basic) |
+| S3, Dropbox, OneDrive, SVN | Direct URL input in path bar | Credentials in URL |
 
-- **In folder compare**, files that exist only locally open an empty remote side that is created when you save. Sync and folder merge stay local-only and are disabled while a side is remote.
-- **Host keys are verified.** The first connection to an SFTP server shows its fingerprint and adds it to `~/.ssh/known_hosts` only after you trust it; a changed key is refused.
-- **Secrets stay in memory.** Passwords and key passphrases are never written to disk, sessions or settings. Recent connections are remembered without them.
+- **Host keys are verified.** First-time SFTP connections display the server fingerprint and record it in `~/.ssh/known_hosts` only after explicit confirmation; mismatched host keys are rejected.
+- **Secrets stay in memory.** Passwords and private-key passphrases are never written to disk, session files, or settings.
 
 ### Drag-and-drop auto-fill
 
-- **Single item**: Drag a file or directory over either the left or right path capsule to fill that side. When the other side already has a path, comparison begins automatically.
-- **Multiple items**: Select two files or directories from your desktop or file manager and drop them onto either path capsule or into the empty workspace card; left and right paths will be populated simultaneously and loaded immediately.
-- **Smart mode switching**: Dropping a folder into File Compare automatically switches to Directory Compare. In Text Merge, base and output paths can also be filled via drag-and-drop or browsing.
+- **Single item**: Drop a file or folder onto the left or right path capsule to populate that side; if the opposite side is already filled, comparison starts automatically.
+- **Two items at once**: Select two files or folders in Finder / Explorer and drop them onto either path capsule or the empty workspace card to fill both sides and compare immediately.
+- **Smart mode switching**: Dropping a directory into File Compare automatically switches to Folder Compare.
 
 ## Installation
 
 ### Homebrew
 
 ```bash
-# Desktop app (macOS) — also adds the `gocompare` command
+# Desktop app (macOS) — installs GoCompare.app and links the `gocompare` CLI launcher
 brew install --cask jhzhang09/tap/gocompare
 
-# Command line (macOS and Linux) — installs `gocompare-cli`
+# Command-line tool (macOS and Linux) — installs `gocompare-cli`
 brew install jhzhang09/tap/gocompare-cli
 ```
 
-The desktop app is not notarized yet, so macOS blocks its first launch; see [macOS: "GoCompare can't be opened"](#macos-gatekeeper) below.
+The desktop app uses ad-hoc signing without Apple notarization; if macOS blocks the first launch, see [macOS: "GoCompare can't be opened"](#macos-gatekeeper) below.
 
 ### Manual download
 
-Download the latest build from the [**Releases**](https://github.com/jhzhang09/gocompare/releases) page.
+Download the latest release from [**GitHub Releases**](https://github.com/jhzhang09/gocompare/releases).
 
-| Platform | Desktop app | Command line |
+| Platform | Desktop App | Command Line |
 |---|---|---|
 | macOS 12+ (Apple Silicon & Intel) | `gocompare-<version>.dmg` | `gocompare-cli_<version>_darwin_<arch>.tar.gz` |
-| Windows 10 / 11 | `gocompare-setup-<version>-<arch>.exe` or the portable `.zip` | `gocompare-cli_<version>_windows_<arch>.zip` |
+| Windows 10 / 11 | `gocompare-setup-<version>-<arch>.exe` or portable `.zip` | `gocompare-cli_<version>_windows_<arch>.zip` |
 | Linux (GTK 3) | `.deb` or `.tar.gz` | `gocompare-cli_<version>_linux_<arch>.tar.gz` |
 
-Every release ships `SHA256SUMS.txt` and a [build provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations) you can check with `gh attestation verify <file> --repo jhzhang09/gocompare`.
+Every release includes `SHA256SUMS.txt` and a [GitHub build provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations) verifiable via:
+
+```bash
+gh attestation verify <file> --repo jhzhang09/gocompare
+```
 
 <a id="macos-gatekeeper"></a>
 <details>
 <summary><b>macOS: "GoCompare can't be opened"</b></summary>
 
-Release builds are ad-hoc signed but not notarized yet. Allow the app once by running:
+Release builds are ad-hoc signed. Clear the quarantine attribute once with:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/GoCompare.app
 ```
 
-or try to open it, then choose **System Settings → Privacy & Security → Open Anyway**. (On macOS 15 and later, right-click → Open no longer bypasses this check.)
+or attempt to open the app, then go to **System Settings → Privacy & Security → Open Anyway**.
 </details>
 
 <details>
 <summary><b>Windows: SmartScreen warning</b></summary>
 
-The binaries are not code-signed yet. Choose **More info → Run anyway**.
+Choose **More info → Run anyway**.
 </details>
 
 <details>
@@ -137,23 +162,23 @@ The binaries are not code-signed yet. Choose **More info → Run anyway**.
 
 ```bash
 sudo apt install ./gocompare_<version>_amd64.deb
-# or, without installing:
+# or run from the archive without installing:
 tar xzf gocompare-<version>-linux-amd64.tar.gz && ./gocompare
 ```
 
-GTK 3 is required; it is present on most desktop distributions.
+Requires GTK 3 (pre-installed on most desktop Linux distributions).
 </details>
 
 ### Build from source
 
-Requires Go 1.27.3 or newer. All dependencies are vendored, so no network access is needed.
+Requires Go 1.27.3 or newer. All dependencies are vendored in `vendor/`, so builds work completely offline.
 
 ```bash
 git clone https://github.com/jhzhang09/gocompare.git
 cd gocompare
 go run ./cmd/gocompare                       # run the desktop app
-go build -o build/ ./cmd/gocompare-cli        # build the CLI
-go tool mygo build                            # package the app for this platform (.app/.dmg on macOS)
+go build -o build/ ./cmd/gocompare-cli        # build the CLI binary
+go tool mygo build                            # package native desktop app (.app/.dmg on macOS)
 ```
 
 ## Usage
@@ -161,42 +186,40 @@ go tool mygo build                            # package the app for this platfor
 ### Desktop app
 
 ```bash
-gocompare                                    # start with the text compare workspace
-gocompare left.txt right.txt                 # compare two files
-gocompare --directories ./left ./right       # compare two folders
+gocompare                                    # launch in Text Compare scratchpad mode
+gocompare left.txt right.txt                 # compare two files directly
+gocompare --directories ./left ./right       # compare two directories directly
 gocompare --version
 ```
 
-With the Homebrew cask the `gocompare` command is on your `PATH`; otherwise the executable lives at `/Applications/GoCompare.app/Contents/MacOS/GoCompare`.
+### Command line (`gocompare-cli`)
 
-### Command line
-
-`gocompare-cli` exits with **0** when inputs are equal (or a merge is clean), **1** when they differ (or conflicts remain) and **2** on errors.
+`gocompare-cli` exits with **0** when inputs are identical (or a merge completes cleanly), **1** when differences or unresolved conflicts remain, and **2** on error.
 
 ```bash
 gocompare-cli left.txt right.txt                                  # compare two files
-gocompare-cli dir --filter '*.go' ./v1 ./v2                       # folder report as JSON
-gocompare-cli preview mirror-right ./src ./dst                    # sync plan (read-only)
+gocompare-cli dir --filter '*.go' ./v1 ./v2                       # directory diff report as JSON
+gocompare-cli preview mirror-right ./src ./dst                    # preview sync plan (read-only)
 gocompare-cli sync --mode mirror-right --apply --backup-dir ~/gocompare-backup ./src ./dst
-gocompare-cli restore ~/gocompare-backup/sync/journal.json        # undo a sync
+gocompare-cli restore ~/gocompare-backup/sync/journal.json        # roll back a completed sync
 gocompare-cli merge --base base.txt --output merged.txt left.txt right.txt
 gocompare-cli picture before.png after.png
 ```
 
-Sync modes: `update-right`, `update-left`, `update-both`, `mirror-right`, `mirror-left`.
+Supported sync modes: `update-right`, `update-left`, `update-both`, `mirror-right`, `mirror-left`.
 
-More commands for remote files, tables, archives and snapshots:
+Additional CLI subcommands for remote endpoints, spreadsheets, archives, and snapshots:
 
 ```bash
 gocompare-cli remote compare sftp://deploy@web1/etc/app.conf sftp://deploy@web2/etc/app.conf
 gocompare-cli remote read "smb://CORP;bob@nas/docs/report.txt" > report.txt
 gocompare-cli table --keys 0 --tolerance 0.01 before.csv after.xlsx
 gocompare-cli archive compare release-1.zip release-2.zip
-gocompare-cli snapshot create ./build build.snapshot        # later: snapshot compare a.snapshot b.snapshot
+gocompare-cli snapshot create ./build build.snapshot        # compare later via: snapshot compare a.snapshot b.snapshot
 gocompare-cli dirmerge --base ./base --output ./merged ./left ./right
 ```
 
-SFTP uses `~/.ssh/known_hosts` (or `--known-hosts`) and never trusts an unknown host silently; pass `--identity` for a key and set `GOCOMPARE_SSH_KEY_PASSPHRASE` if it has a passphrase. Run `gocompare-cli --help` for every command, including `hex`, `media`, `pe`, `reg`, `doctext`, `acl`, `check-update`, `script`, `report` and `extend`.
+Run `gocompare-cli --help` for the complete list of subcommands, including `hex`, `media`, `pe`, `reg`, `doctext`, `acl`, `check-update`, `script`, `report`, and `extend`.
 
 ### Git integration
 
@@ -208,50 +231,50 @@ git config --global mergetool.gocompare.cmd 'gocompare-cli mergetool --base "$BA
 git config --global mergetool.gocompare.trustExitCode true
 ```
 
-`mergetool` writes the merge result into `$MERGED` and exits with 1 while conflicts remain, so Git keeps the file marked as unresolved until you fix it.
+## Safety Guarantees
 
-## Safety guarantees
+- **Atomic, conflict-checked saves.** Saving writes to a sibling temporary file and renames into place only after verifying the target file on disk (or remote server) has not changed since it was loaded. "Save As" never overwrites an existing file.
+- **Plan → Confirm → Execute folder sync.** Every planned action records expected size, SHA-256 digest, permissions, and modification time. Execution re-verifies each file, backs up overwritten/deleted items, writes a journal entry per step, and automatically rolls back completed steps on error or cancellation.
+- **Non-destructive sync undo.** Undoing a sync refuses to touch any file modified after the sync completed, and case-only filename collisions on case-insensitive filesystems are rejected during planning.
 
-- **Saves are atomic and conflict-aware.** Files are written to a temporary file in the same folder and renamed into place only if the file on disk still matches what was loaded. "Save as" never overwrites an existing file.
-- **Folder sync is plan → confirm → execute.** Every action records the size, SHA-256, mode and time it expects. Execution re-checks them, backs up files before overwriting or deleting, journals each step and rolls back completed steps on any error or cancellation.
-- **Remote saves are checked too.** Saving a remote file re-reads it first and refuses to overwrite changes someone else made since you opened it. Passwords and key passphrases stay in memory only and are stripped from paths, window titles and saved sessions.
-- **Undo never destroys newer work.** Undoing a sync refuses to touch files that changed after the sync, and plans are refused when names collide only by letter case on case-insensitive file systems.
-
-The full contract is in [docs/operations.md](docs/operations.md) (Chinese).
+See [docs/operations.md](docs/operations.md) for the full safety specification.
 
 ## Documentation
 
-| Document | Contents |
+| Document | Description |
 |---|---|
-| [Architecture](docs/architecture.md) | Module boundaries and data flow |
-| [Feature matrix](docs/feature-parity.md) | What is complete, partial or planned |
-| [Platform support](docs/platform-support.md) | Build targets and per-platform status |
-| [Operations contract](docs/operations.md) | Save and sync safety guarantees |
-| [Testing](docs/testing.md) | Automated and native regression tests |
-| [MyGo patch](docs/mygo-patch.md) | How the vendored framework patch is maintained |
-| [Releasing](docs/releasing.md) | How maintainers cut a release |
-
-Most design documents are currently written in Chinese.
+| [Architecture](docs/architecture.md) | Package boundaries and data flow |
+| [Feature Matrix](docs/feature-parity.md) | Detailed capability matrix across GUI and CLI |
+| [Platform Support](docs/platform-support.md) | Supported OS targets and packaging formats |
+| [Operations Contract](docs/operations.md) | Atomic save, backup, journal, and rollback guarantees |
+| [Testing Guide](docs/testing.md) | Unit, headless UI, and regression test suites |
+| [MyGo Patch](docs/mygo-patch.md) | Vendored framework patch maintenance |
+| [Releasing](docs/releasing.md) | Release workflow and version tagging guide |
 
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md). In short:
+Contributions, bug reports, and feature requests are welcome! Please review [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md). Before submitting a pull request, verify all checks pass locally:
 
 ```bash
-gofmt -l cmd internal tools     # must print nothing
+gofmt -l cmd internal tools     # must produce no output
 go vet ./...
 CGO_ENABLED=0 go test ./...
 go tool mygo vet .
 ```
 
-To report a security issue, please follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
+To report a security vulnerability, please follow [SECURITY.md](SECURITY.md).
 
 ## Acknowledgements
 
-- [MyGo](https://github.com/egoist/mygo) by [@egoist](https://github.com/egoist) — the native Go desktop UI framework GoCompare is built on.
-- [golang.org/x/text](https://pkg.go.dev/golang.org/x/text), [golang.org/x/image](https://pkg.go.dev/golang.org/x/image), [golang.org/x/net](https://pkg.go.dev/golang.org/x/net) and [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto).
-- [pkg/sftp](https://github.com/pkg/sftp) and [go-smb2](https://github.com/hirochachacha/go-smb2) for SFTP and SMB access.
+Special thanks to the open-source projects and authors that make GoCompare possible:
 
-## License
+- **[MyGo](https://github.com/egoist/mygo)** by [@egoist](https://github.com/egoist) — the pure-Go native desktop UI framework that renders GoCompare's native windows, text editors, and diff views across macOS, Windows, and Linux without web views.
+- **[Onevra](https://github.com/oneo-me/onevra)** by [@oneo-me](https://github.com/oneo-me) — the native component library, responsive sidebar shell (`shells/sidebar`), interactive image comparison slider (`ImageCompare`), and Lucide vector icon system powering GoCompare's modern workbench interface.
+- **[golang.org/x/text](https://pkg.go.dev/golang.org/x/text)**, **[golang.org/x/image](https://pkg.go.dev/golang.org/x/image)**, **[golang.org/x/net](https://pkg.go.dev/golang.org/x/net)**, and **[golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto)** from the Go project.
+- **[pkg/sftp](https://github.com/pkg/sftp)** and **[go-smb2](https://github.com/hirochachacha/go-smb2)** for SFTP and SMBv2/v3 protocol support.
 
-[MIT](LICENSE) © GoCompare Contributors
+## Author & License
+
+Created and maintained by **[jhzhang09](https://github.com/jhzhang09)** ([github.com/jhzhang09/gocompare](https://github.com/jhzhang09/gocompare)).
+
+Licensed under the [MIT License](LICENSE).

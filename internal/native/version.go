@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/oneo-me/onevra/source/components"
 	"gocompare/internal/i18n"
 	"gocompare/internal/pever"
 	"gocompare/internal/regfile"
@@ -86,7 +87,7 @@ func (a *workspaceState) versionView(c *ui.Context) {
 	t := c.Theme()
 	pal := paletteFor(t)
 
-	ui.Row(c).Height(36).Padding(0, 16).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	ui.Row(c).Height(36).Padding(0, 16).Gap(8).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		ui.Icon(c, iconVersionReg).Size(13, 13).TextColor(pal.baseAccent)
 		ui.Text(c, i18n.T("version.header")).FontSize(11).Bold()
 		statusPill(c, i18n.T("version.noLive"), pal.sameFg, pal.sameBg)
@@ -108,13 +109,13 @@ func (a *workspaceState) versionView(c *ui.Context) {
 				note = i18n.T("version.same")
 				fg, bg = pal.successFg, pal.successBg
 			}
-			ui.Row(c).Padding(8, 12).Gap(8).Radius(6).Background(bg).Children(func() {
+			ui.Row(c).Padding(8, 12).Gap(8).Radius(6).AlignItems(ui.Center).Background(bg).Children(func() {
 				ui.Icon(c, iconCheck).Size(14, 14).TextColor(fg)
 				ui.Text(c, note).Bold().FontSize(12).TextColor(fg)
 			})
 			ui.Row(c).FillWidth().Gap(12).Children(func() {
 				ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(8).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
-					ui.Row(c).Gap(6).Children(func() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 						sideBadge(c, 0, pal)
 						if a.infoLeftPE.Architecture != "" {
 							statusPill(c, a.infoLeftPE.Architecture, pal.baseAccent, pal.baseBg)
@@ -124,7 +125,7 @@ func (a *workspaceState) versionView(c *ui.Context) {
 					a.peMetaRows(c, pal, a.infoLeftPE, a.infoRightPE)
 				})
 				ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(8).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
-					ui.Row(c).Gap(6).Children(func() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 						sideBadge(c, 1, pal)
 						if a.infoRightPE.Architecture != "" {
 							statusPill(c, a.infoRightPE.Architecture, pal.baseAccent, pal.baseBg)
@@ -138,7 +139,7 @@ func (a *workspaceState) versionView(c *ui.Context) {
 		}
 
 		if len(a.infoDiffs) == 0 {
-			ui.Row(c).Padding(10, 14).Gap(8).Radius(6).Background(pal.successBg).Children(func() {
+			ui.Row(c).Padding(10, 14).Gap(8).Radius(6).AlignItems(ui.Center).Background(pal.successBg).Children(func() {
 				ui.Icon(c, iconCheck).Size(14, 14).TextColor(pal.successFg)
 				ui.Text(c, i18n.T("version.regSame")).Bold().FontSize(13).TextColor(pal.successFg)
 			})
@@ -176,7 +177,7 @@ func (a *workspaceState) versionView(c *ui.Context) {
 				if i < len(a.infoRegDiffs) {
 					kind = a.infoRegDiffs[i].Kind
 				}
-				ui.Row(c).FillWidth().Padding(6, 10).Gap(6).Radius(5).Background(pal.diffBg).Children(func() {
+				ui.Row(c).FillWidth().Padding(6, 10).Gap(6).Radius(5).AlignItems(ui.Center).Background(pal.diffBg).Children(func() {
 					ui.Icon(c, iconAlert).Size(13, 13).TextColor(pal.diffFg)
 					ui.Text(c, i18n.TArgs("version.diffLine", line)).Grow(1).FontSize(12).TextColor(pal.diffFg)
 					if kind != "" {
@@ -194,14 +195,14 @@ func (a *workspaceState) versionView(c *ui.Context) {
 				ui.Row(c).FillWidth().Padding(4, 0).Gap(8).Children(func() {
 					ui.Box(c).Grow(1)
 					if a.infoRegPage > 0 {
-						ui.Button(c, i18n.T("table.pagePrev")).FontSize(11).OnClick(func() {
+						if compactBtn(c, i18n.T("table.pagePrev"), nil, components.ButtonSecondary, false).Clicked() {
 							a.infoRegPage--
-						})
+						}
 					}
 					if a.infoRegPage < totalPages-1 {
-						ui.Button(c, i18n.T("table.pageNext")).FontSize(11).OnClick(func() {
+						if compactBtn(c, i18n.T("table.pageNext"), nil, components.ButtonSecondary, false).Clicked() {
 							a.infoRegPage++
-						})
+						}
 					}
 				})
 			}

@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"github.com/oneo-me/onevra/source/shells/sidebar"
 	"gocompare/internal/brand"
 	"gocompare/internal/compare"
 	"gocompare/internal/config"
@@ -237,16 +238,18 @@ type modeSession struct {
 	mergeLeft   *document.File
 	mergeSaved  *document.File
 
-	pictureLeft    image.Image
-	pictureRight   image.Image
-	pictureResult  *image.RGBA
-	pictureBitmap  *ui.Bitmap
-	pictureMode    int
-	pictureTol     uint8
-	pictureZoom    int
-	pictureNote    string
-	pictureSummary picture.Summary
-	pictureFlips   [2]pictureFlip
+	pictureLeft        image.Image
+	pictureRight       image.Image
+	pictureResult      *image.RGBA
+	pictureBitmap      *ui.Bitmap
+	pictureSideBitmaps [2]*ui.Bitmap
+	pictureMode        int
+	pictureTol         uint8
+	pictureZoom        int
+	pictureNote        string
+	pictureSummary     picture.Summary
+	pictureFlips       [2]pictureFlip
+	pictureSliderPos   float32
 
 	mediaLeft  media.Tags
 	mediaRight media.Tags
@@ -274,8 +277,10 @@ type modeSession struct {
 type workspaceState struct {
 	optionsOpen        bool
 	settingsOpen       bool
+	aboutOpen          bool
 	settingsLang       int
 	settingsTheme      int
+	settingsPalette    int
 	ignoreSpace        bool
 	compareIgnoreSpace bool
 	ignoreBlankLines   bool
@@ -290,6 +295,7 @@ type workspaceState struct {
 	dirSearch         string
 	directoryOptions  compare.ScanOptions
 	allowMissing      bool
+	shell             *sidebar.Shell
 	win               *mygo.Window
 	icon              *ui.Bitmap
 	backupDir         string
@@ -330,19 +336,21 @@ type workspaceState struct {
 	mergeWindows  []*workspaceState
 	detached      bool
 
-	pictureMode   int
-	pictureTol    uint8
-	pictureZoom   int
-	pictureGen    uint64
-	pictureLeft   image.Image
-	pictureRight  image.Image
-	pictureResult *image.RGBA
-	pictureBitmap *ui.Bitmap
-	pictureNote   string
+	pictureMode        int
+	pictureTol         uint8
+	pictureZoom        int
+	pictureGen         uint64
+	pictureLeft        image.Image
+	pictureRight       image.Image
+	pictureResult      *image.RGBA
+	pictureBitmap      *ui.Bitmap
+	pictureSideBitmaps [2]*ui.Bitmap
+	pictureNote        string
 	// pictureSummary 与画布一起在后台算好，绘制时只读取。
 	pictureSummary   picture.Summary
 	pictureFlips     [2]pictureFlip
 	pictureTolSlider float64
+	pictureSliderPos float32
 	pictureRerender  bool
 
 	mediaGen   uint64
@@ -487,15 +495,28 @@ func Run(args []string) error {
 			return
 		}
 		a := &workspaceState{
-			optionsOpen:   true,
-			inlineDiff:    true,
-			settingsLang:  langIdx,
-			settingsTheme: themeIdx,
-			message:       i18n.T("status.selectSource"),
-			backupDir:     filepath.Join(configDir, "GoCompare", "backups"),
-			remotesFile:   filepath.Join(configDir, "GoCompare", "remotes.json"),
+			optionsOpen:     true,
+			inlineDiff:      true,
+			settingsLang:    langIdx,
+			settingsTheme:   themeIdx,
+			settingsPalette: paletteIndexOf(cfg.Palette),
+			message:         i18n.T("status.selectSource"),
+			backupDir:       filepath.Join(configDir, "GoCompare", "backups"),
+			remotesFile:     filepath.Join(configDir, "GoCompare", "remotes.json"),
 		}
-		a.win = mygo.NewWindow(mygo.WindowOptions{Title: "GoCompare", Width: 1380, Height: 880, MinWidth: 900, MinHeight: 600, Content: ui.View(a.view)})
+		if len(args) == 2 {
+			a.paths = [2]string{args[0], args[1]}
+			if directory {
+				a.kind = kindDirectory
+			}
+		} else {
+			a.kind = kindScratch
+			a.ensureScratch()
+			a.message = i18n.T("status.scratchReady")
+		}
+		a.shell = sidebar.NewShell(a.shellOptions())
+		a.win = a.shell.Window()
+		a.installMenu()
 		a.win.OnClose(func(e *mygo.CloseEvent) {
 			if a.busy {
 				e.PreventDefault()
@@ -515,15 +536,7 @@ func Run(args []string) error {
 			}
 		})
 		if len(args) == 2 {
-			a.paths = [2]string{args[0], args[1]}
-			if directory {
-				a.kind = kindDirectory
-			}
 			a.load()
-		} else {
-			a.kind = kindScratch
-			a.ensureScratch()
-			a.message = i18n.T("status.scratchReady")
 		}
 	})
 	if err = mygo.App.Run(); err != nil {
@@ -1410,12 +1423,14 @@ func (a *workspaceState) saveModeSession(kind int) {
 		pictureRight:       a.pictureRight,
 		pictureResult:      a.pictureResult,
 		pictureBitmap:      a.pictureBitmap,
+		pictureSideBitmaps: a.pictureSideBitmaps,
 		pictureMode:        a.pictureMode,
 		pictureTol:         a.pictureTol,
 		pictureZoom:        a.pictureZoom,
 		pictureNote:        a.pictureNote,
 		pictureSummary:     a.pictureSummary,
 		pictureFlips:       a.pictureFlips,
+		pictureSliderPos:   a.pictureSliderPos,
 		mediaLeft:          a.mediaLeft,
 		mediaRight:         a.mediaRight,
 		mediaReady:         a.mediaReady,
@@ -1440,7 +1455,7 @@ func (a *workspaceState) saveModeSession(kind int) {
 func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.ensureModeSessions()
 	sess, ok := a.modeSessions[kind]
-	if !ok {
+	if !ok || sess == nil {
 		return false
 	}
 	a.paths = sess.paths
@@ -1477,12 +1492,14 @@ func (a *workspaceState) restoreModeSession(kind int) bool {
 	a.pictureRight = sess.pictureRight
 	a.pictureResult = sess.pictureResult
 	a.pictureBitmap = sess.pictureBitmap
+	a.pictureSideBitmaps = sess.pictureSideBitmaps
 	a.pictureMode = sess.pictureMode
 	a.pictureTol = sess.pictureTol
 	a.pictureZoom = sess.pictureZoom
 	a.pictureNote = sess.pictureNote
 	a.pictureSummary = sess.pictureSummary
 	a.pictureFlips = sess.pictureFlips
+	a.pictureSliderPos = sess.pictureSliderPos
 	a.mediaLeft = sess.mediaLeft
 	a.mediaRight = sess.mediaRight
 	a.mediaReady = sess.mediaReady
@@ -1515,13 +1532,71 @@ func (a *workspaceState) applySettings(langIdx, themeIdx int) {
 	}
 	themeSources := []mygo.ThemeSource{mygo.ThemeLight, mygo.ThemeDark, mygo.ThemeSystem}
 	themeStr := []string{"light", "dark", "system"}
+	tStr := "system"
 	if themeIdx >= 0 && themeIdx < len(themeSources) {
+		tStr = themeStr[themeIdx]
 		if mygo.App.IsReady() {
 			mygo.Theme.SetSource(themeSources[themeIdx])
 		}
 	}
 	_ = config.Save(config.Settings{
 		Language: string(i18n.CurrentLanguage()),
-		Theme:    themeStr[themeIdx],
+		Theme:    tStr,
+		Palette:  paletteNameOf(a.settingsPalette),
 	})
+	if mygo.App.IsReady() {
+		a.installMenu()
+	}
+}
+
+func (a *workspaceState) applyPalette(paletteIdx int) {
+	a.settingsPalette = paletteIdx
+	themeStr := []string{"light", "dark", "system"}
+	tStr := "system"
+	if a.settingsTheme >= 0 && a.settingsTheme < len(themeStr) {
+		tStr = themeStr[a.settingsTheme]
+	}
+	_ = config.Save(config.Settings{
+		Language: string(i18n.CurrentLanguage()),
+		Theme:    tStr,
+		Palette:  paletteNameOf(paletteIdx),
+	})
+}
+
+func (a *workspaceState) installMenu() {
+	if !mygo.App.IsReady() {
+		return
+	}
+	menu := mygo.NewMenu([]*mygo.MenuItem{
+		{
+			Label: "GoCompare",
+			Submenu: []*mygo.MenuItem{
+				{
+					Label: i18n.T("about.title"),
+					Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
+						a.publish(func() { a.aboutOpen = true })
+					},
+				},
+				mygo.Separator(),
+				{
+					Label:       i18n.T("settings.title") + "…",
+					Accelerator: "CmdOrCtrl+,",
+					Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
+						a.publish(func() { a.settingsOpen = true })
+					},
+				},
+				mygo.Separator(),
+				{Role: mygo.RoleServices},
+				mygo.Separator(),
+				{Role: mygo.RoleHide},
+				{Role: mygo.RoleHideOthers},
+				{Role: mygo.RoleUnhide},
+				mygo.Separator(),
+				{Role: mygo.RoleQuit},
+			},
+		},
+		{Role: mygo.RoleEditMenu},
+		{Role: mygo.RoleWindowMenu},
+	})
+	mygo.App.SetMenu(menu)
 }

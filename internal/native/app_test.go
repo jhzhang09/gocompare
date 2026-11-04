@@ -10,9 +10,12 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"github.com/oneo-me/onevra/source/components"
+	"gocompare/internal/brand"
 	"gocompare/internal/document"
 	"gocompare/internal/integrate"
 )
@@ -1196,5 +1199,155 @@ func TestUnifiedToolbarLayout(t *testing.T) {
 		if got, want := tt.HasText("比较选项"), a.hasOptions(); got != want {
 			t.Fatalf("kind %d: options toggle shown=%v, want %v", kind, got, want)
 		}
+	}
+}
+
+func TestModeSwitchingClick(t *testing.T) {
+	a := &workspaceState{
+		kind:        kindScratch,
+		optionsOpen: true,
+		inlineDiff:  true,
+	}
+	a.ensureScratch()
+	var pending []func()
+	a.compareLaunch = func(fn func()) {
+		pending = append(pending, fn)
+	}
+	opts := a.shellOptions()
+	shellView := func(c *ui.Context) {
+		if opts.Theme != nil {
+			c.SetTheme(opts.Theme(c))
+		}
+		components.WithDialogWindowDrag(c, 48, func() {
+			root := ui.Column(c).Fill().Clip()
+			leftProgress := root.Animate("left", 1, 0)
+			_ = leftProgress
+			root.Children(func() {
+				ui.Column(c).Key(false).Fill().Clip().Children(func() {
+					ui.Row(c).Fill().Children(func() {
+						ui.Column(c).Key("left").Width(168).Shrink(0).FillHeight().Clip().Children(func() {
+							ui.Column(c).Width(168).Shrink(0).FillHeight().Children(func() {
+								ui.Column(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
+									opts.Left(c)
+								})
+							})
+						})
+						ui.Column(c).Key("content").Grow(1).MinWidth(0).FillHeight().Clip().Children(func() {
+							ui.Column(c).Fill().Children(func() {
+								opts.Content(c)
+							})
+						})
+					})
+				})
+				ui.Row(c).Key("header").Absolute().Top(0).Left(0).Right(0).Height(48).
+					AlignItems(ui.Center).Padding(6, 8, 6, 8).
+					DragWindow().Children(func() {
+					ui.Row(c).Grow(1).MinWidth(0).FillHeight().Clip().Padding(0, 8, 0, 128).Children(func() {
+						opts.ContentTitle(c)
+					})
+				})
+			})
+		})
+		components.Toasts(c, components.ToastOptions{Inset: 48})
+	}
+	tt := ui.NewTester(shellView, 1380, 880)
+	drain := func() {
+		tt.Frame()
+		for len(pending) > 0 {
+			fn := pending[0]
+			pending = pending[1:]
+			fn()
+			tt.Frame()
+		}
+		for i := 0; i < 10 && tt.FramePending(); i++ {
+			tt.Advance(50 * time.Millisecond)
+			tt.Frame()
+		}
+	}
+	drain()
+
+	steps := []string{
+		"载入示例",
+		"文件比较",
+		"编辑左侧",
+		"编辑右侧",
+		"比较",
+		"目录比较",
+		"文本合并",
+		"表格比较",
+		"图片比较",
+		"媒体标签",
+		"版本与注册表",
+		"文本比较",
+		"重置",
+		"文件比较",
+		"文本比较",
+	}
+	for _, label := range steps {
+		if err := tt.Click(label); err != nil {
+			t.Fatalf("click %s: %v", label, err)
+		}
+		drain()
+	}
+
+	// Regression check: if modeSessions holds a nil pointer entry, restoreModeSession must not panic.
+	a.ensureModeSessions()
+	a.modeSessions[kindDirectory] = nil
+	if err := tt.Click("目录比较"); err != nil {
+		t.Fatalf("click 目录比较 after nil session: %v", err)
+	}
+	drain()
+}
+
+func TestSettingsThemeShortcutsAndAbout(t *testing.T) {
+	a := &workspaceState{
+		optionsOpen: true,
+		inlineDiff:  true,
+		kind:        kindScratch,
+	}
+	a.ensureScratch()
+	tt := ui.NewTester(a.view, 1380, 880)
+	tt.Frame()
+
+	// 1. Cmd+, shortcut toggles Settings modal
+	tt.Key(ui.Cmd, ui.KeyComma)
+	if !a.settingsOpen {
+		t.Fatal("expected Cmd+, shortcut to open settings modal")
+	}
+
+	// Verify author & GitHub URL are displayed in settings modal
+	if _, ok := tt.Find(brand.RepoURL); !ok {
+		t.Fatalf("expected settings modal to show GitHub URL %s", brand.RepoURL)
+	}
+
+	// 2. Switch color themes
+	for idx, label := range []string{"经典蓝", "翡翠绿", "极光紫", "极简灰", "暖阳珀"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatalf("click theme %s: %v", label, err)
+		}
+		if a.settingsPalette != idx {
+			t.Fatalf("expected settingsPalette=%d after clicking %s, got %d", idx, label, a.settingsPalette)
+		}
+		tt.Frame()
+	}
+
+	// Close settings via Cmd+,
+	tt.Key(ui.Cmd, ui.KeyComma)
+	if a.settingsOpen {
+		t.Fatal("expected Cmd+, shortcut to close settings modal")
+	}
+
+	// 3. Open About dialog from sidebar
+	if err := tt.Click("关于"); err != nil {
+		t.Fatalf("click 关于: %v", err)
+	}
+	if !a.aboutOpen {
+		t.Fatal("expected clicking 关于 to open about dialog")
+	}
+	if _, ok := tt.Find(brand.Author); !ok {
+		t.Fatalf("expected about dialog to display author %s", brand.Author)
+	}
+	if _, ok := tt.Find(brand.RepoURL); !ok {
+		t.Fatalf("expected about dialog to display GitHub URL %s", brand.RepoURL)
 	}
 }

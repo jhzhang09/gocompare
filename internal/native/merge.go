@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"github.com/oneo-me/onevra/source/components"
 	"gocompare/internal/document"
 	"gocompare/internal/i18n"
 	"gocompare/internal/merge"
@@ -80,10 +81,10 @@ func (a *workspaceState) attachWindow(parent *workspaceState) {
 
 // mergeWindowView 是独立合并窗口的全部内容，不含文件比较工具栏。
 func (a *workspaceState) mergeWindowView(c *ui.Context) {
-	t := c.Theme()
+	t := applyOnevraTheme(c)
 	pal := paletteFor(t)
 	ui.Column(c).Fill().Background(pal.appBg).Children(func() {
-		ui.Row(c).Height(44).Padding(0, 16).Gap(8).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Row(c).Height(44).Padding(0, 16).Gap(8).AlignItems(ui.Center).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 			ui.Row(c).Size(24, 24).Center().Radius(6).Background(pal.baseBg).Children(func() {
 				ui.Icon(c, iconGitMerge).Size(13, 13).TextColor(pal.baseAccent)
 			})
@@ -91,7 +92,7 @@ func (a *workspaceState) mergeWindowView(c *ui.Context) {
 			statusPill(c, i18n.T("merge.ownBuffer"), pal.baseAccent, pal.baseBg)
 		})
 		if a.err != "" {
-			ui.Row(c).Padding(6, 16).Gap(8).Background(pal.dangerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.dangerFg.Alpha(0.2)).Children(func() {
+			ui.Row(c).Padding(6, 16).Gap(8).AlignItems(ui.Center).Background(pal.dangerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.dangerFg.Alpha(0.2)).Children(func() {
 				ui.Icon(c, iconAlert).Size(13, 13).TextColor(pal.dangerFg)
 				ui.Text(c, a.err).Grow(1).FontSize(11).TextColor(pal.dangerFg).Label(i18n.T("a11y.error"))
 			})
@@ -101,20 +102,25 @@ func (a *workspaceState) mergeWindowView(c *ui.Context) {
 		if a.busy {
 			message = i18n.T("status.processingFiles")
 		}
-		ui.Row(c).Height(26).Padding(0, 14).Gap(6).Background(pal.subtleSurface).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Row(c).Height(26).Padding(0, 14).Gap(6).AlignItems(ui.Center).Background(pal.subtleSurface).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
 			ui.Box(c).Size(5, 5).Radius(999).Background(pal.successFg)
 			ui.Text(c, message).Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		})
 	})
 	if a.confirm {
-		choice := ui.AlertDialog(c, &a.confirm, i18n.T("dialog.discardTitle"), i18n.T("merge.discardDesc"), i18n.T("dialog.cancel"), i18n.T("dialog.discard"))
-		if choice == 1 {
+		res := components.AlertDialog(c, &a.confirm, components.AlertDialogOptions{
+			Title:        i18n.T("dialog.discardTitle"),
+			Message:      i18n.T("merge.discardDesc"),
+			CancelLabel:  i18n.T("dialog.cancel"),
+			ConfirmLabel: i18n.T("dialog.discard"),
+		})
+		if res == components.DialogConfirmed {
 			fn := a.pending
 			a.pending = nil
 			if fn != nil {
 				fn()
 			}
-		} else if !a.confirm {
+		} else if res == components.DialogCancelled || !a.confirm {
 			a.pending = nil
 		}
 	}
@@ -264,7 +270,7 @@ func (a *workspaceState) saveMerge() {
 
 func (a *workspaceState) mergeInputsRow(c *ui.Context, pal uiPalette) {
 	sideBadge(c, 2, pal)
-	baseRow := ui.Row(c.Key("merge-base-row")).Grow(1).Basis(0).MinWidth(140).Height(34).Padding(0, 8).Gap(6).Radius(7)
+	baseRow := ui.Row(c.Key("merge-base-row")).Grow(1).Basis(0).MinWidth(140).Height(34).Padding(0, 8).Gap(6).Radius(7).AlignItems(ui.Center)
 	if baseRow.FileDragOver() {
 		baseRow.Background(pal.baseBg).Border(1.5, pal.baseAccent)
 	} else {
@@ -274,15 +280,20 @@ func (a *workspaceState) mergeInputsRow(c *ui.Context, pal uiPalette) {
 		a.mergeBase = dropped[0]
 	}
 	baseRow.Children(func() {
-		ui.TextInput(c.Key("merge-base"), &a.mergeBase).Grow(1).MinWidth(0).Placeholder(i18n.T("merge.basePlaceholder")).Disabled(a.busy).Label(i18n.T("merge.baseLabel")).OnSubmit(func() { a.guard(a.load) })
-		ui.Button(c.Key("browse-base"), i18n.T("action.browse")).Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy).OnClick(func() {
+		tb := components.TextBox(c.Key("merge-base"), &a.mergeBase, components.TextBoxOptions{}).
+			Placeholder(i18n.T("merge.basePlaceholder")).
+			Grow(1).MinWidth(0).Height(26).Padding(0, 6).Background(ui.Transparent).Border(0, ui.Transparent).Disabled(a.busy).Label(i18n.T("merge.baseLabel"))
+		if tb.Submitted() {
+			a.guard(a.load)
+		}
+		if compactBtn(c.Key("browse-base"), i18n.T("action.browse"), nil, components.ButtonSecondary, a.busy).Shrink(0).Clicked() {
 			if paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: i18n.T("merge.baseLabel")}); err == nil && len(paths) > 0 {
 				a.mergeBase = paths[0]
 			}
-		})
+		}
 	})
 
-	outRow := ui.Row(c.Key("merge-output-row")).Grow(1).Basis(0).MinWidth(140).Height(34).Padding(0, 8).Gap(6).Radius(7)
+	outRow := ui.Row(c.Key("merge-output-row")).Grow(1).Basis(0).MinWidth(140).Height(34).Padding(0, 8).Gap(6).Radius(7).AlignItems(ui.Center)
 	if outRow.FileDragOver() {
 		outRow.Background(pal.baseBg).Border(1.5, pal.baseAccent)
 	} else {
@@ -292,20 +303,19 @@ func (a *workspaceState) mergeInputsRow(c *ui.Context, pal uiPalette) {
 		a.mergeOutput = dropped[0]
 	}
 	outRow.Children(func() {
-		ui.TextInput(c.Key("merge-output"), &a.mergeOutput).Grow(1).MinWidth(0).Placeholder(i18n.T("merge.outputPlaceholder")).Disabled(a.busy).Label(i18n.T("merge.outputLabel"))
-		ui.Button(c.Key("browse-output"), i18n.T("action.browse")).Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy).OnClick(func() {
+		components.TextBox(c.Key("merge-output"), &a.mergeOutput, components.TextBoxOptions{}).
+			Placeholder(i18n.T("merge.outputPlaceholder")).
+			Grow(1).MinWidth(0).Height(26).Padding(0, 6).Background(ui.Transparent).Border(0, ui.Transparent).Disabled(a.busy).Label(i18n.T("merge.outputLabel"))
+		if compactBtn(c.Key("browse-output"), i18n.T("action.browse"), nil, components.ButtonSecondary, a.busy).Shrink(0).Clicked() {
 			if p, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: a.win, Title: i18n.T("merge.outputLabel")}); err == nil && p != "" {
 				a.mergeOutput = p
 			}
-		})
+		}
 	})
 
-	saveBtn := ui.PrimaryButton(c, "").Label(i18n.T("merge.save")).Padding(4, 10).Gap(4).Radius(5).Disabled(a.busy || a.mergeBuffer == nil)
-	saveBtn.OnClick(a.saveMerge)
-	saveBtn.Children(func() {
-		ui.Icon(c, iconSave).Size(11, 11)
-		ui.Text(c, i18n.T("merge.save")).FontSize(11).Bold().SingleLine()
-	})
+	if toolbarBtn(c, i18n.T("merge.save"), iconSave, components.ButtonPrimary, a.busy || a.mergeBuffer == nil).Clicked() {
+		a.saveMerge()
+	}
 }
 
 func (a *workspaceState) mergeView(c *ui.Context) {
@@ -313,7 +323,7 @@ func (a *workspaceState) mergeView(c *ui.Context) {
 	pal := paletteFor(t)
 	// 主窗口在路径区显示基准与输出；独立窗口没有路径区，在这里显示。
 	if a.detached {
-		ui.Row(c).Padding(6, 14).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Row(c).Padding(6, 14).Gap(8).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 			a.mergeInputsRow(c, pal)
 		})
 	}
@@ -324,22 +334,30 @@ func (a *workspaceState) mergeView(c *ui.Context) {
 		return
 	}
 	count := a.mergeResult.ConflictCount()
-	ui.Row(c).Height(34).Padding(0, 14).Gap(5).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		ui.Button(c, i18n.T("merge.takeLeft")).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy || count == 0).OnClick(func() { a.takeConflict(merge.ChoiceLeft) })
-		ui.Button(c, i18n.T("merge.takeRight")).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy || count == 0).OnClick(func() { a.takeConflict(merge.ChoiceRight) })
-		ui.Button(c, i18n.T("merge.takeBoth")).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy || count == 0).OnClick(func() { a.takeConflict(merge.ChoiceBoth) })
-		ui.Button(c, i18n.T("merge.takeBase")).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy || count == 0 || a.mergeBase == "").OnClick(func() { a.takeConflict(merge.ChoiceBase) })
+	ui.Row(c).Height(34).Padding(0, 14).Gap(5).AlignItems(ui.Center).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		if compactBtn(c, i18n.T("merge.takeLeft"), nil, components.ButtonSecondary, a.busy || count == 0).Clicked() {
+			a.takeConflict(merge.ChoiceLeft)
+		}
+		if compactBtn(c, i18n.T("merge.takeRight"), nil, components.ButtonSecondary, a.busy || count == 0).Clicked() {
+			a.takeConflict(merge.ChoiceRight)
+		}
+		if compactBtn(c, i18n.T("merge.takeBoth"), nil, components.ButtonSecondary, a.busy || count == 0).Clicked() {
+			a.takeConflict(merge.ChoiceBoth)
+		}
+		if compactBtn(c, i18n.T("merge.takeBase"), nil, components.ButtonSecondary, a.busy || count == 0 || a.mergeBase == "").Clicked() {
+			a.takeConflict(merge.ChoiceBase)
+		}
 		ui.Divider(c).Height(14)
-		ui.Button(c, i18n.T("merge.prevConflict")).Padding(3, 7).Radius(5).FontSize(11).Disabled(a.busy || count == 0).OnClick(func() {
+		if compactBtn(c, i18n.T("merge.prevConflict"), nil, components.ButtonSecondary, a.busy || count == 0).Clicked() {
 			if a.mergeConflict > 0 {
 				a.mergeConflict--
 			}
-		})
-		ui.Button(c, i18n.T("merge.nextConflict")).Padding(3, 7).Radius(5).FontSize(11).Disabled(a.busy || count == 0).OnClick(func() {
+		}
+		if compactBtn(c, i18n.T("merge.nextConflict"), nil, components.ButtonSecondary, a.busy || count == 0).Clicked() {
 			if a.mergeConflict+1 < count {
 				a.mergeConflict++
 			}
-		})
+		}
 		ui.Box(c).Grow(1)
 		label := i18n.T("merge.noConflict")
 		fg, bg := pal.successFg, pal.successBg
@@ -350,7 +368,7 @@ func (a *workspaceState) mergeView(c *ui.Context) {
 		statusPill(c, label, fg, bg)
 	})
 	a.alignmentView(c)
-	ui.Row(c).Height(24).Padding(0, 14).Gap(6).Background(pal.subtleSurface).BorderWidth(1, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	ui.Row(c).Height(24).Padding(0, 14).Gap(6).AlignItems(ui.Center).Background(pal.subtleSurface).BorderWidth(1, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		ui.Text(c, i18n.T("merge.outputHeader")).FontSize(10).Bold().TextColor(t.TextMuted)
 	})
 	a.mergeEdit.ReadOnly = a.busy
@@ -363,18 +381,18 @@ func (a *workspaceState) alignmentView(c *ui.Context) {
 	pal := paletteFor(t)
 	rows := a.mergeRows
 	showBase := a.mergeResult != nil && a.mergeResult.HasBase()
-	ui.Row(c).Height(26).Padding(0, 14).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	ui.Row(c).Height(26).Padding(0, 14).Gap(8).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		if showBase {
-			ui.Row(c).Grow(1).Basis(0).Gap(5).Children(func() {
+			ui.Row(c).Grow(1).Basis(0).Gap(5).AlignItems(ui.Center).Children(func() {
 				sideBadge(c, 2, pal)
 				ui.Text(c, i18n.T("merge.colBase")).Bold().FontSize(11).Label(i18n.TArgs("merge.colLabel", i18n.T("merge.colBase")))
 			})
 		}
-		ui.Row(c).Grow(1).Basis(0).Gap(5).Children(func() {
+		ui.Row(c).Grow(1).Basis(0).Gap(5).AlignItems(ui.Center).Children(func() {
 			sideBadge(c, 0, pal)
 			ui.Text(c, i18n.T("merge.colLeft")).Bold().FontSize(11).Label(i18n.TArgs("merge.colLabel", i18n.T("merge.colLeft")))
 		})
-		ui.Row(c).Grow(1).Basis(0).Gap(5).Children(func() {
+		ui.Row(c).Grow(1).Basis(0).Gap(5).AlignItems(ui.Center).Children(func() {
 			sideBadge(c, 1, pal)
 			ui.Text(c, i18n.T("merge.colRight")).Bold().FontSize(11).Label(i18n.TArgs("merge.colLabel", i18n.T("merge.colRight")))
 		})

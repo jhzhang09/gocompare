@@ -67,7 +67,7 @@ func (a *workspaceState) mediaView(c *ui.Context) {
 	t := c.Theme()
 	pal := paletteFor(t)
 
-	ui.Row(c).Height(36).Padding(0, 16).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	ui.Row(c).Height(36).Padding(0, 16).Gap(8).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		ui.Icon(c, iconMediaTag).Size(13, 13).TextColor(pal.baseAccent)
 		ui.Text(c, i18n.T("media.header")).FontSize(11).Bold()
 		statusPill(c, i18n.T("media.noPlayback"), pal.sameFg, pal.sameBg)
@@ -92,7 +92,7 @@ func (a *workspaceState) mediaView(c *ui.Context) {
 		ui.Row(c).FillWidth().Gap(12).Children(func() {
 			// 左侧卡片
 			ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(8).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
-				ui.Row(c).Gap(6).Margin(0, 0, 4).Children(func() {
+				ui.Row(c).Gap(6).Margin(0, 0, 4).AlignItems(ui.Center).Children(func() {
 					sideBadge(c, 0, pal)
 					ui.Text(c, i18n.T("media.leftTags")).Bold().FontSize(12)
 					if a.mediaLeft.Format != "" {
@@ -106,7 +106,7 @@ func (a *workspaceState) mediaView(c *ui.Context) {
 			})
 			// 右侧卡片
 			ui.Column(c).Grow(1).Basis(0).Padding(14, 16).Gap(8).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
-				ui.Row(c).Gap(6).Margin(0, 0, 4).Children(func() {
+				ui.Row(c).Gap(6).Margin(0, 0, 4).AlignItems(ui.Center).Children(func() {
 					sideBadge(c, 1, pal)
 					ui.Text(c, i18n.T("media.rightTags")).Bold().FontSize(12)
 					if a.mediaRight.Format != "" {
@@ -170,7 +170,7 @@ func (a *workspaceState) mediaFieldRow(c *ui.Context, pal uiPalette, text string
 	if diff {
 		bg = pal.diffBg
 	}
-	ui.Row(c).FillWidth().Padding(6, 10).Gap(6).Radius(5).Background(bg).Children(func() {
+	ui.Row(c).FillWidth().Padding(6, 10).Gap(6).Radius(5).AlignItems(ui.Center).Background(bg).Children(func() {
 		ui.Text(c, text).Grow(1).FontSize(12)
 		if diff {
 			statusPill(c, i18n.T("dir.different"), pal.diffFg, pal.cardBg)

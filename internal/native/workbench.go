@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"github.com/oneo-me/onevra/source/components"
+	"github.com/oneo-me/onevra/source/icons/lucide"
+	"github.com/oneo-me/onevra/source/shells/sidebar"
 	"gocompare/internal/brand"
 	"gocompare/internal/document"
 	"gocompare/internal/i18n"
@@ -195,266 +200,307 @@ func (a *workspaceState) swapInputs() {
 	a.guard(func() { a.paths[0], a.paths[1] = a.paths[1], a.paths[0]; a.load() })
 }
 
-func (a *workspaceState) view(c *ui.Context) {
-	a.refreshComparison()
-	t := c.Theme()
-	pal := paletteFor(t)
-
-	ui.Row(c).Fill().Background(pal.appBg).Children(func() {
-		// 左侧侧边栏（深度融合明暗主题）
-		ui.Column(c).Width(160).FillHeight().Padding(12, 8).Gap(3).Background(pal.sidebarBg).BorderWidth(0, 1, 0, 0).BorderColor(pal.sidebarBorder).Children(func() {
-			ui.Row(c).Padding(4, 6).Gap(8).Margin(0, 0, 12).Children(func() {
-				if icon := a.appIcon(); icon != nil {
-					ui.Box(c).Size(26, 26).Center().Radius(6).Background(pal.cardBg).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08)).Children(func() {
-						ui.Image(c, icon).Size(20, 20).Label(i18n.T("a11y.appIcon"))
-					})
-				}
-				ui.Column(c).Gap(1).Children(func() {
-					ui.Text(c, "GoCompare").FontSize(14).Bold().TextColor(pal.sidebarText).SingleLine()
-					ui.Text(c, "Diff Workbench").FontSize(9).TextColor(pal.sidebarMuted).SingleLine()
-				})
+func (a *workspaceState) shellOptions() sidebar.ShellOptions {
+	return sidebar.ShellOptions{
+		Title:        "GoCompare",
+		Width:        1380,
+		Height:       880,
+		MinWidth:     900,
+		MinHeight:    600,
+		LeftWidth:    168,
+		LeftMinWidth: 144,
+		LeftMaxWidth: 260,
+		StateKey:     "gocompare.main",
+		Theme:        activeTheme,
+		Left: func(c *ui.Context) {
+			pal := paletteFor(c.Theme())
+			ui.Column(c).Fill().Background(pal.sidebarBg).Children(func() {
+				a.renderSidebar(c, pal, sidebar.HeaderHeight(c))
 			})
+		},
+		ContentTitle: func(c *ui.Context) {
+			pal := paletteFor(c.Theme())
+			ui.Row(c).Fill().AlignItems(ui.Center).Gap(8).Children(func() {
+				a.renderHeaderContents(c, pal)
+			})
+		},
+		Content: func(c *ui.Context) {
+			a.refreshComparison()
+			pal := paletteFor(c.Theme())
+			ui.Column(c).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Background(pal.appBg).Children(func() {
+				ui.Box(c).FillWidth().Height(1).Background(pal.cardBorder)
+				a.renderWorkspaceMain(c, pal)
+			})
+			a.renderOverlaysAndShortcuts(c, pal)
+		},
+	}
+}
 
-			ui.Text(c, i18n.T("nav.modes")).Padding(2, 8).FontSize(10).Bold().TextColor(pal.sidebarMuted)
-			for _, m := range modes {
-				m := m
-				active := a.kind == m.kind
-				bg := ui.Transparent
-				fg := pal.sidebarMuted
-				label := i18n.T(m.msgKey)
-				btn := ui.Button(c.Key(m.kind), "").Label(label).FillWidth().Height(34).Padding(0, 8).Gap(7).Radius(6).Justify(ui.Start).BorderWidth(0).Background(bg)
-				if active {
-					btn.Background(pal.sidebarItemActive).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06))
-					fg = pal.sidebarText
-				}
-				btn.TextColor(fg)
-				btn.OnClick(func() { a.selectKind(m.kind) })
-				btn.Children(func() {
-					iconSvg := m.icon
-					iconCol := pal.sidebarMuted
-					if active {
-						iconCol = pal.baseAccent
-					}
-					ui.Icon(c, iconSvg).Size(14, 14).TextColor(iconCol)
-					txt := ui.Text(c, label).FontSize(12).SingleLine()
-					if active {
-						txt.Bold().TextColor(pal.sidebarText)
-					}
+func (a *workspaceState) renderSidebar(c *ui.Context, pal uiPalette, topPad float32) {
+	ui.Column(c).Fill().Padding(topPad, 6, 10, 6).Gap(4).Children(func() {
+		ui.Row(c).Padding(4, 6).Gap(8).Margin(0, 0, 6).AlignItems(ui.Center).Children(func() {
+			if icon := a.appIcon(); icon != nil {
+				ui.Box(c).Size(26, 26).Center().Radius(6).Background(pal.cardBg).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08)).Children(func() {
+					ui.Image(c, icon).Size(20, 20).Label(i18n.T("a11y.appIcon"))
 				})
 			}
-
-			ui.Box(c).Grow(1)
-			ui.Box(c).Height(1).FillWidth().Margin(6, 4).Background(pal.sidebarBorder)
-			ui.Text(c, i18n.T("nav.session")).Padding(2, 8).FontSize(10).Bold().TextColor(pal.sidebarMuted)
-
-			openBtn := ui.Button(c.Key("open-session"), "").Label(i18n.T("nav.openSession")).FillWidth().Height(30).Padding(0, 8).Gap(6).Radius(6).Justify(ui.Start).Background(pal.sidebarBtnBg).Border(1, pal.sidebarBtnBorder).TextColor(pal.sidebarText).Disabled(a.busy)
-			openBtn.OnClick(func() { a.sessionDialog(false) })
-			openBtn.Children(func() {
-				ui.Icon(c, iconFolderOpen).Size(12, 12).TextColor(pal.sidebarMuted)
-				ui.Text(c, i18n.T("nav.openSession")).FontSize(11).SingleLine()
-			})
-
-			saveBtn := ui.Button(c.Key("save-session"), "").Label(i18n.T("nav.saveSession")).FillWidth().Height(30).Padding(0, 8).Gap(6).Radius(6).Justify(ui.Start).Background(pal.sidebarBtnBg).Border(1, pal.sidebarBtnBorder).TextColor(pal.sidebarText).Disabled(a.busy || !a.canSaveSession())
-			saveBtn.OnClick(func() { a.sessionDialog(true) })
-			saveBtn.Children(func() {
-				ui.Icon(c, iconSave).Size(12, 12).TextColor(pal.sidebarMuted)
-				ui.Text(c, i18n.T("nav.saveSession")).FontSize(11).SingleLine()
-			})
-
-			settingsBtn := ui.Button(c.Key("settings-btn"), "").Label(i18n.T("nav.settings")).FillWidth().Height(30).Padding(0, 8).Gap(6).Radius(6).Justify(ui.Start).Background(pal.sidebarBtnBg).Border(1, pal.sidebarBtnBorder).TextColor(pal.sidebarText)
-			settingsBtn.OnClick(func() { a.settingsOpen = true })
-			settingsBtn.Children(func() {
-				ui.Icon(c, iconSliders).Size(12, 12).TextColor(pal.sidebarMuted)
-				ui.Text(c, i18n.T("nav.settings")).FontSize(11).SingleLine()
+			ui.Column(c).Gap(1).Children(func() {
+				components.Text(c, "GoCompare").FontSize(14).Bold().TextColor(pal.sidebarText).SingleLine()
+				components.Text(c, "Diff Workbench").FontSize(9).TextColor(pal.sidebarMuted).SingleLine()
 			})
 		})
 
-		// 右侧主工作区
-		ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
-			title := modeTitle(a.kind)
-			// 顶部标题栏（沉浸式对齐设计）
-			ui.Row(c.Key("header-bar")).Height(44).Padding(0, 16).Gap(8).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-				ui.Row(c).Size(24, 24).Center().Radius(6).Background(pal.baseBg).Children(func() {
-					ui.Icon(c, modeIcon(a.kind)).Size(13, 13).TextColor(pal.baseAccent)
-				})
-				ui.Text(c, title).FontSize(15).Bold().SingleLine()
-				a.renderHeaderBadge(c, pal)
-				ui.Box(c).Grow(1)
-
-				if a.kind == kindFile && a.panes[0] != nil && a.directoryRoots[0] != "" {
-					backBtn := ui.Button(c.Key("btn-back-folder"), "").Label(i18n.T("action.backToFolder")).Padding(4, 9).Gap(4).Radius(6).Disabled(a.busy)
-					backBtn.OnClick(func() {
-						a.guard(func() {
-							if a.restoreModeSession(1) {
-								a.kind = kindDirectory
-							} else {
-								a.paths = a.directoryRoots
-								a.kind = kindDirectory
-								a.load()
-							}
-						})
-					})
-					backBtn.Children(func() {
-						ui.Icon(c, iconFolderOpen).Size(12, 12)
-						ui.Text(c, i18n.T("action.backToFolder")).FontSize(11).SingleLine()
-					})
-				}
-				if a.busy || a.compareRunning {
-					ui.Spinner(c).Size(14, 14)
-					cancelBtn := ui.Button(c.Key("btn-cancel-task"), i18n.T("action.cancelTask")).Padding(4, 8).Radius(6).Background(pal.dangerBg).Border(1, pal.dangerFg.Alpha(0.25)).TextColor(pal.dangerFg).FontSize(11)
-					cancelBtn.OnClick(func() {
-						a.stopComparison()
-						a.compareErr = context.Canceled
-						if a.cancel != nil {
-							a.cancel()
-						}
-					})
-				}
-				// 只有存在比较选项的模式才提供抽屉开关，避免打开一条空抽屉。
-				if a.hasOptions() {
-					optBtn := ui.Button(c.Key("btn-toggle-options"), "").Label(i18n.T("action.options")).Padding(4, 9).Gap(4).Radius(6)
-					if a.optionsOpen {
-						optBtn.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35)).TextColor(pal.baseAccent)
+		components.Sidebar(c).Padding(0, 2, 0, 2).Gap(6).Grow(1).Children(func() {
+			components.SidebarSection(c, i18n.T("nav.modes"), func() {
+				for _, m := range modes {
+					m := m
+					label := i18n.T(m.msgKey)
+					item := components.SidebarItem(c, label, m.icon, a.kind == m.kind)
+					item.Padding(5, 8).Gap(7).FontSize(12)
+					if item.Clicked() {
+						a.selectKind(m.kind)
 					}
-					optBtn.OnClick(func() { a.optionsOpen = !a.optionsOpen })
-					optBtn.Children(func() {
-						ui.Icon(c, iconSliders).Size(12, 12)
-						ui.Text(c, i18n.T("action.options")).FontSize(11).SingleLine()
-					})
 				}
 			})
 
-			if a.kind != kindScratch {
-				// 双侧来源路径胶囊区（极简紧凑）
-				ui.Row(c.Key("path-capsules")).Padding(6, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-					for side := 0; side < 2; side++ {
-						side := side
-						sideLabels := []string{i18n.T("pane.leftPath"), i18n.T("pane.rightPath")}
-						sideRow := ui.Row(c.Key(side)).Grow(1).Basis(0).MinWidth(0).Height(34).Padding(0, 8).Gap(6).Radius(7)
-						if sideRow.FileDragOver() {
-							sideRow.Background(pal.baseBg).Border(1.5, pal.baseAccent)
-						} else {
-							sideRow.Background(pal.cardBg).Border(1, pal.cardBorder)
-						}
-						if dropped := sideRow.DroppedFiles(); len(dropped) > 0 {
-							a.handleDrop(side, dropped)
-						}
-						sideRow.Children(func() {
-							sideBadge(c, side, pal)
-							if remote.IsURL(a.paths[side]) {
-								statusPill(c, i18n.T("remote.badge"), pal.baseAccent, pal.baseBg)
-							}
-							ui.TextInput(c.Key("input"), &a.paths[side]).Grow(1).MinWidth(0).Placeholder(i18n.T("pane.pathPlaceholder")).Label(sideLabels[side]).Disabled(a.busy).OnSubmit(func() { a.guard(a.load) })
-							ui.Button(c.Key("browse"), i18n.T("action.browse")).Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy).OnClick(func() { a.browse(side) })
-							// 所有双侧来源模式都支持远程来源：打开连接对话框选择，不必手输地址。
-							remoteBtn := ui.Button(c.Key("remote"), "").Label(i18n.T("remote.open")).Tooltip(i18n.T("remote.openTooltip")).Shrink(0).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy)
-							remoteBtn.OnClick(func() { a.openRemoteDialog(side) })
-							remoteBtn.Children(func() {
-								ui.Icon(c, iconRemote).Size(11, 11)
-								ui.Text(c, i18n.T("remote.open")).FontSize(11).SingleLine()
-							})
-						})
-					}
-				})
-				// 文本合并的基准与输出路径和左右来源同属输入，常驻显示，不受比较选项开关影响。
-				if a.kind == kindMerge {
-					ui.Row(c.Key("merge-capsules")).Padding(6, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-						a.mergeInputsRow(c, pal)
-					})
+			ui.Box(c).Grow(1)
+			ui.Box(c).Height(1).FillWidth().Margin(4, 4).Background(pal.sidebarBorder)
+
+			components.SidebarSection(c, i18n.T("nav.session"), func() {
+				openItem := components.SidebarItem(c, i18n.T("nav.openSession"), iconFolderOpen, false).
+					Padding(5, 8).Gap(7).FontSize(11).Disabled(a.busy)
+				if openItem.Clicked() {
+					a.sessionDialog(false)
 				}
-			}
 
-			// 操作命令工具栏（文本比较与各模式完全对齐）
-			if a.kind == kindScratch {
-				a.scratchToolbar(c, pal)
-			} else {
-				a.actionToolbar(c, pal)
-			}
-
-			// 比较选项抽屉：位于操作命令工具栏正下方，只在存在比较选项的模式显示。
-			if a.optionsOpen && a.hasOptions() {
-				a.optionsView(c)
-			}
-			if a.err != "" {
-				ui.Row(c.Key("error-banner")).Padding(6, 16).Gap(8).Background(pal.dangerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.dangerFg.Alpha(0.2)).Children(func() {
-					ui.Icon(c, iconAlert).Size(14, 14).TextColor(pal.dangerFg)
-					ui.Text(c, i18n.T("dialog.error")).Bold().FontSize(11).TextColor(pal.dangerFg)
-					ui.Text(c, a.err).Grow(1).MinWidth(0).FontSize(11).TextColor(pal.dangerFg)
-					ui.Button(c.Key("close-err"), i18n.T("action.closeAlert")).Padding(2, 8).Radius(4).FontSize(10).OnClick(func() { a.err = "" })
-				})
-			}
-
-			// 按模式区分主视图的控件身份，切换模式时各模式的控件状态互不复用。
-			ui.Column(c.Key(fmt.Sprintf("view-%d", a.kind))).Grow(1).FillWidth().Children(func() {
-				switch {
-				case a.kind == kindScratch:
-					a.scratchView(c)
-				case a.kind == kindMerge:
-					a.mergeView(c)
-				case a.kind == kindPicture:
-					a.pictureView(c)
-				case a.kind == kindMedia:
-					a.mediaView(c)
-				case a.kind == kindVersion:
-					a.versionView(c)
-				case a.kind == kindTable:
-					a.tableView(c)
-				case a.kind == kindDirectory && a.directoryRows != nil:
-					a.directoryView(c)
-				case a.kind == kindFile && a.panes[0] != nil:
-					a.textView(c)
-				default:
-					a.modeEmptyView(c, pal, a.kind)
+				saveItem := components.SidebarItem(c, i18n.T("nav.saveSession"), iconSave, false).
+					Padding(5, 8).Gap(7).FontSize(11).Disabled(a.busy || !a.canSaveSession())
+				if saveItem.Clicked() {
+					a.sessionDialog(true)
 				}
-			})
 
-			message := a.message
-			if a.compareRunning {
-				message = i18n.T("status.diffRunning")
-			} else if a.compareErr != nil {
-				message = i18n.T("status.diffStopped")
-			}
-			if a.busy {
-				message = i18n.T("status.processing")
-			}
-			dotColor := pal.successFg
-			if a.busy || a.compareRunning {
-				dotColor = pal.diffFg
-			} else if a.err != "" || a.compareErr != nil {
-				dotColor = pal.dangerFg
-			}
-			ui.Row(c.Key("status-bar")).Height(26).Padding(0, 14).Gap(6).Background(pal.subtleSurface).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
-				ui.Box(c).Size(5, 5).Radius(999).Background(dotColor)
-				ui.Text(c, message).Grow(1).MinWidth(0).FontSize(11).TextColor(t.TextMuted).SingleLine().Tooltip(message)
-				ui.Text(c, i18n.T("status.saveShortcut")).FontSize(10).TextColor(t.TextMuted)
+				prefShortcut := "⌘,"
+				if runtime.GOOS != "darwin" {
+					prefShortcut = "Ctrl+,"
+				}
+				settingsItem := components.SidebarItemWithSlots(c, i18n.T("nav.settings"), a.settingsOpen,
+					func(c *ui.Context, size float32) {
+						components.Icon(c, iconSliders).Size(size, size).TextColor(c.Theme().Accent)
+					},
+					func(c *ui.Context, _ float32) {
+						components.Text(c, prefShortcut).FontSize(10).TextColor(pal.sidebarMuted).SingleLine()
+					},
+				).Padding(5, 8).Gap(7).FontSize(11).Tooltip(i18n.T("nav.settings") + " (" + prefShortcut + ")")
+				if settingsItem.Clicked() {
+					a.settingsOpen = true
+				}
+
+				aboutItem := components.SidebarItem(c, i18n.T("nav.about"), iconInfo, a.aboutOpen).
+					Padding(5, 8).Gap(7).FontSize(11)
+				if aboutItem.Clicked() {
+					a.aboutOpen = true
+				}
 			})
 		})
 	})
+}
 
-	if a.settingsOpen {
-		a.settingsModal(c, pal)
+func (a *workspaceState) renderHeaderContents(c *ui.Context, pal uiPalette) {
+	title := modeTitle(a.kind)
+	ui.Row(c).Size(24, 24).Center().Radius(6).Background(pal.baseBg).Children(func() {
+		components.Icon(c, modeIcon(a.kind)).Size(13, 13).TextColor(pal.baseAccent)
+	})
+	components.Text(c, title).FontSize(15).Bold().SingleLine()
+	a.renderHeaderBadge(c, pal)
+	ui.Box(c).Grow(1)
+
+	if a.kind == kindFile && a.panes[0] != nil && a.directoryRoots[0] != "" {
+		backBtn := toolbarBtn(c.Key("btn-back-folder"), i18n.T("action.backToFolder"), iconFolderOpen, components.ButtonSecondary, a.busy)
+		backBtn.OnClick(func() {
+			a.guard(func() {
+				if a.restoreModeSession(1) {
+					a.kind = kindDirectory
+				} else {
+					a.paths = a.directoryRoots
+					a.kind = kindDirectory
+					a.load()
+				}
+			})
+		})
 	}
+	if a.busy || a.compareRunning {
+		components.Spinner(c, components.SpinnerSpokes).Size(14, 14)
+		cancelBtn := dangerBtn(c.Key("btn-cancel-task"), i18n.T("action.cancelTask"), nil, pal, false)
+		cancelBtn.OnClick(func() {
+			a.stopComparison()
+			a.compareErr = context.Canceled
+			if a.cancel != nil {
+				a.cancel()
+			}
+		})
+	}
+	// 只有存在比较选项的模式才提供抽屉开关，避免打开一条空抽屉。
+	if a.hasOptions() {
+		variant := components.ButtonSecondary
+		if a.optionsOpen {
+			variant = components.ButtonToolbar
+		}
+		optBtn := toolbarBtn(c.Key("btn-toggle-options"), i18n.T("action.options"), iconSliders, variant, false)
+		if a.optionsOpen {
+			optBtn.Background(pal.baseBg).Border(1, pal.baseAccent.Alpha(0.35)).TextColor(pal.baseAccent)
+		}
+		optBtn.OnClick(func() { a.optionsOpen = !a.optionsOpen })
+	}
+}
+
+func (a *workspaceState) renderWorkspaceMain(c *ui.Context, pal uiPalette) {
+	t := c.Theme()
+	if a.kind != kindScratch {
+		// 双侧来源路径胶囊区（极简紧凑）
+		ui.Row(c.Key("path-capsules")).Padding(6, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+			for side := 0; side < 2; side++ {
+				side := side
+				sideLabels := []string{i18n.T("pane.leftPath"), i18n.T("pane.rightPath")}
+				sideRow := ui.Row(c.Key(side)).Grow(1).Basis(0).MinWidth(0).Height(34).Padding(0, 8).Gap(6).Radius(7).AlignItems(ui.Center)
+				if sideRow.FileDragOver() {
+					sideRow.Background(pal.baseBg).Border(1.5, pal.baseAccent)
+				} else {
+					sideRow.Background(pal.cardBg).Border(1, pal.cardBorder)
+				}
+				if dropped := sideRow.DroppedFiles(); len(dropped) > 0 {
+					a.handleDrop(side, dropped)
+				}
+				sideRow.Children(func() {
+					sideBadge(c, side, pal)
+					if remote.IsURL(a.paths[side]) {
+						statusPill(c, i18n.T("remote.badge"), pal.baseAccent, pal.baseBg)
+					}
+					components.TextBox(c.Key("input"), &a.paths[side], components.TextBoxOptions{}).
+						Grow(1).MinWidth(0).Padding(3, 6).
+						Background(ui.Transparent).Border(0, ui.Transparent).
+						Placeholder(i18n.T("pane.pathPlaceholder")).
+						Label(sideLabels[side]).
+						Disabled(a.busy).
+						OnSubmit(func() { a.guard(a.load) })
+					compactBtn(c.Key("browse"), i18n.T("action.browse"), nil, components.ButtonSecondary, a.busy).
+						OnClick(func() { a.browse(side) })
+					// 所有双侧来源模式都支持远程来源：打开连接对话框选择，不必手输地址。
+					compactBtn(c.Key("remote"), i18n.T("remote.open"), iconRemote, components.ButtonSecondary, a.busy).
+						Tooltip(i18n.T("remote.openTooltip")).
+						OnClick(func() { a.openRemoteDialog(side) })
+				})
+			}
+		})
+		// 文本合并的基准与输出路径和左右来源同属输入，常驻显示，不受比较选项开关影响。
+		if a.kind == kindMerge {
+			ui.Row(c.Key("merge-capsules")).Padding(6, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+				a.mergeInputsRow(c, pal)
+			})
+		}
+	}
+
+	// 操作命令工具栏（文本比较与各模式完全对齐）
+	if a.kind == kindScratch {
+		a.scratchToolbar(c, pal)
+	} else {
+		a.actionToolbar(c, pal)
+	}
+
+	// 比较选项抽屉：位于操作命令工具栏正下方，只在存在比较选项的模式显示。
+	if a.optionsOpen && a.hasOptions() {
+		a.optionsView(c)
+	}
+	if a.err != "" {
+		ui.Row(c.Key("error-banner")).Padding(6, 16).Gap(8).AlignItems(ui.Center).Background(pal.dangerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.dangerFg.Alpha(0.2)).Children(func() {
+			components.Icon(c, iconAlert).Size(14, 14).TextColor(pal.dangerFg)
+			components.Text(c, i18n.T("dialog.error")).Bold().FontSize(11).TextColor(pal.dangerFg)
+			components.Text(c, a.err).Grow(1).MinWidth(0).FontSize(11).TextColor(pal.dangerFg)
+			compactBtn(c.Key("close-err"), i18n.T("action.closeAlert"), nil, components.ButtonSecondary, false).
+				OnClick(func() { a.err = "" })
+		})
+	}
+
+	// 按模式区分主视图的控件身份，切换模式时各模式的控件状态互不复用。
+	ui.Column(c.Key(fmt.Sprintf("view-%d", a.kind))).Grow(1).FillWidth().Children(func() {
+		switch {
+		case a.kind == kindScratch:
+			a.scratchView(c)
+		case a.kind == kindMerge:
+			a.mergeView(c)
+		case a.kind == kindPicture:
+			a.pictureView(c)
+		case a.kind == kindMedia:
+			a.mediaView(c)
+		case a.kind == kindVersion:
+			a.versionView(c)
+		case a.kind == kindTable:
+			a.tableView(c)
+		case a.kind == kindDirectory && a.directoryRows != nil:
+			a.directoryView(c)
+		case a.kind == kindFile && a.panes[0] != nil:
+			a.textView(c)
+		default:
+			a.modeEmptyView(c, pal, a.kind)
+		}
+	})
+
+	message := a.message
+	if a.compareRunning {
+		message = i18n.T("status.diffRunning")
+	} else if a.compareErr != nil {
+		message = i18n.T("status.diffStopped")
+	}
+	if a.busy {
+		message = i18n.T("status.processing")
+	}
+	dotColor := pal.successFg
+	if a.busy || a.compareRunning {
+		dotColor = pal.diffFg
+	} else if a.err != "" || a.compareErr != nil {
+		dotColor = pal.dangerFg
+	}
+	ui.Row(c.Key("status-bar")).Height(26).Padding(0, 14).Gap(6).AlignItems(ui.Center).Background(pal.subtleSurface).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
+		ui.Box(c).Size(5, 5).Radius(999).Background(dotColor)
+		components.Text(c, message).Grow(1).MinWidth(0).FontSize(11).TextColor(t.TextMuted).SingleLine().Tooltip(message)
+		components.Text(c, i18n.T("status.saveShortcut")).FontSize(10).TextColor(t.TextMuted)
+	})
+}
+
+func (a *workspaceState) renderOverlaysAndShortcuts(c *ui.Context, pal uiPalette) {
+	a.settingsModal(c, pal)
+	a.aboutModal(c, pal)
 	a.remoteDialogView(c, pal)
 	a.remoteDialogs(c, pal)
 
-	if a.confirmSync {
-		choice := ui.AlertDialog(c, &a.confirmSync, i18n.T("dialog.syncTitle"), i18n.T("dialog.syncDesc"), i18n.T("dialog.cancel"), i18n.T("dialog.execute"))
-		if choice == 1 {
-			a.executeSync()
-		}
+	switch components.AlertDialog(c.Key("confirm-sync"), &a.confirmSync, components.AlertDialogOptions{
+		Title:        i18n.T("dialog.syncTitle"),
+		Message:      i18n.T("dialog.syncDesc"),
+		CancelLabel:  i18n.T("dialog.cancel"),
+		ConfirmLabel: i18n.T("dialog.execute"),
+	}) {
+	case components.DialogConfirmed:
+		a.executeSync()
 	}
-	if a.confirm {
-		choice := ui.AlertDialog(c, &a.confirm, i18n.T("dialog.discardTitle"), i18n.T("dialog.discardDesc"), i18n.T("dialog.cancel"), i18n.T("dialog.discard"))
-		if choice == 1 {
-			fn := a.pending
-			a.pending = nil
-			if fn != nil {
-				fn()
-			}
-		} else if !a.confirm {
-			a.pending = nil
+
+	switch components.AlertDialog(c.Key("confirm-discard"), &a.confirm, components.AlertDialogOptions{
+		Title:        i18n.T("dialog.discardTitle"),
+		Message:      i18n.T("dialog.discardDesc"),
+		CancelLabel:  i18n.T("dialog.cancel"),
+		ConfirmLabel: i18n.T("dialog.discard"),
+	}) {
+	case components.DialogConfirmed:
+		fn := a.pending
+		a.pending = nil
+		if fn != nil {
+			fn()
 		}
+	case components.DialogCancelled:
+		a.pending = nil
 	}
+
+	c.OnShortcut(ui.Cmd, ui.KeyComma, func() {
+		a.settingsOpen = !a.settingsOpen
+	})
 	c.OnShortcut(ui.Cmd, ui.KeyS, func() {
 		if a.kind == kindMerge && a.mergeBuffer != nil && a.mergeBuffer.Modified() {
 			a.saveMerge()
@@ -481,6 +527,29 @@ func (a *workspaceState) view(c *ui.Context) {
 			a.redo()
 		}
 	})
+}
+
+func (a *workspaceState) view(c *ui.Context) {
+	t := applyOnevraTheme(c)
+	a.refreshComparison()
+	pal := paletteFor(t)
+
+	ui.Row(c).Fill().Background(pal.appBg).Children(func() {
+		// 左侧侧边栏（Onevra Sidebar 导航组件）
+		ui.Column(c).Width(160).FillHeight().Background(pal.sidebarBg).BorderWidth(0, 1, 0, 0).BorderColor(pal.sidebarBorder).Children(func() {
+			a.renderSidebar(c, pal, 10)
+		})
+
+		// 右侧主工作区
+		ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
+			ui.Row(c.Key("header-bar")).Height(44).Padding(0, 16).Gap(8).AlignItems(ui.Center).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+				a.renderHeaderContents(c, pal)
+			})
+			a.renderWorkspaceMain(c, pal)
+		})
+	})
+
+	a.renderOverlaysAndShortcuts(c, pal)
 }
 
 func (a *workspaceState) renderToolbarMeta(c *ui.Context, pal uiPalette) {
@@ -619,7 +688,7 @@ func (a *workspaceState) resetCurrentMode() {
 		a.refreshComparison()
 	}
 	if a.modeSessions != nil {
-		a.modeSessions[a.kind] = nil
+		delete(a.modeSessions, a.kind)
 	}
 	a.message = i18n.T("status.resetDone")
 }
@@ -728,37 +797,21 @@ func (a *workspaceState) modeEmptyView(c *ui.Context, pal uiPalette, kind int) {
 }
 
 func (a *workspaceState) actionToolbar(c *ui.Context, pal uiPalette) {
-	ui.Row(c.Key("act-toolbar-row")).Wrap().MinHeight(38).Padding(5, 14).Gap(6).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		startBtn := ui.PrimaryButton(c.Key("act-compare"), "").Label(i18n.T("action.compare")).Padding(4, 10).Gap(4).Radius(6).Disabled(a.busy)
-		startBtn.OnClick(func() { a.guard(a.load) })
-		startBtn.Children(func() {
-			ui.Icon(c, iconCompare).Size(11, 11)
-			ui.Text(c, i18n.T("action.compare")).FontSize(11).Bold().SingleLine()
-		})
+	ui.Row(c.Key("act-toolbar-row")).Wrap().MinHeight(38).Padding(5, 14).Gap(6).AlignItems(ui.Center).Background(pal.headerBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		toolbarBtn(c.Key("act-compare"), i18n.T("action.compare"), iconCompare, components.ButtonPrimary, a.busy).
+			OnClick(func() { a.guard(a.load) })
 
-		swapBtn := ui.Button(c.Key("act-swap"), "").Label(i18n.T("action.swap")).Padding(4, 9).Gap(4).Radius(6).Disabled(a.busy)
-		swapBtn.OnClick(a.swapInputs)
-		swapBtn.Children(func() {
-			ui.Icon(c, iconSwap).Size(11, 11)
-			ui.Text(c, i18n.T("action.swap")).FontSize(11).SingleLine()
-		})
+		toolbarBtn(c.Key("act-swap"), i18n.T("action.swap"), iconSwap, components.ButtonSecondary, a.busy).
+			OnClick(a.swapInputs)
 
-		resetBtn := ui.Button(c.Key("act-reset"), "").Label(i18n.T("action.reset")).Padding(4, 9).Gap(4).Radius(6).Disabled(a.busy || !a.canReset())
-		resetBtn.OnClick(a.resetCurrentMode)
-		resetBtn.Children(func() {
-			ui.Icon(c, iconReset).Size(11, 11)
-			ui.Text(c, i18n.T("action.reset")).FontSize(11).SingleLine()
-		})
+		toolbarBtn(c.Key("act-reset"), i18n.T("action.reset"), iconReset, components.ButtonSecondary, a.busy || !a.canReset()).
+			OnClick(a.resetCurrentMode)
 
 		// 独立合并窗口按左右文本文件逐行合并，只在文件比较和文本合并提供，位置固定在重置之后。
 		if a.canOpenMerge() {
 			ui.Divider(c).Height(16).Margin(0, 2)
-			winBtn := ui.Button(c.Key("act-open-merge"), "").Label(i18n.T("action.openMerge")).Padding(4, 9).Gap(4).Radius(6).Disabled(a.busy)
-			winBtn.OnClick(a.openMergeWindow)
-			winBtn.Children(func() {
-				ui.Icon(c, iconExternal).Size(11, 11)
-				ui.Text(c, i18n.T("action.openMerge")).FontSize(11).SingleLine()
-			})
+			toolbarBtn(c.Key("act-open-merge"), i18n.T("action.openMerge"), iconExternal, components.ButtonSecondary, a.busy).
+				OnClick(a.openMergeWindow)
 		}
 
 		if a.kind == kindFile && a.panes[0] != nil {
@@ -767,30 +820,20 @@ func (a *workspaceState) actionToolbar(c *ui.Context, pal uiPalette) {
 			if ready {
 				a.hunkCounter(c, pal)
 			}
-			prevBtn := ui.Button(c.Key("act-prev-diff"), "").Label(i18n.T("action.prevDiff")).Padding(4, 8).Gap(3).Radius(6).Disabled(!ready)
-			prevBtn.OnClick(func() { a.navigateDiff(-1) })
-			prevBtn.Children(func() {
-				ui.Icon(c, iconChevronUp).Size(11, 11)
-				ui.Text(c, i18n.T("action.prevDiff")).FontSize(11).SingleLine()
-			})
+			toolbarBtn(c.Key("act-prev-diff"), i18n.T("action.prevDiff"), iconChevronUp, components.ButtonSecondary, !ready).
+				OnClick(func() { a.navigateDiff(-1) })
 
-			nextBtn := ui.Button(c.Key("act-next-diff"), "").Label(i18n.T("action.nextDiff")).Padding(4, 8).Gap(3).Radius(6).Disabled(!ready)
-			nextBtn.OnClick(func() { a.navigateDiff(1) })
-			nextBtn.Children(func() {
-				ui.Icon(c, iconChevronDown).Size(11, 11)
-				ui.Text(c, i18n.T("action.nextDiff")).FontSize(11).SingleLine()
-			})
+			toolbarBtn(c.Key("act-next-diff"), i18n.T("action.nextDiff"), iconChevronDown, components.ButtonSecondary, !ready).
+				OnClick(func() { a.navigateDiff(1) })
 
-			ui.Button(c.Key("act-apply-left"), i18n.T("action.applyLeft")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(0) })
-			ui.Button(c.Key("act-apply-right"), i18n.T("action.applyRight")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(1) })
+			toolbarBtn(c.Key("act-apply-left"), i18n.T("action.applyLeft"), nil, components.ButtonSecondary, !ready || a.ignoreBlankLines).
+				OnClick(func() { a.apply(0) })
+			toolbarBtn(c.Key("act-apply-right"), i18n.T("action.applyRight"), nil, components.ButtonSecondary, !ready || a.ignoreBlankLines).
+				OnClick(func() { a.apply(1) })
 			a.renderToolbarUndoRedo(c, "act")
 
-			findBtn := ui.Button(c.Key("act-find"), "").Label(i18n.T("action.find")).Padding(4, 8).Gap(3).Radius(6)
-			findBtn.OnClick(func() { a.activeDiff().Run(editor.Find) })
-			findBtn.Children(func() {
-				ui.Icon(c, iconSearch).Size(11, 11)
-				ui.Text(c, i18n.T("action.find")).FontSize(11).SingleLine()
-			})
+			toolbarBtn(c.Key("act-find"), i18n.T("action.find"), iconSearch, components.ButtonSecondary, false).
+				OnClick(func() { a.activeDiff().Run(editor.Find) })
 		} else {
 			ui.Box(c).Grow(1)
 			a.renderToolbarMeta(c, pal)
@@ -805,55 +848,47 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 	leftLen := leftBuf.Len()
 	rightLen := rightBuf.Len()
 
-	ui.Row(c.Key("scratch-toolbar-row")).Wrap().MinHeight(38).Padding(5, 14).Gap(6).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		resetBtn := ui.Button(c.Key("scratch-reset"), "").Label(i18n.T("action.reset")).Padding(4, 8).Gap(3).Radius(6).Disabled(a.busy || !a.canReset())
-		resetBtn.OnClick(a.resetCurrentMode)
-		resetBtn.Children(func() {
-			ui.Icon(c, iconReset).Size(11, 11)
-			ui.Text(c, i18n.T("action.reset")).FontSize(11).SingleLine()
-		})
+	ui.Row(c.Key("scratch-toolbar-row")).Wrap().MinHeight(38).Padding(5, 14).Gap(6).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+		toolbarBtn(c.Key("scratch-reset"), i18n.T("action.reset"), iconReset, components.ButtonSecondary, a.busy || !a.canReset()).
+			OnClick(a.resetCurrentMode)
 
-		clearBtn := ui.Button(c.Key("scratch-clear"), i18n.T("action.clear")).Padding(4, 8).Radius(6).FontSize(11).Disabled(leftLen == 0 && rightLen == 0)
-		clearBtn.OnClick(func() {
-			a.scratchHistory.recordDualEdit(a.scratchPanes, func() {
-				leftBuf.Set("")
-				rightBuf.Set("")
+		toolbarBtn(c.Key("scratch-clear"), i18n.T("action.clear"), nil, components.ButtonSecondary, leftLen == 0 && rightLen == 0).
+			OnClick(func() {
+				a.scratchHistory.recordDualEdit(a.scratchPanes, func() {
+					leftBuf.Set("")
+					rightBuf.Set("")
+				})
+				a.refreshComparison()
+				a.message = i18n.T("status.clearedBoth")
 			})
-			a.refreshComparison()
-			a.message = i18n.T("status.clearedBoth")
-		})
 
-		sampleBtn := ui.Button(c.Key("scratch-sample"), i18n.T("action.sample")).Padding(4, 8).Radius(6).FontSize(11)
-		sampleBtn.OnClick(func() {
-			const sampleLeft = "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare!\")\n\titems := []string{\"apple\", \"banana\", \"cherry\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"%d: %s\\n\", i, item)\n\t}\n}\n"
-			const sampleRight = "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare v2!\")\n\titems := []string{\"apple\", \"blueberry\", \"cherry\", \"date\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"[%d] %s\\n\", i+1, strings.ToUpper(item))\n\t}\n}\n"
-			leftBuf.Reset(sampleLeft)
-			rightBuf.Reset(sampleRight)
-			a.scratchHistory.setBaseline(a.scratchPanes, 0, sampleLeft)
-			a.scratchHistory.setBaseline(a.scratchPanes, 1, sampleRight)
-			a.scratchHistory.undo, a.scratchHistory.redo = nil, nil
-			a.scratchHistory.applied = [2][]editor.DiffLineRange{}
-			a.hunkFocus = 0
-			a.pendingFocusHunk = 0
-			a.recompute()
-			a.message = i18n.T("status.sampleLoaded")
-		})
-
-		swapBtn := ui.Button(c.Key("scratch-swap"), "").Label(i18n.T("action.swap")).Padding(4, 8).Gap(3).Radius(6).Disabled(a.busy)
-		swapBtn.OnClick(func() {
-			lt := leftBuf.String()
-			rt := rightBuf.String()
-			a.scratchHistory.recordDualEdit(a.scratchPanes, func() {
-				leftBuf.Set(rt)
-				rightBuf.Set(lt)
+		toolbarBtn(c.Key("scratch-sample"), i18n.T("action.sample"), lucide.Sparkles(), components.ButtonSecondary, false).
+			OnClick(func() {
+				const sampleLeft = "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare!\")\n\titems := []string{\"apple\", \"banana\", \"cherry\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"%d: %s\\n\", i, item)\n\t}\n}\n"
+				const sampleRight = "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\nfunc main() {\n\tfmt.Println(\"Hello, GoCompare v2!\")\n\titems := []string{\"apple\", \"blueberry\", \"cherry\", \"date\"}\n\tfor i, item := range items {\n\t\tfmt.Printf(\"[%d] %s\\n\", i+1, strings.ToUpper(item))\n\t}\n}\n"
+				leftBuf.Reset(sampleLeft)
+				rightBuf.Reset(sampleRight)
+				a.scratchHistory.setBaseline(a.scratchPanes, 0, sampleLeft)
+				a.scratchHistory.setBaseline(a.scratchPanes, 1, sampleRight)
+				a.scratchHistory.undo, a.scratchHistory.redo = nil, nil
+				a.scratchHistory.applied = [2][]editor.DiffLineRange{}
+				a.hunkFocus = 0
+				a.pendingFocusHunk = 0
+				a.recompute()
+				a.message = i18n.T("status.sampleLoaded")
 			})
-			a.refreshComparison()
-			a.message = i18n.T("status.swappedSides")
-		})
-		swapBtn.Children(func() {
-			ui.Icon(c, iconSwap).Size(11, 11)
-			ui.Text(c, i18n.T("action.swap")).FontSize(11).SingleLine()
-		})
+
+		toolbarBtn(c.Key("scratch-swap"), i18n.T("action.swap"), iconSwap, components.ButtonSecondary, a.busy).
+			OnClick(func() {
+				lt := leftBuf.String()
+				rt := rightBuf.String()
+				a.scratchHistory.recordDualEdit(a.scratchPanes, func() {
+					leftBuf.Set(rt)
+					rightBuf.Set(lt)
+				})
+				a.refreshComparison()
+				a.message = i18n.T("status.swappedSides")
+			})
 
 		ui.Divider(c).Height(16).Margin(0, 2)
 
@@ -864,30 +899,20 @@ func (a *workspaceState) scratchToolbar(c *ui.Context, pal uiPalette) {
 		if hasHunks {
 			a.hunkCounter(c, pal)
 		}
-		prevBtn := ui.Button(c.Key("scratch-prev"), "").Label(i18n.T("action.prevDiff")).Padding(4, 8).Gap(3).Radius(6).Disabled(!hasHunks)
-		prevBtn.OnClick(a.diffPrev)
-		prevBtn.Children(func() {
-			ui.Icon(c, iconChevronUp).Size(11, 11)
-			ui.Text(c, i18n.T("action.prevDiff")).FontSize(11).SingleLine()
-		})
+		toolbarBtn(c.Key("scratch-prev"), i18n.T("action.prevDiff"), iconChevronUp, components.ButtonSecondary, !hasHunks).
+			OnClick(a.diffPrev)
 
-		nextBtn := ui.Button(c.Key("scratch-next"), "").Label(i18n.T("action.nextDiff")).Padding(4, 8).Gap(3).Radius(6).Disabled(!hasHunks)
-		nextBtn.OnClick(a.diffNext)
-		nextBtn.Children(func() {
-			ui.Icon(c, iconChevronDown).Size(11, 11)
-			ui.Text(c, i18n.T("action.nextDiff")).FontSize(11).SingleLine()
-		})
+		toolbarBtn(c.Key("scratch-next"), i18n.T("action.nextDiff"), iconChevronDown, components.ButtonSecondary, !hasHunks).
+			OnClick(a.diffNext)
 
-		ui.Button(c.Key("scratch-apply-left"), i18n.T("action.applyLeft")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(0) })
-		ui.Button(c.Key("scratch-apply-right"), i18n.T("action.applyRight")).Padding(4, 8).Radius(6).FontSize(11).Disabled(!ready || a.ignoreBlankLines).OnClick(func() { a.apply(1) })
+		toolbarBtn(c.Key("scratch-apply-left"), i18n.T("action.applyLeft"), nil, components.ButtonSecondary, !ready || a.ignoreBlankLines).
+			OnClick(func() { a.apply(0) })
+		toolbarBtn(c.Key("scratch-apply-right"), i18n.T("action.applyRight"), nil, components.ButtonSecondary, !ready || a.ignoreBlankLines).
+			OnClick(func() { a.apply(1) })
 		a.renderToolbarUndoRedo(c, "scratch")
 
-		findBtn := ui.Button(c.Key("scratch-find"), "").Label(i18n.T("action.find")).Padding(4, 8).Gap(3).Radius(6)
-		findBtn.OnClick(func() { a.activeDiff().Run(editor.Find) })
-		findBtn.Children(func() {
-			ui.Icon(c, iconSearch).Size(11, 11)
-			ui.Text(c, i18n.T("action.find")).FontSize(11).SingleLine()
-		})
+		toolbarBtn(c.Key("scratch-find"), i18n.T("action.find"), iconSearch, components.ButtonSecondary, false).
+			OnClick(func() { a.activeDiff().Run(editor.Find) })
 	})
 }
 
@@ -905,32 +930,45 @@ func (a *workspaceState) optionsView(c *ui.Context) {
 	t := c.Theme()
 	pal := paletteFor(t)
 	ui.Column(c.Key("options-col")).Padding(6, 14).Gap(6).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-		ui.Row(c.Key("options-controls-row")).Gap(8).Wrap().Children(func() {
+		ui.Row(c.Key("options-controls-row")).Gap(10).AlignItems(ui.Center).Wrap().Children(func() {
 			if a.kind == kindDirectory {
-				ui.TextInput(c.Key("opt-dir-filter"), &a.dirFilter).Label(i18n.T("option.dirFilter")).Placeholder(i18n.T("option.dirFilterPlaceholder")).Grow(1).MinWidth(160).Disabled(a.busy)
-				ui.Checkbox(c.Key("opt-dir-mode"), &a.compareMode, i18n.T("option.compareMode")).Disabled(a.busy)
-				ui.Checkbox(c.Key("opt-dir-time"), &a.compareTime, i18n.T("option.compareTime")).Disabled(a.busy)
-				ui.Checkbox(c.Key("opt-dir-links"), &a.followLinks, i18n.T("option.followLinks")).Disabled(a.busy)
+				components.TextBox(c.Key("opt-dir-filter"), &a.dirFilter, components.TextBoxOptions{}).
+					Label(i18n.T("option.dirFilter")).
+					Placeholder(i18n.T("option.dirFilterPlaceholder")).
+					Grow(1).MinWidth(160).Padding(4, 8).
+					Disabled(a.busy)
+				components.Checkbox(c.Key("opt-dir-mode"), &a.compareMode, i18n.T("option.compareMode")).Disabled(a.busy)
+				components.Checkbox(c.Key("opt-dir-time"), &a.compareTime, i18n.T("option.compareTime")).Disabled(a.busy)
+				components.Checkbox(c.Key("opt-dir-links"), &a.followLinks, i18n.T("option.followLinks")).Disabled(a.busy)
 			}
 			if a.kind == kindFile || a.kind == kindScratch {
 				if a.kind == kindFile {
-					ui.Segmented(c.Key("opt-file-mode"), &a.mode, i18n.T("option.modeCompare"), i18n.T("option.modeEditLeft"), i18n.T("option.modeEditRight"))
+					components.Tabs(c.Key("opt-file-mode"), &a.mode, components.TabsSegmented,
+						i18n.T("option.modeCompare"),
+						i18n.T("option.modeEditLeft"),
+						i18n.T("option.modeEditRight"),
+					)
 				}
-				ui.Checkbox(c.Key("opt-text-space"), &a.ignoreSpace, i18n.T("option.ignoreSpace")).OnChange(a.refreshComparison)
-				ui.Checkbox(c.Key("opt-text-blank"), &a.ignoreBlankLines, i18n.T("option.ignoreBlankLines")).OnChange(func() { a.setIgnoreBlankLines(a.ignoreBlankLines) })
-				ui.Checkbox(c.Key("opt-text-wrap"), &a.wrap, i18n.T("option.wrap"))
-				ui.Checkbox(c.Key("opt-text-inline"), &a.inlineDiff, i18n.T("option.inlineDiff")).OnChange(func() { a.setInlineDiff(a.inlineDiff) })
-				ui.Button(c.Key("opt-text-recompute"), i18n.T("action.recompute")).Padding(4, 8).Radius(6).FontSize(11).Disabled(a.kind == kindFile && a.panes[0] == nil).OnClick(a.recompute)
+				components.Checkbox(c.Key("opt-text-space"), &a.ignoreSpace, i18n.T("option.ignoreSpace")).OnChange(a.refreshComparison)
+				components.Checkbox(c.Key("opt-text-blank"), &a.ignoreBlankLines, i18n.T("option.ignoreBlankLines")).OnChange(func() { a.setIgnoreBlankLines(a.ignoreBlankLines) })
+				components.Checkbox(c.Key("opt-text-wrap"), &a.wrap, i18n.T("option.wrap"))
+				components.Checkbox(c.Key("opt-text-inline"), &a.inlineDiff, i18n.T("option.inlineDiff")).OnChange(func() { a.setInlineDiff(a.inlineDiff) })
+				compactBtn(c.Key("opt-text-recompute"), i18n.T("action.recompute"), iconSync, components.ButtonSecondary, a.kind == kindFile && a.panes[0] == nil).
+					OnClick(a.recompute)
 			}
 		})
 		if a.kind == kindFile && a.panes[0] != nil {
-			ui.Row(c.Key("opt-anchors-row")).Gap(6).Children(func() {
-				ui.Icon(c, iconAnchor).Size(12, 12).TextColor(pal.baseAccent)
-				ui.Text(c, i18n.T("option.anchors")).FontSize(11).Bold().TextColor(t.TextMuted)
-				ui.Button(c.Key("mark-left"), i18n.T("option.markLeft")).Padding(3, 8).Radius(5).FontSize(11).OnClick(func() { a.markAnchorSide(editor.DiffOld) })
-				ui.Button(c.Key("mark-right"), i18n.T("option.markRight")).Padding(3, 8).Radius(5).FontSize(11).OnClick(func() { a.markAnchorSide(editor.DiffNew) })
-				ui.Button(c.Key("align-here"), i18n.T("option.alignHere")).Padding(3, 8).Radius(5).FontSize(11).OnClick(a.commitAnchor)
-				ui.Button(c.Key("clear-anchors"), i18n.T("option.clearAnchors")).Padding(3, 8).Radius(5).FontSize(11).OnClick(a.releaseAnchors)
+			ui.Row(c.Key("opt-anchors-row")).Gap(6).AlignItems(ui.Center).Children(func() {
+				components.Icon(c, iconAnchor).Size(12, 12).TextColor(pal.baseAccent)
+				components.Text(c, i18n.T("option.anchors")).FontSize(11).Bold().TextColor(t.TextMuted)
+				compactBtn(c.Key("mark-left"), i18n.T("option.markLeft"), nil, components.ButtonSecondary, false).
+					OnClick(func() { a.markAnchorSide(editor.DiffOld) })
+				compactBtn(c.Key("mark-right"), i18n.T("option.markRight"), nil, components.ButtonSecondary, false).
+					OnClick(func() { a.markAnchorSide(editor.DiffNew) })
+				compactBtn(c.Key("align-here"), i18n.T("option.alignHere"), nil, components.ButtonSecondary, false).
+					OnClick(a.commitAnchor)
+				compactBtn(c.Key("clear-anchors"), i18n.T("option.clearAnchors"), nil, components.ButtonSecondary, false).
+					OnClick(a.releaseAnchors)
 				if len(a.anchors) > 0 {
 					statusPill(c, i18n.TArgs("option.anchorCount", len(a.anchors)), pal.baseAccent, pal.baseBg)
 				}
@@ -939,63 +977,273 @@ func (a *workspaceState) optionsView(c *ui.Context) {
 	})
 }
 
+func (a *workspaceState) openExternalURL(url string) {
+	if !mygo.App.IsReady() {
+		return
+	}
+	if err := mygo.Shell.OpenExternal(url); err != nil {
+		a.err = err.Error()
+	}
+}
+
 func (a *workspaceState) settingsModal(c *ui.Context, pal uiPalette) {
 	t := c.Theme()
-	ui.Modal(c, &a.settingsOpen, func() {
-		ui.Column(c).Width(420).Padding(20, 22).Gap(14).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.22)).Children(func() {
-			ui.Row(c).FillWidth().Children(func() {
-				ui.Row(c).Gap(6).Children(func() {
-					ui.Icon(c, iconSliders).Size(16, 16).TextColor(pal.baseAccent)
-					ui.Text(c, i18n.T("settings.title")).FontSize(15).Bold()
-				})
+	modKey := "⌘"
+	shiftKey := "⇧⌘"
+	if runtime.GOOS != "darwin" {
+		modKey = "Ctrl+"
+		shiftKey = "Ctrl+Shift+"
+	}
+	components.Dialog(c.Key("settings-dialog"), &a.settingsOpen, components.DialogOptions{
+		Label: i18n.T("settings.title"),
+	}, func(panel ui.Element) {
+		panel.Width(560).MaxWidth(560)
+		if panel.OverlayShortcut(ui.Cmd, ui.KeyComma) {
+			a.settingsOpen = false
+		}
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				components.Icon(c, iconSliders).Size(16, 16).TextColor(pal.baseAccent)
+				components.Text(c, i18n.T("settings.title")).FontSize(15).Bold()
+				statusPill(c, modKey+",", pal.sameFg, pal.sameBg)
+			})
+			ui.Box(c).Grow(1)
+			if components.IconButton(c, lucide.X(), "✕", components.IconButtonPlain).Clicked() {
+				a.settingsOpen = false
+			}
+		})
+
+		ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
+
+		// 语言设置
+		ui.Column(c).FillWidth().Gap(5).Children(func() {
+			components.Text(c, i18n.T("settings.language")).FontSize(12).Bold().TextColor(pal.sidebarText)
+			components.Text(c, i18n.T("settings.languageHint")).FontSize(11).TextColor(t.TextMuted)
+			langTabs := components.Tabs(c.Key("settings-lang-tabs"), &a.settingsLang, components.TabsSegmented,
+				i18n.T("settings.langZhCN"),
+				i18n.T("settings.langZhTW"),
+				i18n.T("settings.langEn"),
+			)
+			if langTabs.List.Changed() {
+				a.applySettings(a.settingsLang, a.settingsTheme)
+			}
+		})
+
+		// 日间/夜间/系统外观
+		ui.Column(c).FillWidth().Gap(5).Children(func() {
+			components.Text(c, i18n.T("settings.appearance")).FontSize(12).Bold().TextColor(pal.sidebarText)
+			components.Text(c, i18n.T("settings.themeHint")).FontSize(11).TextColor(t.TextMuted)
+			themeTabs := components.Tabs(c.Key("settings-theme-tabs"), &a.settingsTheme, components.TabsSegmented,
+				i18n.T("settings.themeLight"),
+				i18n.T("settings.themeDark"),
+				i18n.T("settings.themeSystem"),
+			)
+			if themeTabs.List.Changed() {
+				a.applySettings(a.settingsLang, a.settingsTheme)
+			}
+		})
+
+		// 主题配色方案
+		ui.Column(c).FillWidth().Gap(6).Children(func() {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				components.Icon(c, iconPalette).Size(13, 13).TextColor(pal.baseAccent)
+				components.Text(c, i18n.T("settings.palette")).FontSize(12).Bold().TextColor(pal.sidebarText)
+			})
+			components.Text(c, i18n.T("settings.paletteHint")).FontSize(11).TextColor(t.TextMuted)
+			paletteNames := []string{
+				i18n.T("settings.paletteClassic"),
+				i18n.T("settings.paletteEmerald"),
+				i18n.T("settings.paletteViolet"),
+				i18n.T("settings.paletteGraphite"),
+				i18n.T("settings.paletteAmber"),
+			}
+			ui.Row(c.Key("settings-palette-row")).FillWidth().Gap(6).Wrap().Children(func() {
+				for idx, pName := range paletteNames {
+					idx, pName := idx, pName
+					selected := a.settingsPalette == idx
+					dotColor := palettePreviewColor(idx)
+					bg := pal.subtleSurface
+					borderCol := pal.cardBorder
+					borderW := float32(1)
+					if selected {
+						bg = pal.baseBg
+						borderCol = pal.baseAccent
+						borderW = 1.5
+					}
+					btn := ui.ButtonBase(c.Key(fmt.Sprintf("palette-%d", idx))).
+						Label(pName).
+						Grow(1).Shrink(0).Padding(6, 8).Gap(5).Radius(7).
+						AlignItems(ui.Center).Justify(ui.Center).
+						Background(bg).Border(borderW, borderCol).
+						Cursor(ui.CursorPointer)
+					btn.Children(func() {
+						ui.Box(c).Size(10, 10).Radius(999).Background(dotColor).Shrink(0)
+						txt := components.Text(c, pName).FontSize(11).Shrink(0)
+						if selected {
+							txt.Bold().TextColor(pal.baseAccent)
+						} else {
+							txt.TextColor(pal.sidebarText)
+						}
+					})
+					if btn.Clicked() {
+						a.applyPalette(idx)
+					}
+				}
+			})
+		})
+
+		ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
+
+		// 快捷键一览
+		ui.Column(c).FillWidth().Gap(5).Children(func() {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				components.Icon(c, iconKeyboard).Size(13, 13).TextColor(pal.baseAccent)
+				components.Text(c, i18n.T("settings.shortcuts")).FontSize(12).Bold().TextColor(pal.sidebarText)
+			})
+			shortcuts := [][2]string{
+				{i18n.T("settings.shortcutPreferences"), modKey + ","},
+				{i18n.T("settings.shortcutSave"), modKey + "S"},
+				{i18n.T("settings.shortcutUndoRedo"), modKey + "Z / " + shiftKey + "Z"},
+				{i18n.T("settings.shortcutFind"), modKey + "F"},
+			}
+			ui.Row(c).FillWidth().Gap(6).Wrap().Children(func() {
+				for _, sc := range shortcuts {
+					sc := sc
+					ui.Row(c).Grow(1).Basis(0).MinWidth(180).Padding(4, 8).Radius(6).AlignItems(ui.Center).Background(pal.subtleSurface).Border(1, pal.cardBorder).Children(func() {
+						components.Text(c, sc[0]).Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
+						statusPill(c, sc[1], pal.sidebarText, pal.cardBg)
+					})
+				}
+			})
+		})
+
+		ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
+
+		// 软件更新与作者/GitHub 信息
+		ui.Column(c).FillWidth().Gap(6).Children(func() {
+			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+				components.Text(c, i18n.T("settings.updateSection")).FontSize(12).Bold().TextColor(pal.sidebarText)
+				components.Text(c, i18n.TArgs("settings.currentVersion", brand.AppVersion())).FontSize(11).TextColor(t.TextMuted)
 				ui.Box(c).Grow(1)
-				closeBtn := ui.Button(c, "✕").Padding(2, 6).Radius(4).FontSize(11)
-				closeBtn.OnClick(func() { a.settingsOpen = false })
+				compactBtn(c.Key("check-update"), i18n.T("settings.checkUpdate"), iconSync, components.ButtonSecondary, a.updateChecking).
+					OnClick(func() { a.checkForUpdates("") })
 			})
+			if a.updateStatus != "" {
+				components.Text(c, a.updateStatus).FontSize(11).TextColor(pal.baseAccent)
+			}
+			if a.updateURL != "" {
+				components.Text(c, i18n.TArgs("settings.downloadURL", a.updateURL)).FontSize(11).TextColor(t.TextMuted)
+			}
 
-			ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
-
-			ui.Column(c).FillWidth().Gap(6).Children(func() {
-				ui.Text(c, i18n.T("settings.language")).FontSize(12).Bold().TextColor(pal.sidebarText)
-				ui.Text(c, i18n.T("settings.languageHint")).FontSize(11).TextColor(t.TextMuted)
-				seg := ui.Segmented(c, &a.settingsLang, i18n.T("settings.langZhCN"), i18n.T("settings.langZhTW"), i18n.T("settings.langEn"))
-				seg.OnChange(func() {
-					a.applySettings(a.settingsLang, a.settingsTheme)
+			// 作者与 GitHub 卡片
+			ui.Row(c).FillWidth().Padding(8, 10).Gap(8).Radius(7).AlignItems(ui.Center).Background(pal.subtleSurface).Border(1, pal.cardBorder).Children(func() {
+				components.Icon(c, iconUser).Size(14, 14).TextColor(pal.baseAccent)
+				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						components.Text(c, i18n.T("about.author")+": "+brand.Author).FontSize(11).Bold().TextColor(pal.sidebarText)
+						statusPill(c, brand.License, pal.sameFg, pal.sameBg)
+					})
+					components.Text(c, brand.RepoURL).FontSize(10).TextColor(t.TextMuted).SingleLine().Selectable()
 				})
+				compactBtn(c.Key("settings-open-github"), "GitHub", iconExternal, components.ButtonSecondary, false).
+					Tooltip(brand.RepoURL).
+					OnClick(func() { a.openExternalURL(brand.RepoURL) })
+				compactBtn(c.Key("settings-open-about"), i18n.T("nav.about"), iconInfo, components.ButtonSecondary, false).
+					OnClick(func() {
+						a.settingsOpen = false
+						a.aboutOpen = true
+					})
 			})
+		})
 
-			ui.Column(c).FillWidth().Gap(6).Children(func() {
-				ui.Text(c, i18n.T("settings.appearance")).FontSize(12).Bold().TextColor(pal.sidebarText)
-				ui.Text(c, i18n.T("settings.themeHint")).FontSize(11).TextColor(t.TextMuted)
-				seg := ui.Segmented(c, &a.settingsTheme, i18n.T("settings.themeLight"), i18n.T("settings.themeDark"), i18n.T("settings.themeSystem"))
-				seg.OnChange(func() {
-					a.applySettings(a.settingsLang, a.settingsTheme)
+		ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
+
+		ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
+			if components.Button(c.Key("settings-done"), i18n.T("settings.close"), components.ButtonPrimary).Clicked() {
+				a.settingsOpen = false
+			}
+		})
+	})
+}
+
+func (a *workspaceState) aboutModal(c *ui.Context, pal uiPalette) {
+	t := c.Theme()
+	components.Dialog(c.Key("about-dialog"), &a.aboutOpen, components.DialogOptions{
+		Label: i18n.T("about.title"),
+	}, func(panel ui.Element) {
+		panel.Width(420)
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				components.Icon(c, iconInfo).Size(16, 16).TextColor(pal.baseAccent)
+				components.Text(c, i18n.T("about.title")).FontSize(15).Bold()
+			})
+			ui.Box(c).Grow(1)
+			if components.IconButton(c, lucide.X(), "✕", components.IconButtonPlain).Clicked() {
+				a.aboutOpen = false
+			}
+		})
+
+		ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
+
+		// 顶部品牌标识
+		ui.Row(c).FillWidth().Padding(6, 4).Gap(12).AlignItems(ui.Center).Children(func() {
+			if icon := a.appIcon(); icon != nil {
+				ui.Box(c).Size(48, 48).Center().Radius(12).Background(pal.subtleSurface).Border(1, pal.cardBorder).Children(func() {
+					ui.Image(c, icon).Size(36, 36).Label(i18n.T("a11y.appIcon"))
 				})
-			})
-
-			ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
-
-			ui.Column(c).FillWidth().Gap(6).Children(func() {
-				ui.Text(c, i18n.T("settings.updateSection")).FontSize(12).Bold().TextColor(pal.sidebarText)
-				ui.Row(c).FillWidth().Gap(8).Children(func() {
-					ui.Text(c, i18n.TArgs("settings.currentVersion", brand.AppVersion())).FontSize(11).TextColor(t.TextMuted)
-					checkBtn := ui.Button(c, i18n.T("settings.checkUpdate")).Padding(3, 10).Radius(4).FontSize(11).Disabled(a.updateChecking)
-					checkBtn.OnClick(func() { a.checkForUpdates("") })
+			}
+			ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					components.Text(c, "GoCompare").FontSize(18).Bold().TextColor(pal.sidebarText)
+					statusPill(c, "v"+brand.AppVersion(), pal.baseAccent, pal.baseBg)
 				})
-				if a.updateStatus != "" {
-					ui.Text(c, a.updateStatus).FontSize(11).TextColor(pal.baseAccent)
-				}
-				if a.updateURL != "" {
-					ui.Text(c, i18n.TArgs("settings.downloadURL", a.updateURL)).FontSize(11).TextColor(t.TextMuted)
-				}
+				components.Text(c, i18n.T("about.desc")).FontSize(11).TextColor(t.TextMuted)
 			})
+		})
 
-			ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
-
-			ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
-				doneBtn := ui.PrimaryButton(c, i18n.T("settings.close")).Padding(5, 16).Radius(6).FontSize(12)
-				doneBtn.OnClick(func() { a.settingsOpen = false })
+		// 作者与开源信息列表
+		ui.Column(c).FillWidth().Padding(10, 12).Gap(8).Radius(8).Background(pal.subtleSurface).Border(1, pal.cardBorder).Children(func() {
+			// 作者
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				components.Text(c, i18n.T("about.author")).Width(90).FontSize(11).TextColor(t.TextMuted)
+				components.Text(c, brand.Author).Grow(1).FontSize(12).Bold().TextColor(pal.sidebarText).Selectable()
 			})
+			ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder.Alpha(0.6))
+			// GitHub 地址
+			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+				components.Text(c, i18n.T("about.github")).Width(90).FontSize(11).TextColor(t.TextMuted)
+				components.Text(c, brand.RepoURL).Grow(1).MinWidth(0).FontSize(11).TextColor(pal.baseAccent).SingleLine().Selectable()
+				compactBtn(c.Key("about-open-github"), i18n.T("about.openGithub"), iconExternal, components.ButtonSecondary, false).
+					OnClick(func() { a.openExternalURL(brand.RepoURL) })
+			})
+			ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder.Alpha(0.6))
+			// 开源协议
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				components.Text(c, i18n.T("about.license")).Width(90).FontSize(11).TextColor(t.TextMuted)
+				components.Text(c, brand.License).Grow(1).FontSize(11).TextColor(pal.sidebarText)
+			})
+			if fw := a.frameworkVersion(); fw != "" {
+				ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder.Alpha(0.6))
+				ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+					components.Text(c, i18n.T("about.framework")).Width(90).FontSize(11).TextColor(t.TextMuted)
+					components.Text(c, "MyGo "+fw).Grow(1).FontSize(11).TextColor(pal.sidebarText)
+				})
+			}
+		})
+
+		if a.updateStatus != "" {
+			components.Text(c, a.updateStatus).FontSize(11).TextColor(pal.baseAccent)
+		}
+
+		ui.Box(c).Height(1).FillWidth().Background(pal.cardBorder)
+
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			compactBtn(c.Key("about-check-update"), i18n.T("settings.checkUpdate"), iconSync, components.ButtonSecondary, a.updateChecking).
+				OnClick(func() { a.checkForUpdates("") })
+			ui.Box(c).Grow(1)
+			if components.Button(c.Key("about-done"), i18n.T("settings.close"), components.ButtonPrimary).Clicked() {
+				a.aboutOpen = false
+			}
 		})
 	})
 }
@@ -1015,7 +1263,7 @@ func (a *workspaceState) textView(c *ui.Context) {
 				name += " •"
 			}
 			parent := filepath.Base(filepath.Dir(p.file.Path))
-			sideRow := ui.Row(c.Key(fmt.Sprintf("text-pane-header-%d", side))).Grow(1).Basis(0).MinWidth(0).Height(36).Padding(0, 12).Gap(8)
+			sideRow := ui.Row(c.Key(fmt.Sprintf("text-pane-header-%d", side))).Grow(1).Basis(0).MinWidth(0).Height(36).Padding(0, 12).Gap(8).AlignItems(ui.Center)
 			if sideRow.FileDragOver() {
 				sideRow.Background(pal.baseBg).Border(1.5, pal.baseAccent)
 			} else {
@@ -1027,9 +1275,9 @@ func (a *workspaceState) textView(c *ui.Context) {
 			sideRow.Children(func() {
 				sideBadge(c, side, pal)
 				if parent != "" && parent != "." && parent != "/" {
-					ui.Text(c, parent+"/").Shrink(0).FontSize(11).TextColor(t.TextMuted).SingleLine()
+					components.Text(c, parent+"/").Shrink(0).FontSize(11).TextColor(t.TextMuted).SingleLine()
 				}
-				ui.Text(c, name).Bold().FontSize(12).Grow(1).MinWidth(0).SingleLine().Tooltip(p.file.Path)
+				components.Text(c, name).Bold().FontSize(12).Grow(1).MinWidth(0).SingleLine().Tooltip(p.file.Path)
 				if isDirty {
 					statusPill(c, i18n.T("pane.unsaved"), pal.diffFg, pal.diffBg)
 				}
@@ -1038,13 +1286,10 @@ func (a *workspaceState) textView(c *ui.Context) {
 				}
 				a.renderPaneUndoRedo(c, side)
 				saveLabel := []string{i18n.T("pane.saveLeft"), i18n.T("pane.saveRight")}[side]
-				saveBtn := ui.Button(c, "").Label(saveLabel).Shrink(0).Padding(3, 8).Gap(4).Radius(5).Disabled(a.busy || !isDirty || p.file.ReadOnly())
-				saveBtn.OnClick(func() { a.save(side) })
-				saveBtn.Children(func() {
-					ui.Icon(c, iconSave).Size(11, 11)
-					ui.Text(c, saveLabel).FontSize(11).SingleLine()
-				})
-				ui.Button(c, i18n.T("pane.saveAs")).Shrink(0).Padding(3, 8).Radius(5).FontSize(11).Disabled(a.busy || p.file.ReadOnly()).OnClick(func() { a.saveAs(side) })
+				compactBtn(c.Key("pane-save"), saveLabel, iconSave, components.ButtonSecondary, a.busy || !isDirty || p.file.ReadOnly()).
+					OnClick(func() { a.save(side) })
+				compactBtn(c.Key("pane-save-as"), i18n.T("pane.saveAs"), nil, components.ButtonSecondary, a.busy || p.file.ReadOnly()).
+					OnClick(func() { a.saveAs(side) })
 			})
 		}
 	})
@@ -1061,15 +1306,15 @@ func (a *workspaceState) textView(c *ui.Context) {
 		p.edit.DiffBase = a.activeHistory().baseBuf[side]
 		editor.View(c.Key(a.mode), &p.edit).Grow(1).FillWidth()
 	}
-	ui.Row(c).Height(26).Padding(0, 12).Gap(12).Background(pal.cardBg).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
+	ui.Row(c).Height(26).Padding(0, 12).Gap(12).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
 		for _, p := range a.panes {
 			ending := "LF"
 			if p.file.CRLF {
 				ending = "CRLF"
 			}
-			ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(6).Children(func() {
-				ui.Icon(c, iconFile).Size(11, 11).TextColor(t.TextMuted)
-				ui.Text(c, i18n.TArgs("pane.fileInfo", strings.ToUpper(p.file.Encoding), ending, p.buffer.LineCount())).Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(6).AlignItems(ui.Center).Children(func() {
+				components.Icon(c, iconFile).Size(11, 11).TextColor(t.TextMuted)
+				components.Text(c, i18n.TArgs("pane.fileInfo", strings.ToUpper(p.file.Encoding), ending, p.buffer.LineCount())).Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
 				if lang := p.buffer.Language(); lang != nil && lang.Name != "" {
 					statusPill(c, lang.Name, pal.sameFg, pal.sameBg)
 				}
@@ -1093,15 +1338,16 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 	// 双栏头部（左侧与右侧）
 	ui.Row(c.Key("scratch-header-row")).Gap(1).Background(pal.cardBorder).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		// 左侧头部
-		ui.Row(c.Key("scratch-header-left")).Grow(1).Basis(0).MinWidth(0).Height(38).Padding(0, 12).Gap(8).Background(pal.cardBg).Children(func() {
+		ui.Row(c.Key("scratch-header-left")).Grow(1).Basis(0).MinWidth(0).Height(38).Padding(0, 12).Gap(8).AlignItems(ui.Center).Background(pal.cardBg).Children(func() {
 			sideBadge(c, 0, pal)
-			ui.Text(c, i18n.T("pane.leftText")).Bold().FontSize(12).TextColor(pal.sidebarText).SingleLine()
+			components.Text(c, i18n.T("pane.leftText")).Bold().FontSize(12).TextColor(pal.sidebarText).SingleLine()
 			stat := i18n.TArgs("scratch.stat", leftLines, leftLen)
-			ui.Text(c, stat).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			components.Text(c, stat).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			ui.Box(c).Grow(1)
 			a.renderPaneUndoRedo(c, 0)
 
-			pasteBtn := ui.Button(c.Key("paste-left"), "").Label(i18n.T("pane.pasteLeft")).Padding(3, 8).Gap(4).Radius(5).Background(pal.subtleSurface).Border(1, pal.cardBorder)
+			pasteBtn := compactBtn(c.Key("paste-left"), i18n.T("pane.paste"), nil, components.ButtonSecondary, false).
+				Label(i18n.T("pane.pasteLeft"))
 			pasteBtn.OnClick(func() {
 				clip := c.Services().ReadClipboard()
 				if clip != "" {
@@ -1116,38 +1362,36 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 					a.message = i18n.T("scratch.clipboardEmpty")
 				}
 			})
-			pasteBtn.Children(func() {
-				ui.Text(c, i18n.T("pane.paste")).FontSize(11).SingleLine()
-			})
 
-			copyBtn := ui.Button(c.Key("copy-left"), i18n.T("pane.copy")).Padding(3, 8).Radius(5).FontSize(11).Disabled(leftLen == 0)
-			copyBtn.OnClick(func() {
-				c.Services().WriteClipboard(leftBuf.String())
-				a.message = i18n.T("scratch.copiedLeft")
-			})
+			compactBtn(c.Key("copy-left"), i18n.T("pane.copy"), nil, components.ButtonSecondary, leftLen == 0).
+				OnClick(func() {
+					c.Services().WriteClipboard(leftBuf.String())
+					a.message = i18n.T("scratch.copiedLeft")
+				})
 
-			clearLeftBtn := ui.Button(c.Key("clear-left"), i18n.T("pane.clear")).Padding(3, 8).Radius(5).FontSize(11).Disabled(leftLen == 0)
-			clearLeftBtn.OnClick(func() {
-				a.scratchHistory.sync(a.scratchPanes)
-				leftBuf.Set("")
-				a.scratchHistory.recordEdit(a.scratchPanes, 0)
-				a.refreshComparison()
-			})
+			compactBtn(c.Key("clear-left"), i18n.T("pane.clear"), nil, components.ButtonSecondary, leftLen == 0).
+				OnClick(func() {
+					a.scratchHistory.sync(a.scratchPanes)
+					leftBuf.Set("")
+					a.scratchHistory.recordEdit(a.scratchPanes, 0)
+					a.refreshComparison()
+				})
 
-			saveLeftBtn := ui.Button(c.Key("save-left"), i18n.T("pane.saveAs")).Padding(3, 8).Radius(5).FontSize(11).Disabled(leftLen == 0)
-			saveLeftBtn.OnClick(func() { a.saveScratchAs(0) })
+			compactBtn(c.Key("save-left"), i18n.T("pane.saveAs"), nil, components.ButtonSecondary, leftLen == 0).
+				OnClick(func() { a.saveScratchAs(0) })
 		})
 
 		// 右侧头部
-		ui.Row(c.Key("scratch-header-right")).Grow(1).Basis(0).MinWidth(0).Height(38).Padding(0, 12).Gap(8).Background(pal.cardBg).Children(func() {
+		ui.Row(c.Key("scratch-header-right")).Grow(1).Basis(0).MinWidth(0).Height(38).Padding(0, 12).Gap(8).AlignItems(ui.Center).Background(pal.cardBg).Children(func() {
 			sideBadge(c, 1, pal)
-			ui.Text(c, i18n.T("pane.rightText")).Bold().FontSize(12).TextColor(pal.sidebarText).SingleLine()
+			components.Text(c, i18n.T("pane.rightText")).Bold().FontSize(12).TextColor(pal.sidebarText).SingleLine()
 			stat := i18n.TArgs("scratch.stat", rightLines, rightLen)
-			ui.Text(c, stat).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			components.Text(c, stat).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			ui.Box(c).Grow(1)
 			a.renderPaneUndoRedo(c, 1)
 
-			pasteBtn := ui.Button(c.Key("paste-right"), "").Label(i18n.T("pane.pasteRight")).Padding(3, 8).Gap(4).Radius(5).Background(pal.subtleSurface).Border(1, pal.cardBorder)
+			pasteBtn := compactBtn(c.Key("paste-right"), i18n.T("pane.paste"), nil, components.ButtonSecondary, false).
+				Label(i18n.T("pane.pasteRight"))
 			pasteBtn.OnClick(func() {
 				clip := c.Services().ReadClipboard()
 				if clip != "" {
@@ -1162,32 +1406,29 @@ func (a *workspaceState) scratchView(c *ui.Context) {
 					a.message = i18n.T("scratch.clipboardEmpty")
 				}
 			})
-			pasteBtn.Children(func() {
-				ui.Text(c, i18n.T("pane.paste")).FontSize(11).SingleLine()
-			})
 
-			copyBtn := ui.Button(c.Key("copy-right"), i18n.T("pane.copy")).Padding(3, 8).Radius(5).FontSize(11).Disabled(rightLen == 0)
-			copyBtn.OnClick(func() {
-				c.Services().WriteClipboard(rightBuf.String())
-				a.message = i18n.T("scratch.copiedRight")
-			})
+			compactBtn(c.Key("copy-right"), i18n.T("pane.copy"), nil, components.ButtonSecondary, rightLen == 0).
+				OnClick(func() {
+					c.Services().WriteClipboard(rightBuf.String())
+					a.message = i18n.T("scratch.copiedRight")
+				})
 
-			clearRightBtn := ui.Button(c.Key("clear-right"), i18n.T("pane.clear")).Padding(3, 8).Radius(5).FontSize(11).Disabled(rightLen == 0)
-			clearRightBtn.OnClick(func() {
-				a.scratchHistory.sync(a.scratchPanes)
-				rightBuf.Set("")
-				a.scratchHistory.recordEdit(a.scratchPanes, 1)
-				a.refreshComparison()
-			})
+			compactBtn(c.Key("clear-right"), i18n.T("pane.clear"), nil, components.ButtonSecondary, rightLen == 0).
+				OnClick(func() {
+					a.scratchHistory.sync(a.scratchPanes)
+					rightBuf.Set("")
+					a.scratchHistory.recordEdit(a.scratchPanes, 1)
+					a.refreshComparison()
+				})
 
-			saveRightBtn := ui.Button(c.Key("save-right"), i18n.T("pane.saveAs")).Padding(3, 8).Radius(5).FontSize(11).Disabled(rightLen == 0)
-			saveRightBtn.OnClick(func() { a.saveScratchAs(1) })
+			compactBtn(c.Key("save-right"), i18n.T("pane.saveAs"), nil, components.ButtonSecondary, rightLen == 0).
+				OnClick(func() { a.saveScratchAs(1) })
 		})
 	})
 
 	if leftLen == 0 && rightLen == 0 {
-		ui.Row(c).Height(32).Padding(0, 14).Gap(8).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
-			ui.Text(c, i18n.T("pane.scratchTip")).FontSize(11).TextColor(t.TextMuted).SingleLine()
+		ui.Row(c).Height(32).Padding(0, 14).Gap(8).AlignItems(ui.Center).Background(pal.subtleSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+			components.Text(c, i18n.T("pane.scratchTip")).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		})
 	}
 
@@ -1366,28 +1607,16 @@ func (a *workspaceState) renderDiffCenter(c *ui.Context, col ui.Element, diff *e
 func (a *workspaceState) renderToolbarUndoRedo(c *ui.Context, prefix string) {
 	disabled := a.busy || a.ignoreBlankLines
 	if a.canUndo() {
-		undoBtn := ui.Button(c.Key(prefix+"-undo"), "").Label(i18n.T("action.undo")).Padding(4, 8).Gap(3).Radius(6).Disabled(disabled)
-		undoBtn.OnClick(a.undo)
-		undoBtn.Children(func() {
-			ui.Icon(c, iconUndo).Size(11, 11)
-			ui.Text(c, i18n.T("action.undo")).FontSize(11).SingleLine()
-		})
+		toolbarBtn(c.Key(prefix+"-undo"), i18n.T("action.undo"), iconUndo, components.ButtonSecondary, disabled).
+			OnClick(a.undo)
 	}
 	if a.canRedo() {
-		redoBtn := ui.Button(c.Key(prefix+"-redo"), "").Label(i18n.T("action.redo")).Padding(4, 8).Gap(3).Radius(6).Disabled(disabled)
-		redoBtn.OnClick(a.redo)
-		redoBtn.Children(func() {
-			ui.Icon(c, iconRedo).Size(11, 11)
-			ui.Text(c, i18n.T("action.redo")).FontSize(11).SingleLine()
-		})
+		toolbarBtn(c.Key(prefix+"-redo"), i18n.T("action.redo"), iconRedo, components.ButtonSecondary, disabled).
+			OnClick(a.redo)
 	}
 	if a.canRestore() {
-		restoreBtn := ui.Button(c.Key(prefix+"-restore"), "").Label(i18n.T("action.restore")).Padding(4, 8).Gap(3).Radius(6).Disabled(disabled)
-		restoreBtn.OnClick(a.restoreAll)
-		restoreBtn.Children(func() {
-			ui.Icon(c, iconReset).Size(11, 11)
-			ui.Text(c, i18n.T("action.restore")).FontSize(11).SingleLine()
-		})
+		toolbarBtn(c.Key(prefix+"-restore"), i18n.T("action.restore"), iconReset, components.ButtonSecondary, disabled).
+			OnClick(a.restoreAll)
 	}
 }
 
@@ -1407,29 +1636,20 @@ func (a *workspaceState) renderPaneUndoRedo(c *ui.Context, side int) {
 	disabled := a.busy || a.ignoreBlankLines || (p.file != nil && p.file.ReadOnly())
 	if p.buffer.CanUndo() {
 		label := i18n.T([]string{"pane.undoLeft", "pane.undoRight"}[side])
-		undoBtn := ui.Button(c.Key("pane-undo"), "").Label(label).Tooltip(label).Shrink(0).Padding(3, 8).Gap(3).Radius(5).Disabled(disabled)
-		undoBtn.OnClick(func() { a.undoSide(side) })
-		undoBtn.Children(func() {
-			ui.Icon(c, iconUndo).Size(11, 11)
-			ui.Text(c, i18n.T("action.undo")).FontSize(11).SingleLine()
-		})
+		compactBtn(c.Key("pane-undo"), i18n.T("action.undo"), iconUndo, components.ButtonSecondary, disabled).
+			Label(label).Tooltip(label).
+			OnClick(func() { a.undoSide(side) })
 	}
 	if p.buffer.CanRedo() {
 		label := i18n.T([]string{"pane.redoLeft", "pane.redoRight"}[side])
-		redoBtn := ui.Button(c.Key("pane-redo"), "").Label(label).Tooltip(label).Shrink(0).Padding(3, 8).Gap(3).Radius(5).Disabled(disabled)
-		redoBtn.OnClick(func() { a.redoSide(side) })
-		redoBtn.Children(func() {
-			ui.Icon(c, iconRedo).Size(11, 11)
-			ui.Text(c, i18n.T("action.redo")).FontSize(11).SingleLine()
-		})
+		compactBtn(c.Key("pane-redo"), i18n.T("action.redo"), iconRedo, components.ButtonSecondary, disabled).
+			Label(label).Tooltip(label).
+			OnClick(func() { a.redoSide(side) })
 	}
 	if a.canRestoreSide(side) {
 		label := i18n.T([]string{"pane.restoreLeft", "pane.restoreRight"}[side])
-		restoreBtn := ui.Button(c.Key("pane-restore"), "").Label(label).Tooltip(label).Shrink(0).Padding(3, 8).Gap(3).Radius(5).Disabled(disabled)
-		restoreBtn.OnClick(func() { a.restoreSide(side) })
-		restoreBtn.Children(func() {
-			ui.Icon(c, iconReset).Size(11, 11)
-			ui.Text(c, i18n.T("action.restore")).FontSize(11).SingleLine()
-		})
+		compactBtn(c.Key("pane-restore"), i18n.T("action.restore"), iconReset, components.ButtonSecondary, disabled).
+			Label(label).Tooltip(label).
+			OnClick(func() { a.restoreSide(side) })
 	}
 }

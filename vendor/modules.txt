@@ -1,11 +1,11 @@
-# github.com/ebitengine/purego v0.11.1
+# github.com/ebitengine/purego v0.11.2
 ## explicit; go 1.25.0
 github.com/ebitengine/purego
 github.com/ebitengine/purego/internal/cgo
 github.com/ebitengine/purego/internal/fakecgo
 github.com/ebitengine/purego/internal/strings
 github.com/ebitengine/purego/objc
-# github.com/egoist/mygo v0.7.3
+# github.com/egoist/mygo v0.7.4
 ## explicit; go 1.27.3
 github.com/egoist/mygo
 github.com/egoist/mygo/cmd/mygo
@@ -46,8 +46,12 @@ github.com/egoist/mygo/internal/watchdriver
 github.com/egoist/mygo/internal/web
 github.com/egoist/mygo/internal/webview2
 github.com/egoist/mygo/internal/windows
+github.com/egoist/mygo/locales/ja
+github.com/egoist/mygo/locales/zh-Hans
+github.com/egoist/mygo/locales/zh-Hant
 github.com/egoist/mygo/netproxy
 github.com/egoist/mygo/plugins/automation
+github.com/egoist/mygo/plugins/glass
 github.com/egoist/mygo/transfer
 github.com/egoist/mygo/ui
 github.com/egoist/mygo/ui/editor
@@ -74,12 +78,19 @@ github.com/hirochachacha/go-smb2/internal/utf16le
 # github.com/kr/fs v0.1.0
 ## explicit
 github.com/kr/fs
+# github.com/oneo-me/onevra/source v0.2026.17
+## explicit; go 1.27.3
+github.com/oneo-me/onevra/source/components
+github.com/oneo-me/onevra/source/icons/lucide
+github.com/oneo-me/onevra/source/internal/l10n
+github.com/oneo-me/onevra/source/shells/sidebar
+github.com/oneo-me/onevra/source/theme
 # github.com/pkg/sftp v1.13.12
 ## explicit; go 1.25.0
 github.com/pkg/sftp
 github.com/pkg/sftp/internal/encoding/ssh/filexfer
 github.com/pkg/sftp/internal/encoding/ssh/filexfer/openssh
-# golang.org/x/crypto v0.57.0
+# golang.org/x/crypto v0.58.0
 ## explicit; go 1.26.0
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/chacha20
@@ -93,7 +104,7 @@ golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 golang.org/x/crypto/ssh/knownhosts
-# golang.org/x/image v0.46.0
+# golang.org/x/image v0.47.0
 ## explicit; go 1.26.0
 golang.org/x/image/bmp
 golang.org/x/image/internal/safemath
@@ -101,12 +112,12 @@ golang.org/x/image/riff
 golang.org/x/image/vp8
 golang.org/x/image/vp8l
 golang.org/x/image/webp
-# golang.org/x/net v0.59.0
+# golang.org/x/net v0.61.0
 ## explicit; go 1.26.0
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/publicsuffix
-# golang.org/x/sys v0.48.0
+# golang.org/x/sys v0.49.0
 ## explicit; go 1.26.0
 golang.org/x/sys/cpu
 golang.org/x/sys/windows

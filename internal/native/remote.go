@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/oneo-me/onevra/source/components"
 	"gocompare/internal/document"
 	"gocompare/internal/i18n"
 	"gocompare/internal/remote"
@@ -247,22 +248,32 @@ func (a *workspaceState) trustHostKey() {
 func (a *workspaceState) remoteDialogs(c *ui.Context, pal uiPalette) {
 	t := c.Theme()
 	if p := a.passwordPrompt; p != nil {
-		ui.Modal(c, &p.opened, func() {
-			ui.Column(c).Width(440).Padding(20, 22).Gap(12).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.22)).Children(func() {
-				title, field, rejected := "remote.passwordTitle", "remote.passwordPlaceholder", "remote.passwordRejected"
-				if p.passphrase {
-					title, field, rejected = "remote.passphraseTitle", "remote.passphrase", "remote.errKeyPassphraseWrong"
-				}
+		title, field, rejected := "remote.passwordTitle", "remote.passwordPlaceholder", "remote.passwordRejected"
+		if p.passphrase {
+			title, field, rejected = "remote.passphraseTitle", "remote.passphrase", "remote.errKeyPassphraseWrong"
+		}
+		components.Dialog(c, &p.opened, components.DialogOptions{Label: i18n.T(title)}, func(panel ui.Element) {
+			panel.Width(440)
+			ui.Column(c).FillWidth().Gap(12).Children(func() {
 				ui.Text(c, i18n.T(title)).FontSize(15).Bold()
 				ui.Text(c, p.label).FontSize(12).TextColor(t.TextMuted).Selectable()
 				if p.again {
 					ui.Text(c, i18n.T(rejected)).FontSize(12).TextColor(pal.dangerFg)
 				}
-				ui.TextInput(c.Key("remote-password"), &p.input).Password().FillWidth().Placeholder(i18n.T(field)).Label(i18n.T(field)).OnSubmit(a.submitPassword)
+				pwBox := components.TextBox(c.Key("remote-password"), &p.input, components.TextBoxOptions{}).
+					Password().Placeholder(i18n.T(field)).
+					FillWidth().Label(i18n.T(field))
+				if pwBox.Submitted() {
+					a.submitPassword()
+				}
 				ui.Text(c, i18n.T("remote.passwordHint")).FontSize(11).TextColor(t.TextMuted)
 				ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
-					ui.Button(c, i18n.T("dialog.cancel")).Padding(5, 14).Radius(6).FontSize(12).OnClick(func() { a.passwordPrompt = nil })
-					ui.PrimaryButton(c, i18n.T("remote.connect")).Padding(5, 14).Radius(6).FontSize(12).OnClick(a.submitPassword)
+					if components.Button(c, i18n.T("dialog.cancel"), components.ButtonSecondary).Clicked() {
+						a.passwordPrompt = nil
+					}
+					if components.Button(c, i18n.T("remote.connect"), components.ButtonPrimary).Clicked() {
+						a.submitPassword()
+					}
 				})
 			})
 		})
@@ -271,15 +282,20 @@ func (a *workspaceState) remoteDialogs(c *ui.Context, pal uiPalette) {
 		}
 	}
 	if p := a.hostKeyPrompt; p != nil {
-		ui.Modal(c, &p.opened, func() {
-			ui.Column(c).Width(500).Padding(20, 22).Gap(12).Radius(12).Background(pal.cardBg).Border(1, pal.cardBorder).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.22)).Children(func() {
+		components.Dialog(c, &p.opened, components.DialogOptions{Label: i18n.T("remote.hostKeyTitle")}, func(panel ui.Element) {
+			panel.Width(500)
+			ui.Column(c).FillWidth().Gap(12).Children(func() {
 				ui.Text(c, i18n.T("remote.hostKeyTitle")).FontSize(15).Bold()
 				ui.Text(c, i18n.TArgs("remote.hostKeyDesc", p.err.Host)).FontSize(12)
 				ui.Text(c, p.err.KeyType+"  "+p.err.Fingerprint).FontSize(12).Bold().Selectable()
 				ui.Text(c, i18n.TArgs("remote.hostKeyFile", p.err.KnownHosts)).FontSize(11).TextColor(t.TextMuted).Selectable()
 				ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
-					ui.Button(c, i18n.T("dialog.cancel")).Padding(5, 14).Radius(6).FontSize(12).OnClick(func() { a.hostKeyPrompt = nil })
-					ui.PrimaryButton(c, i18n.T("remote.trustConnect")).Padding(5, 14).Radius(6).FontSize(12).OnClick(a.trustHostKey)
+					if components.Button(c, i18n.T("dialog.cancel"), components.ButtonSecondary).Clicked() {
+						a.hostKeyPrompt = nil
+					}
+					if components.Button(c, i18n.T("remote.trustConnect"), components.ButtonPrimary).Clicked() {
+						a.trustHostKey()
+					}
 				})
 			})
 		})

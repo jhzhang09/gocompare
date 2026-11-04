@@ -11,6 +11,15 @@ import (
 //go:embed icon.png
 var iconPNG []byte
 
+const (
+	// Author 是 GoCompare 的作者标识。
+	Author = "jhzhang09"
+	// RepoURL 是 GoCompare 的 GitHub 开源仓库地址。
+	RepoURL = "https://github.com/jhzhang09/gocompare"
+	// License 是 GoCompare 的开源许可证。
+	License = "MIT License"
+)
+
 // IconPNG 返回由 resources/icon.svg 渲染出的应用图标。
 // 返回的切片与嵌入数据共用底层数组，调用方不得修改。
 func IconPNG() []byte { return iconPNG }

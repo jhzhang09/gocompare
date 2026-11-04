@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-04
+
+### Added
+
+- **Onevra Native UI Architecture & Workbench Shell**: Migrated the desktop interface to [Onevra](https://github.com/oneo-me/onevra) (`v0.2.1`) and [MyGo](https://github.com/egoist/mygo) (`v0.7.4`), adopting `sidebar.Shell` with native macOS traffic-light titlebar integration, responsive collapsible sidebar navigation, unified `components.Dialog`, `components.Tabs`, `components.Select`, `components.Slider`, and crisp Lucide vector icons across all modes.
+- **5 Built-in Color Themes**: Added 5 curated workspace color schemes — **Classic Blue** (`classic`), **Emerald** (`emerald`), **Violet** (`violet`), **Graphite** (`graphite`), and **Warm Amber** (`amber`) — each adapting seamlessly to **Light**, **Dark**, or **System** appearance modes and persisted in `settings.json`.
+- **Interactive Image Compare Slider**: Added a new **Slider** (`ImageCompare`) split-curtain comparison mode in Picture Compare alongside Side-by-Side, Overlay, Difference, Tolerance Map, and Replace Color, plus a smooth `components.Slider` control for 0–255 pixel tolerance adjustment.
+- **Preferences Shortcut (`⌘,` / `Ctrl+,`) & Native Menu Bar**: Added global keyboard shortcut `⌘,` (`Ctrl+,`) and native macOS application menu items (**About GoCompare**, **Preferences…**, **Edit**, **Window**), plus a Keyboard Shortcuts reference card in Preferences.
+- **About Dialog & Author Attribution**: Added a dedicated **About GoCompare** dialog accessible from the sidebar, Preferences, and application menu displaying version metadata, author (`jhzhang09`), MIT license badge, and quick links to the GitHub repository and issue tracker.
+
+### Fixed
+
+- **Badge & Pill Vertical Centering**: Fixed vertical text alignment inside `LEFT` / `RIGHT` / `BASE` side badges and status pills across all comparison views by replacing asymmetric vertical padding and explicit heights with centered flex rows (`AlignItems(ui.Center)` + `Shrink(0)`).
+- **Safe Cross-Mode Switching with Editor Selection**: Cleared stale `editor.DiffState` and `editor.State` references when switching away from File Compare or Text Merge to prevent out-of-range slice bounds panics when previous editor lines were selected.
+
 ## [0.3.4] - 2026-11-02
 
 ### Added
@@ -99,7 +114,8 @@ First public release.
 - Merges treat a missing final newline as a change; merge output can be saved repeatedly.
 - `.reg` exports in UTF-16 with continued hex lines and ID3v2.4 tags are parsed correctly.
 
-[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/jhzhang09/gocompare/compare/v0.3.4...v1.0.0
 [0.3.4]: https://github.com/jhzhang09/gocompare/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/jhzhang09/gocompare/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/jhzhang09/gocompare/compare/v0.3.1...v0.3.2

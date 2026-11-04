@@ -62,6 +62,11 @@ var messages = map[string]map[Language]string{
 		ZhTW: "設定",
 		EnUS: "Settings",
 	},
+	"nav.about": {
+		ZhCN: "关于",
+		ZhTW: "關於",
+		EnUS: "About",
+	},
 	"nav.openSession": {
 		ZhCN: "打开会话…",
 		ZhTW: "開啟工作階段…",
@@ -973,6 +978,11 @@ var messages = map[string]map[Language]string{
 		ZhTW: "取代顏色",
 		EnUS: "Replace Color",
 	},
+	"picture.modeSlider": {
+		ZhCN: "卷帘",
+		ZhTW: "捲簾",
+		EnUS: "Slider",
+	},
 	"picture.flipH": {
 		ZhCN: "水平",
 		ZhTW: "水平",
@@ -1607,6 +1617,101 @@ var messages = map[string]map[Language]string{
 		ZhCN: "系统",
 		ZhTW: "系統",
 		EnUS: "System",
+	},
+	"settings.palette": {
+		ZhCN: "主题配色",
+		ZhTW: "主題配色",
+		EnUS: "Color Theme",
+	},
+	"settings.paletteHint": {
+		ZhCN: "选择工作区配色方案（配合日间/夜间模式生效）",
+		ZhTW: "選擇工作區配色方案（配合日間/夜間模式生效）",
+		EnUS: "Choose workspace color scheme (adapts to Light/Dark mode)",
+	},
+	"settings.paletteClassic": {
+		ZhCN: "经典蓝",
+		ZhTW: "經典藍",
+		EnUS: "Classic Blue",
+	},
+	"settings.paletteEmerald": {
+		ZhCN: "翡翠绿",
+		ZhTW: "翡翠綠",
+		EnUS: "Emerald",
+	},
+	"settings.paletteViolet": {
+		ZhCN: "极光紫",
+		ZhTW: "極光紫",
+		EnUS: "Violet",
+	},
+	"settings.paletteGraphite": {
+		ZhCN: "极简灰",
+		ZhTW: "極簡灰",
+		EnUS: "Graphite",
+	},
+	"settings.paletteAmber": {
+		ZhCN: "暖阳珀",
+		ZhTW: "暖陽珀",
+		EnUS: "Warm Amber",
+	},
+	"settings.shortcuts": {
+		ZhCN: "快捷键",
+		ZhTW: "快捷鍵",
+		EnUS: "Keyboard Shortcuts",
+	},
+	"settings.shortcutPreferences": {
+		ZhCN: "首选项设置",
+		ZhTW: "偏好設定",
+		EnUS: "Preferences",
+	},
+	"settings.shortcutSave": {
+		ZhCN: "保存当前修改",
+		ZhTW: "儲存目前修改",
+		EnUS: "Save Changes",
+	},
+	"settings.shortcutUndoRedo": {
+		ZhCN: "撤销 / 重做",
+		ZhTW: "復原 / 重做",
+		EnUS: "Undo / Redo",
+	},
+	"settings.shortcutFind": {
+		ZhCN: "查找文本",
+		ZhTW: "尋找文字",
+		EnUS: "Find Text",
+	},
+	"about.title": {
+		ZhCN: "关于 GoCompare",
+		ZhTW: "關於 GoCompare",
+		EnUS: "About GoCompare",
+	},
+	"about.author": {
+		ZhCN: "作者",
+		ZhTW: "作者",
+		EnUS: "Author",
+	},
+	"about.github": {
+		ZhCN: "GitHub 仓库",
+		ZhTW: "GitHub 儲存庫",
+		EnUS: "GitHub Repository",
+	},
+	"about.openGithub": {
+		ZhCN: "访问 GitHub",
+		ZhTW: "造訪 GitHub",
+		EnUS: "Open GitHub",
+	},
+	"about.license": {
+		ZhCN: "开源协议",
+		ZhTW: "開源授權",
+		EnUS: "License",
+	},
+	"about.framework": {
+		ZhCN: "界面引擎",
+		ZhTW: "介面引擎",
+		EnUS: "UI Engine",
+	},
+	"about.desc": {
+		ZhCN: "跨平台文件、目录、表格、图片与媒体差异比对与合并工具",
+		ZhTW: "跨平台檔案、目錄、表格、圖片與媒體差異比對與合併工具",
+		EnUS: "Cross-platform diff and merge workbench for files, folders, tables, images, and media",
 	},
 	"settings.close": {
 		ZhCN: "关闭",

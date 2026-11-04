@@ -8,14 +8,16 @@ import (
 )
 
 type Settings struct {
-	Language string `json:"language"` // "zh-CN", "zh-TW", "en"
-	Theme    string `json:"theme"`    // "system", "light", "dark"
+	Language string `json:"language"`          // "zh-CN", "zh-TW", "en"
+	Theme    string `json:"theme"`             // "system", "light", "dark"
+	Palette  string `json:"palette,omitempty"` // "classic", "emerald", "violet", "graphite", "amber"
 }
 
 var (
 	currentSettings = Settings{
 		Language: "zh-CN",
 		Theme:    "system",
+		Palette:  "classic",
 	}
 	configMu sync.Mutex
 )
@@ -50,6 +52,9 @@ func Load() Settings {
 		}
 		if s.Theme != "" {
 			currentSettings.Theme = s.Theme
+		}
+		if s.Palette != "" {
+			currentSettings.Palette = s.Palette
 		}
 	}
 	return currentSettings

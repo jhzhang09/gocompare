@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/oneo-me/onevra/source/components"
 	"gocompare/internal/i18n"
 	"gocompare/internal/table"
 )
@@ -122,7 +123,7 @@ func (a *workspaceState) tableView(c *ui.Context) {
 	t := c.Theme()
 	pal := paletteFor(t)
 
-	ui.Row(c).Height(36).Padding(0, 16).Gap(8).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	ui.Row(c).Height(36).Padding(0, 16).Gap(8).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		ui.Icon(c, iconTable).Size(13, 13).TextColor(pal.baseAccent)
 		ui.Text(c, i18n.T("mode.table")).FontSize(11).Bold()
 		if a.tableReady {
@@ -143,7 +144,7 @@ func (a *workspaceState) tableView(c *ui.Context) {
 
 	ui.Column(c).Grow(1).FillWidth().Padding(14, 16).Gap(12).Children(func() {
 		// 状态概览卡片
-		ui.Row(c).FillWidth().Padding(10, 14).Gap(12).Radius(8).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
+		ui.Row(c).FillWidth().Padding(10, 14).Gap(12).Radius(8).AlignItems(ui.Center).Background(pal.cardBg).Border(1, pal.cardBorder).Children(func() {
 			ui.Text(c, i18n.TArgs("table.sheetCount", len(a.tableSheets[0]), len(a.tableSheets[1]))).FontSize(12)
 			ui.Box(c).Grow(1)
 			if len(a.tableDiffs) == 0 {
@@ -156,7 +157,7 @@ func (a *workspaceState) tableView(c *ui.Context) {
 		// 工作表标签栏（若存在多张工作表）
 		tabs := collectSheetTabs(a.tableSheets, a.tableDiffs)
 		if len(tabs) > 1 {
-			ui.Row(c).FillWidth().Gap(6).Children(func() {
+			ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 				// 全部工作表 Tab
 				allActive := a.tableSelectedSheet == ""
 				allBg := pal.cardBg
@@ -167,7 +168,7 @@ func (a *workspaceState) tableView(c *ui.Context) {
 					allBorder = pal.baseAccent
 					allFg = t.AccentText
 				}
-				ui.Row(c).Padding(4, 10).Radius(6).Background(allBg).Border(1, allBorder).OnClick(func() {
+				ui.Row(c).Padding(4, 10).Radius(6).AlignItems(ui.Center).Background(allBg).Border(1, allBorder).OnClick(func() {
 					a.tableSelectedSheet = ""
 					a.tablePage = 0
 				}).Children(func() {
@@ -187,7 +188,7 @@ func (a *workspaceState) tableView(c *ui.Context) {
 						tabFg = t.AccentText
 					}
 					tabItem := tab
-					ui.Row(c).Padding(4, 10).Gap(6).Radius(6).Background(tabBg).Border(1, tabBorder).OnClick(func() {
+					ui.Row(c).Padding(4, 10).Gap(6).Radius(6).AlignItems(ui.Center).Background(tabBg).Border(1, tabBorder).OnClick(func() {
 						a.tableSelectedSheet = tabName
 						a.tablePage = 0
 					}).Children(func() {
@@ -248,14 +249,14 @@ func (a *workspaceState) tableView(c *ui.Context) {
 					ui.Row(c).FillWidth().Padding(4, 0).Gap(8).Children(func() {
 						ui.Box(c).Grow(1)
 						if a.tablePage > 0 {
-							ui.Button(c, i18n.T("table.pagePrev")).FontSize(11).OnClick(func() {
+							if compactBtn(c, i18n.T("table.pagePrev"), nil, components.ButtonSecondary, false).Clicked() {
 								a.tablePage--
-							})
+							}
 						}
 						if a.tablePage < totalPages-1 {
-							ui.Button(c, i18n.T("table.pageNext")).FontSize(11).OnClick(func() {
+							if compactBtn(c, i18n.T("table.pageNext"), nil, components.ButtonSecondary, false).Clicked() {
 								a.tablePage++
-							})
+							}
 						}
 					})
 				}
@@ -267,7 +268,7 @@ func (a *workspaceState) tableView(c *ui.Context) {
 func (a *workspaceState) renderDiffCard(c *ui.Context, d table.Diff, pal uiPalette, t *ui.Theme) {
 	tagBg, tagFg := pal.diffBg, pal.diffFg
 	ui.Column(c).FillWidth().Padding(8, 10).Gap(6).Radius(6).Background(pal.subtleSurface).Border(1, pal.cardBorder).Children(func() {
-		ui.Row(c).FillWidth().Gap(8).Children(func() {
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 			statusPill(c, d.Sheet, pal.baseAccent, pal.baseBg)
 			if d.Kind == "changed" {
 				statusPill(c, formatCellCoord(d.Key, d.Column), tagFg, tagBg)
@@ -278,10 +279,10 @@ func (a *workspaceState) renderDiffCard(c *ui.Context, d table.Diff, pal uiPalet
 
 		switch d.Kind {
 		case "changed":
-			ui.Row(c).FillWidth().Gap(8).Children(func() {
+			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				// 左侧单元格
 				ui.Column(c).Grow(1).Basis(0).Padding(6, 8).Radius(4).Background(pal.leftBg).Border(1, pal.leftAccent.Alpha(0.20)).Children(func() {
-					ui.Row(c).Gap(6).Children(func() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 						sideBadge(c, 0, pal)
 					})
 					if d.Left == "" {
@@ -298,7 +299,7 @@ func (a *workspaceState) renderDiffCard(c *ui.Context, d table.Diff, pal uiPalet
 
 				// 右侧单元格
 				ui.Column(c).Grow(1).Basis(0).Padding(6, 8).Radius(4).Background(pal.rightBg).Border(1, pal.rightAccent.Alpha(0.20)).Children(func() {
-					ui.Row(c).Gap(6).Children(func() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 						sideBadge(c, 1, pal)
 					})
 					if d.Right == "" {
