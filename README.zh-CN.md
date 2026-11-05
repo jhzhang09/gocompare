@@ -13,6 +13,7 @@
 [![Go](https://img.shields.io/github/go-mod/go-version/jhzhang09/gocompare)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
+[![Listed on Awesome MyGo](https://awesomemygo.dev/badge.svg)](https://awesomemygo.dev/apps/gocompare)
 
 [English](README.md) · **简体中文**
 
