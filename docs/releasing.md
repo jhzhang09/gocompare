@@ -38,7 +38,7 @@ Release 正文由 [.github/release-notes.md](../.github/release-notes.md)（下�
   (cd /tmp/gc/tap && brew style Casks/gocompare.rb Formula/gocompare-cli.rb)
   ```
 
-- Homebrew 已移除 `--no-quarantine`。应用未公证，用户需按 Cask 提示执行 `xattr` 或在系统设置中"仍要打开"。
+- Cask 通过 `postflight_steps` 在安装时自动执行 `xattr -dr com.apple.quarantine` 移除隔离属性，Homebrew 用户安装后可直接启动；从浏览器手动下载 `.dmg` 的用户仍需执行 `xattr` 或在系统设置中"仍要打开"。
 
 ## 步骤
 

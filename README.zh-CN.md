@@ -114,14 +114,12 @@
 ### Homebrew 安装（推荐）
 
 ```bash
-# 桌面应用（macOS）—— 安装 GoCompare.app 并自动配置 `gocompare` 命令
+# 桌面应用（macOS）—— 安装 GoCompare.app、配置 `gocompare` 命令并自动移除隔离属性
 brew install --cask jhzhang09/tap/gocompare
 
 # 命令行工具（macOS 与 Linux）—— 安装 `gocompare-cli`
 brew install jhzhang09/tap/gocompare-cli
 ```
-
-桌面应用目前使用临时签名（尚未进行 Apple 公证），首次打开若遇到系统拦截，请参见下方 [macOS 提示“无法打开 GoCompare”](#macos-gatekeeper)。
 
 ### 手动下载安装包
 
@@ -141,9 +139,9 @@ gh attestation verify <文件名> --repo jhzhang09/gocompare
 
 <a id="macos-gatekeeper"></a>
 <details>
-<summary><b>macOS 提示“无法打开 GoCompare”</b></summary>
+<summary><b>手动下载 `.dmg` 后 macOS 提示“无法打开 GoCompare”</b></summary>
 
-发布构建使用临时签名，只需在终端执行一次以下命令移除隔离属性即可正常打开：
+发布构建使用临时签名（通过 Homebrew Cask 安装时会自动移除隔离属性）。若从浏览器手动下载 `.dmg` 安装，只需在终端执行一次以下命令即可正常打开：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/GoCompare.app

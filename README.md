@@ -114,14 +114,12 @@ All comparison modes (**File Compare**, **Folder Compare**, **Text Merge**, **Ta
 ### Homebrew
 
 ```bash
-# Desktop app (macOS) — installs GoCompare.app and links the `gocompare` CLI launcher
+# Desktop app (macOS) — installs GoCompare.app, links `gocompare`, and clears quarantine automatically
 brew install --cask jhzhang09/tap/gocompare
 
 # Command-line tool (macOS and Linux) — installs `gocompare-cli`
 brew install jhzhang09/tap/gocompare-cli
 ```
-
-The desktop app uses ad-hoc signing without Apple notarization; if macOS blocks the first launch, see [macOS: "GoCompare can't be opened"](#macos-gatekeeper) below.
 
 ### Manual download
 
@@ -141,9 +139,9 @@ gh attestation verify <file> --repo jhzhang09/gocompare
 
 <a id="macos-gatekeeper"></a>
 <details>
-<summary><b>macOS: "GoCompare can't be opened"</b></summary>
+<summary><b>macOS (manual <code>.dmg</code> download): "GoCompare can't be opened"</b></summary>
 
-Release builds are ad-hoc signed. Clear the quarantine attribute once with:
+Release builds are ad-hoc signed (Homebrew Cask clears quarantine automatically during installation). If you downloaded the `.dmg` manually in a browser, clear the quarantine attribute once with:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/GoCompare.app

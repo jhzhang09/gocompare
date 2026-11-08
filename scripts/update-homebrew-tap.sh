@@ -63,19 +63,17 @@ cask "gocompare" do
   # 与 Linux 安装包和 README 一致：命令 gocompare 打开桌面应用，命令行工具是 gocompare-cli。
   binary "#{appdir}/GoCompare.app/Contents/MacOS/GoCompare", target: "gocompare"
 
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args: ["-dr", "com.apple.quarantine", "{{appdir}}/GoCompare.app"]
+  end
+
   zap trash: [
     "~/.config/gocompare",
     "~/Library/Application Support/GoCompare",
     "~/Library/Preferences/dev.gocompare.desktop.plist",
     "~/Library/Saved Application State/dev.gocompare.desktop.savedState",
   ]
-
-  caveats <<~EOS
-    GoCompare is ad-hoc signed but not notarized, so macOS blocks the first launch.
-    Allow it once with either:
-      xattr -dr com.apple.quarantine "#{appdir}/GoCompare.app"
-    or open it, then choose System Settings > Privacy & Security > Open Anyway.
-  EOS
 end
 EOF
 
