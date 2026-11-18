@@ -1,7 +1,6 @@
 package editor
 
 import (
-	"context"
 	"slices"
 	"sort"
 	"strings"
@@ -17,8 +16,6 @@ import (
 // touches to those after, as each keystroke would otherwise compare the
 // whole texts; a change of the old text compares them anew.
 type diffModel struct {
-	external         bool
-	ready            bool
 	old, new         *Buffer
 	oldText, newText rope.Text
 	oldVer, newVer   uint64
@@ -96,17 +93,6 @@ func (d *diffModel) update() bool {
 	}
 	oldText, oldVer := d.old.snapshot()
 	newText, newVer := d.new.snapshot()
-	if d.external {
-		d.job = nil
-		if oldVer == d.oldVer && newVer == d.newVer {
-			return false
-		}
-		d.oldText, d.newText, d.oldVer, d.newVer = oldText, newText, oldVer, newVer
-		d.hunks, d.words = nil, nil
-		d.ready = false
-		d.version++
-		return true
-	}
 	took := false
 	if j := d.job; j != nil && d.old != d.new {
 		if j.oldVer != oldVer {
@@ -488,19 +474,10 @@ type hunkWords struct {
 
 // wordsOf returns the inline diff of hunk i.
 func (d *diffModel) wordsOf(i int, mode DiffInline) *hunkWords {
-	// 同步调用使用不可取消的 Context；保持上游懒计算接口。
-	w, _ := d.wordsOfContext(context.Background(), i, mode)
-	return w
-}
-
-func (d *diffModel) wordsOfContext(ctx context.Context, i int, mode DiffInline) (*hunkWords, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
 	h := d.hunks[i]
 	key := wordKey{h.A0, h.A1, h.B0, h.B1, mode}
 	if w, ok := d.words[key]; ok {
-		return w, nil
+		return w
 	}
 	if d.words == nil {
 		d.words = map[wordKey]*hunkWords{}
@@ -508,21 +485,12 @@ func (d *diffModel) wordsOfContext(ctx context.Context, i int, mode DiffInline) 
 	w := &hunkWords{oldWords: map[int][]diffRange{}, newWords: map[int][]diffRange{}}
 	d.words[key] = w
 	if h.A0 == h.A1 || h.B0 == h.B1 || mode == DiffInlineNone {
-		return w, nil
+		return w
 	}
 	a := ropeLines(d.oldText, h.A0, h.A1)
 	b := ropeLines(d.newText, h.B0, h.B1)
-	var err error
-	w.offset, err = alignBySimilarityContext(ctx, a, b)
-	if err != nil {
-		delete(d.words, key)
-		return nil, err
-	}
+	w.offset = alignBySimilarity(a, b)
 	for i := range a {
-		if err := ctx.Err(); err != nil {
-			delete(d.words, key)
-			return nil, err
-		}
 		j := i - w.offset
 		if len(a) < len(b) {
 			j = i + w.offset
@@ -541,7 +509,7 @@ func (d *diffModel) wordsOfContext(ctx context.Context, i int, mode DiffInline) 
 			w.newWords[h.B0+j] = rb
 		}
 	}
-	return w, nil
+	return w
 }
 
 // alignBySimilarity returns how far to push the lines of the shorter side
@@ -550,43 +518,27 @@ func (d *diffModel) wordsOfContext(ctx context.Context, i int, mode DiffInline) 
 // and suffix of the lines without their whitespace, over their longer
 // length, taking an offset only when it pairs better by half a line.
 func alignBySimilarity(a, b []string) int {
-	offset, _ := alignBySimilarityContext(context.Background(), a, b)
-	return offset
-}
-
-func alignBySimilarityContext(ctx context.Context, a, b []string) (int, error) {
 	short, long := a, b
 	if len(a) > len(b) {
 		short, long = b, a
 	}
 	if len(short) == len(long) || len(short) == 0 || len(short)*(len(long)-len(short)+1) > 4096 {
-		return 0, ctx.Err()
+		return 0
 	}
-	score := func(off int) (float64, error) {
-		sum := 0.0
+	score := func(off int) float64 {
+		s := 0.0
 		for i, x := range short {
-			if err := ctx.Err(); err != nil {
-				return 0, err
-			}
-			sum += similarity(x, long[i+off])
+			s += similarity(x, long[i+off])
 		}
-		return sum, nil
+		return s
 	}
-	best := 0
-	bestScore, err := score(0)
-	if err != nil {
-		return 0, err
-	}
+	best, bestScore := 0, score(0)
 	for off := 1; off <= len(long)-len(short); off++ {
-		value, err := score(off)
-		if err != nil {
-			return 0, err
-		}
-		if value > bestScore+0.5*float64(len(short)) {
-			best, bestScore = off, value
+		if s := score(off); s > bestScore+0.5*float64(len(short)) {
+			best, bestScore = off, s
 		}
 	}
-	return best, nil
+	return best
 }
 
 func similarity(a, b string) float64 {
@@ -676,10 +628,6 @@ func (d *diffModel) hunkEdit(h diff.Hunk, old, nw rope.Text) Edit {
 	text := ""
 	if h.A1 > h.A0 {
 		text = old.Slice(old.LineStart(h.A0), old.LineEnd(h.A1-1))
-	}
-	// 空缓冲区在编辑器中有一个占位行，不能为它附加额外换行。
-	if nw.Len() == 0 {
-		return Edit{Start: 0, End: 0, Text: text}
 	}
 	n := nw.LineCount()
 	switch {
