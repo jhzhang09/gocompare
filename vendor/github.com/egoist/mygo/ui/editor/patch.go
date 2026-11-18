@@ -401,14 +401,10 @@ func (d *DiffState) showPatch(p FilePatch, old, new *Buffer, hunks []diff.Hunk) 
 		d.Old.SetLanguage(l)
 		d.New.SetLanguage(l)
 	}
-	d.OldEditable = false
-	d.ExternalComparison = false
 	d.partial = nil
 	d.prepared = diffPrepared{}
 	m := &d.model
-	m.external = false
-	m.ready = false
-	m.set(d.Old, d.New, !d.Editable && !d.OldEditable && !d.ExternalComparison)
+	m.set(d.Old, d.New, !d.Editable)
 	m.oldText, m.oldVer = d.Old.snapshot()
 	m.newText, m.newVer = d.New.snapshot()
 	m.hunks, m.words = hunks, nil

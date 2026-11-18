@@ -52,7 +52,7 @@ func (d *DiffState) prepare() {
 	viewB := &edB.view
 	key := diffPrepared{version: d.model.version, expandV: d.expandV, layout: d.Layout, context: d.context(), anns: annotationsKey(d.Annotations),
 		wrapsA: viewA.heights.wraps.version, wrapsB: viewB.heights.wraps.version, lh: viewB.lineHeight, wrap: d.Wrap,
-		expAll: d.ExpandUnchanged, inline: d.Inline, nOld: viewA.text.LineCount(), nNew: viewB.text.LineCount(), editable: d.showFinalEmptyLine()}
+		expAll: d.ExpandUnchanged, inline: d.Inline, nOld: viewA.text.LineCount(), nNew: viewB.text.LineCount(), editable: d.Editable}
 	if d.prepared == key {
 		return
 	}
@@ -349,10 +349,6 @@ func (v *view) wrapLineNow(i int) {
 	w.set(i, len(v.wrapBreaks(l.disp, l.faces, false))+1)
 }
 
-func (d *DiffState) showFinalEmptyLine() bool {
-	return d.Editable || d.OldEditable || d.ExternalComparison
-}
-
 // shownLines returns how many lines of a side's text the diff shows. A
 // diff that cannot be edited ends at the text's final newline, as git
 // diff does, leaving out the empty line the editor starts after it,
@@ -360,7 +356,7 @@ func (d *DiffState) showFinalEmptyLine() bool {
 // editable one shows it, as there is where typing adds a line.
 func (d *DiffState) shownLines(text rope.Text) int {
 	n := text.LineCount()
-	if d.showFinalEmptyLine() || n < 2 || text.LineStart(n-1) != text.Len() {
+	if d.Editable || n < 2 || text.LineStart(n-1) != text.Len() {
 		return n
 	}
 	return n - 1
@@ -381,7 +377,7 @@ func (d *DiffState) markEnds() {
 // either way. An empty text has no line to mark.
 func (d *DiffState) noNewlineAtEnd(text rope.Text, old bool) bool {
 	switch {
-	case d.showFinalEmptyLine() || text.Len() == 0:
+	case d.Editable || text.Len() == 0:
 		return false
 	case d.partial != nil && old:
 		return d.partial.oldNoEOL
