@@ -33,7 +33,7 @@ flowchart TD
 
 ## P0 尚未解决的框架边界
 
-MyGo v0.7.3 的 `DiffView` 左侧固定只读，视图中的 `ensure` 会更新差异模型。当前通过受控的 `OldEditable` 与 `ExternalComparison` 补丁开放分栏左侧编辑，并把差异重算移出绘制路径。结果带回 UI 线程前会核对缓冲区身份和版本。已实现同屏双侧编辑、当前焦点侧保存、I/O 期间双侧锁定，以及可取消的后台比较。手工锚点由 `textcompare` 计算，再经 `ApplyHunks` 显示；逆序锚点拒绝且不替换当前差异。下一步验证多栏行映射和真实输入法。
+MyGo v0.10.0 的 `DiffView` 左侧固定只读，视图中的 `ensure` 会更新差异模型。当前通过受控的 `OldEditable` 与 `ExternalComparison` 补丁开放分栏左侧编辑，并把差异重算移出绘制路径。结果带回 UI 线程前会核对缓冲区身份和版本。已实现同屏双侧编辑、当前焦点侧保存、I/O 期间双侧锁定，以及可取消的后台比较。手工锚点由 `textcompare` 计算，再经 `ApplyHunks` 显示；逆序锚点拒绝且不替换当前差异。下一步验证多栏行映射和真实输入法。
 
 应用核心不能导入 MyGo 的 `internal/*`。框架依赖以标准 vendor 快照保存，仅对 DiffState 的公开选项与只读判断作小范围修改；补丁单独保存在 patches/，尚未创建远程 fork。维护步骤见 mygo-patch.md。
 

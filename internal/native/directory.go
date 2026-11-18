@@ -80,6 +80,12 @@ func (a *workspaceState) loadDirectory(paths [2]string) {
 	})
 }
 
+func newDirectoryListState() ui.ListState {
+	return ui.ListState{
+		MoveAnimation: &ui.Animation{Duration: 160 * time.Millisecond},
+	}
+}
+
 func (a *workspaceState) installDirectory(paths [2]string, rows []compare.Entry) {
 	if paths != a.directoryRoots {
 		a.closedDirs = nil
@@ -98,7 +104,7 @@ func (a *workspaceState) installDirectory(paths [2]string, rows []compare.Entry)
 	a.directoryRoots = paths
 	a.paths = paths
 	a.kind = kindDirectory
-	a.directoryList = ui.ListState{}
+	a.directoryList = newDirectoryListState()
 	if a.directoryNote != "" {
 		a.message = a.directoryNote
 		a.directoryNote = ""
@@ -390,7 +396,7 @@ func (a *workspaceState) previewSync() {
 				return
 			}
 			a.syncPlan = &plan
-			a.directoryList = ui.ListState{}
+			a.directoryList = newDirectoryListState()
 			a.message = i18n.T("sync.previewReady")
 		})
 	})
@@ -403,7 +409,7 @@ func (a *workspaceState) syncPreviewView(c *ui.Context) {
 	ui.Row(c).Height(38).Padding(0, 16).Gap(10).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		if compactBtn(c, i18n.T("sync.back"), nil, components.ButtonSecondary, false).Clicked() {
 			a.syncPlan = nil
-			a.directoryList = ui.ListState{}
+			a.directoryList = newDirectoryListState()
 		}
 		statusPill(c, i18n.TArgs("sync.pending", len(plan.Actions)), pal.diffFg, pal.diffBg)
 		ui.Text(c, i18n.T("sync.backupNote")).Grow(1).FontSize(11).TextColor(t.TextMuted).SingleLine()
@@ -417,6 +423,9 @@ func (a *workspaceState) syncPreviewView(c *ui.Context) {
 			ui.Text(c, i18n.T("sync.nothing")).FontSize(15).Bold()
 		})
 		return
+	}
+	if a.directoryList.MoveAnimation == nil {
+		a.directoryList.MoveAnimation = &ui.Animation{Duration: 160 * time.Millisecond}
 	}
 	ui.List(c, &a.directoryList, len(plan.Actions)).Grow(1).FillWidth().ItemKey(func(i int) any { item := plan.Actions[i]; return item.Kind + ":" + item.Path }).Rows(func(row ui.ListRow) {
 		item := plan.Actions[row.Index]
@@ -432,10 +441,10 @@ func (a *workspaceState) syncPreviewView(c *ui.Context) {
 			ui.Row(rc).Width(80).AlignItems(ui.Center).Children(func() {
 				statusPill(rc, actionText, fg, bg)
 			})
-			ui.Text(rc, item.Path).Grow(1).Bold().FontSize(12).SingleLine()
+			ui.Text(rc, item.Path).Grow(1).MinWidth(0).Bold().FontSize(12).SingleLine().TruncateStart()
 			if item.To != "" {
 				ui.Text(rc, "→").FontSize(11).TextColor(t.TextMuted)
-				ui.Text(rc, item.To).FontSize(11).TextColor(t.TextMuted).SingleLine()
+				ui.Text(rc, item.To).FontSize(11).TextColor(t.TextMuted).SingleLine().TruncateStart()
 			}
 		})
 	})
@@ -519,7 +528,7 @@ func (a *workspaceState) previewDirMerge() {
 				return
 			}
 			a.dirMergeDecisions = decisions
-			a.directoryList = ui.ListState{}
+			a.directoryList = newDirectoryListState()
 			a.message = i18n.TArgs("dirmerge.previewDone", len(decisions))
 		})
 	})
@@ -538,7 +547,7 @@ func (a *workspaceState) dirMergePreviewView(c *ui.Context) {
 	ui.Row(c).Height(38).Padding(0, 16).Gap(10).AlignItems(ui.Center).Background(pal.cardBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		if compactBtn(c, i18n.T("sync.back"), nil, components.ButtonSecondary, false).Clicked() {
 			a.dirMergeDecisions = nil
-			a.directoryList = ui.ListState{}
+			a.directoryList = newDirectoryListState()
 		}
 		statusPill(c, i18n.TArgs("dirmerge.items", len(decisions)), pal.baseAccent, pal.baseBg)
 		if conflicts > 0 {
@@ -554,6 +563,9 @@ func (a *workspaceState) dirMergePreviewView(c *ui.Context) {
 			ui.Text(c, i18n.T("dirmerge.empty")).FontSize(15).Bold()
 		})
 		return
+	}
+	if a.directoryList.MoveAnimation == nil {
+		a.directoryList.MoveAnimation = &ui.Animation{Duration: 160 * time.Millisecond}
 	}
 	ui.List(c, &a.directoryList, len(decisions)).Grow(1).FillWidth().ItemKey(func(i int) any { return decisions[i].Path }).Rows(func(row ui.ListRow) {
 		item := decisions[row.Index]
@@ -577,7 +589,7 @@ func (a *workspaceState) dirMergePreviewView(c *ui.Context) {
 		}
 		ui.Row(rc).Height(34).Padding(0, 14).Gap(10).AlignItems(ui.Center).Background(rowBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder.Alpha(0.5)).Children(func() {
 			statusPill(rc, i18n.T("dirmerge.kind."+item.Kind), fg, bg)
-			ui.Text(rc, item.Path).FontSize(12).Grow(1).SingleLine()
+			ui.Text(rc, item.Path).FontSize(12).Grow(1).MinWidth(0).SingleLine().TruncateStart()
 			if reason := dirMergeReason(item.Reason); reason != "" {
 				ui.Text(rc, reason).FontSize(11).TextColor(pal.dangerFg).SingleLine()
 			}

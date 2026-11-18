@@ -127,6 +127,7 @@ func (a *workspaceState) selectHunk(i int) {
 		return
 	}
 	diff.GoToHunk(i)
+	diff.Focus()
 	focusHunk(diff, hunks[i])
 	a.hunkFocus = i + 1
 	a.message = i18n.TArgs("status.hunkPosition", i+1, n)
@@ -1445,6 +1446,7 @@ func (a *workspaceState) comparisonView(c *ui.Context, key string) {
 		key += "_blank"
 	}
 	diff.Wrap = a.wrap
+	diff.ScrollPastEnd = true
 	panes := a.activePanes()
 	diff.Editable = editable && (panes[1] == nil || panes[1].file == nil || !panes[1].file.ReadOnly())
 	diff.OldEditable = editable && (panes[0] == nil || panes[0].file == nil || !panes[0].file.ReadOnly())
@@ -1453,7 +1455,119 @@ func (a *workspaceState) comparisonView(c *ui.Context, key string) {
 	diff.RenderCenter = func(c *ui.Context, col ui.Element) {
 		a.renderDiffCenter(c, col, diff, panes, editable)
 	}
-	editor.DiffView(c.Key(key), diff).Grow(1).FillWidth()
+	ui.Row(c.Key(key + "-row")).Grow(1).FillWidth().Children(func() {
+		editor.DiffView(c.Key(key), diff).Grow(1).FillHeight()
+		a.renderDiffMinimap(c, key, diff, pal)
+	})
+}
+
+type minimapMark struct {
+	topFrac float32
+	botFrac float32
+	color   ui.Color
+	focused bool
+}
+
+// renderDiffMinimap 使用 DiffState 的 LineTop / ScrollY / SetScrollY / ViewportHeight
+// 在对比视图右侧渲染可点击与拖动的差异概览标尺。
+func (a *workspaceState) renderDiffMinimap(c *ui.Context, key string, diff *editor.DiffState, pal uiPalette) {
+	t := c.Theme()
+	var marks []minimapMark
+	var totalH float64
+	if diff != nil {
+		oldLines, newLines := 0, 0
+		if diff.Old != nil {
+			oldLines = diff.Old.LineCount()
+		}
+		if diff.New != nil {
+			newLines = diff.New.LineCount()
+		}
+		totalH = max(diff.LineTop(editor.DiffOld, oldLines), diff.LineTop(editor.DiffNew, newLines))
+		if totalH > 0 && !a.compareRunning && a.compareErr == nil && diff.ComparisonReady() {
+			hunks := diff.Hunks()
+			marks = make([]minimapMark, 0, len(hunks))
+			for i, h := range hunks {
+				side := editor.DiffNew
+				start, end := h.NewStart, h.NewEnd
+				col := pal.diffFg
+				switch {
+				case h.NewEnd <= h.NewStart:
+					side = editor.DiffOld
+					start, end = h.OldStart, h.OldEnd
+					col = pal.leftAccent
+				case h.OldEnd <= h.OldStart:
+					col = pal.rightAccent
+				}
+				top := diff.LineTop(side, start)
+				bot := diff.LineTop(side, end)
+				if bot < top {
+					bot = top
+				}
+				marks = append(marks, minimapMark{
+					topFrac: float32(max(0.0, min(top/totalH, 1.0))),
+					botFrac: float32(max(0.0, min(bot/totalH, 1.0))),
+					color:   col,
+					focused: a.hunkFocus == i+1,
+				})
+			}
+		}
+	}
+
+	minimap := ui.Box(c.Key(key+"-minimap")).
+		Label(i18n.T("diff.minimap")).
+		Tooltip(i18n.T("diff.minimap")).
+		Width(12).FillHeight().Shrink(0).
+		Background(pal.subtleSurface).
+		BorderWidth(0, 0, 0, 1).BorderColor(pal.cardBorder).
+		Cursor(ui.CursorPointer)
+
+	if diff != nil && totalH > 0 {
+		_, _, held := minimap.Dragged()
+		if held || minimap.Clicked() {
+			if b := minimap.Bounds(); b.H > 0 {
+				_, py, _ := minimap.PointerPosition()
+				ratio := max(0.0, min(float64(py)/float64(b.H), 1.0))
+				target := ratio*totalH - diff.ViewportHeight()/2
+				diff.SetScrollY(max(0.0, target))
+			}
+		}
+	}
+
+	minimap.Draw(func(p *ui.Painter, r ui.Rect) {
+		if r.W <= 0 || r.H <= 0 || totalH <= 0 {
+			return
+		}
+		if viewH := diff.ViewportHeight(); viewH > 0 {
+			scrollY := diff.ScrollY()
+			top := float32(max(0.0, min(scrollY/totalH, 1.0))) * r.H
+			h := max(float32(10), float32(min(viewH/totalH, 1.0))*r.H)
+			if top+h > r.H {
+				top = max(float32(0), r.H-h)
+			}
+			lensCol := t.Text.Alpha(0.10)
+			if t.Dark {
+				lensCol = t.Text.Alpha(0.16)
+			}
+			p.Fill(ui.Rect{X: r.X + 1, Y: r.Y + top, W: max(float32(1), r.W-2), H: h}, lensCol, 2)
+		}
+		for _, m := range marks {
+			y0 := r.Y + m.topFrac*r.H
+			y1 := r.Y + m.botFrac*r.H
+			mh := max(float32(2), y1-y0)
+			if y0+mh > r.Y+r.H {
+				y0 = max(r.Y, r.Y+r.H-mh)
+			}
+			col := m.color.Alpha(0.75)
+			x := r.X + 2
+			w := max(float32(2), r.W-4)
+			if m.focused {
+				col = m.color
+				x = r.X + 1
+				w = max(float32(2), r.W-2)
+			}
+			p.Fill(ui.Rect{X: x, Y: y0, W: w, H: mh}, col, 1)
+		}
+	})
 }
 
 // syncAppliedDecorations 将各侧相对于初始基线已应用/已修改的行区间同步为编辑器背景色与行号槽标记。

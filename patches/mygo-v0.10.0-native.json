@@ -1,0 +1,50 @@
+{
+  "module": "github.com/egoist/mygo",
+  "version": "v0.10.0",
+  "files": {
+    "vendor/github.com/egoist/mygo/internal/diff/diff.go": {
+      "original": "02c9897b3d9e7d389d5befcc6b22efcace8e4748e6ddcbaa1bed827a86a6c265",
+      "patched": "a918963ca406d95400e926d7edc75436ad197a92168e6e203df4b5c746ac59bf"
+    },
+    "vendor/github.com/egoist/mygo/internal/diff/histogram.go": {
+      "original": "371edd666286ae1462b784afce313ebda1a320b89198cab27570aa6c179be103",
+      "patched": "5217edd819946faf5005760001d188d5b2c8ed79351f74e489a7613cf4543397"
+    },
+    "vendor/github.com/egoist/mygo/internal/diff/myers.go": {
+      "original": "4eeb71e35e82a815b9ace58dc3fb97060e425c05039d137bf8965fb08fd8f4b9",
+      "patched": "859b736b22e3a87e937f8793360e94e17649dd3a5db42fdf137360103f210798"
+    },
+    "vendor/github.com/egoist/mygo/internal/diff/compact.go": {
+      "original": "9064592e30252349b853b4505cf25e80a2fa104603a9c58b6fa61f15d17ac734",
+      "patched": "76f3ad3073903068b56e794e5ff557719286d3d35f90cdd46e4527b91ef3b1ff"
+    },
+    "vendor/github.com/egoist/mygo/internal/diff/context.go": {
+      "original": null,
+      "patched": "bfc32fef02249656785b6bc74788729c0fda1e64f26d71560e6d2e95d8a7c361"
+    },
+    "vendor/github.com/egoist/mygo/ui/editor/diffview.go": {
+      "original": "c0c1944ba50ea7555bc7a95b71a85a0f0e66f7e0fcae3b7b076b9f13a97f9ddc",
+      "patched": "7ef4203d96f41a54ca01d71ff49e6c38975496de05c38aabea07f759f21621f7"
+    },
+    "vendor/github.com/egoist/mygo/ui/editor/diffmodel.go": {
+      "original": "bd75b78d25599eb4f59c17569851afa44812353d5477402d999dd6181cead5f4",
+      "patched": "df02787fcc0cd0c0d81f547da96f4a7a0a551d00cafcd675a6a7f02608b7d94f"
+    },
+    "vendor/github.com/egoist/mygo/ui/editor/difflayout.go": {
+      "original": "db5c9b973d43eb12128686108239c776ced0ef0b55a5509331a949bcbaa9f410",
+      "patched": "b2d5b9043f911ffb57aaa4dabe4eef38e14e38ce4b2fc4b9ede699774cd164f4"
+    },
+    "vendor/github.com/egoist/mygo/ui/editor/comparison.go": {
+      "original": null,
+      "patched": "f3b9ad0693125eddc64244f75dea4c42b85d2585a499547029a11da9070a8bd2"
+    },
+    "vendor/github.com/egoist/mygo/ui/editor/patch.go": {
+      "original": "4fb941d914f129a3082fa3f86b875f29f423d2da78b0624effcfb76266b98bf1",
+      "patched": "82128fea4a3f025614310d03e3ca7f526d93948d801d77209b0d83df6a151320"
+    },
+    "vendor/github.com/egoist/mygo/ui/editor/comparison_rules.go": {
+      "original": null,
+      "patched": "215c2f4c26e56278613130bd613a630615af86944641dae179ad93975c7bb182"
+    }
+  }
+}

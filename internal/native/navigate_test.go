@@ -1,8 +1,10 @@
 package native
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -258,5 +260,82 @@ func TestRestoreClearsUndoRedoStackAndHighlightsAppliedChanges(t *testing.T) {
 	}
 	if len(a.history.applied[0]) != 0 || len(a.history.applied[1]) != 0 {
 		t.Fatalf("applied ranges not cleared after restore: %+v", a.history.applied)
+	}
+}
+
+func TestDiffMinimapScrollPastEndAndFocus(t *testing.T) {
+	i18n.SetLanguage(i18n.ZhCN)
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "long_l.txt"), filepath.Join(dir, "long_r.txt")
+	var lb, rb strings.Builder
+	for i := 0; i < 160; i++ {
+		if i == 10 || i == 145 {
+			fmt.Fprintf(&lb, "left-only-%03d\n", i)
+			fmt.Fprintf(&rb, "right-only-%03d\n", i)
+		} else {
+			fmt.Fprintf(&lb, "shared-line-%03d\n", i)
+			fmt.Fprintf(&rb, "shared-line-%03d\n", i)
+		}
+	}
+	if err := os.WriteFile(left, []byte(lb.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(right, []byte(rb.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	a := &workspaceState{paths: [2]string{left, right}}
+	a.load()
+	a.diff.SplitPercent = 42
+	if !a.diff.ScrollPastEnd {
+		t.Fatal("expected ScrollPastEnd enabled on file diff")
+	}
+	a.ensureScratch()
+	if !a.scratchDiff.ScrollPastEnd {
+		t.Fatal("expected ScrollPastEnd enabled on scratch diff")
+	}
+
+	tt := ui.NewTester(a.view, 1400, 640)
+	tt.Frame()
+	if a.diff.ViewportHeight() <= 0 {
+		t.Fatalf("expected positive ViewportHeight, got %v", a.diff.ViewportHeight())
+	}
+	if bands := a.diff.HunkBands(); len(bands) != 2 {
+		t.Fatalf("expected 2 hunk bands with SplitPercent + CenterWidth, got %d", len(bands))
+	}
+
+	// 切换浅色/深色主题绘制概览标尺并验证点击标尺跳转滚动位置。
+	tt.SetDark(true)
+	tt.Frame()
+	tt.SetDark(false)
+	tt.Frame()
+
+	mm, ok := tt.Find(i18n.T("diff.minimap"))
+	if !ok || mm.W <= 0 || mm.H <= 0 {
+		t.Fatalf("diff minimap not rendered: ok=%v bounds=%+v", ok, mm)
+	}
+	tt.ClickAt(mm.X+mm.W/2, mm.Y+mm.H*0.92)
+	tt.Frame()
+	if a.diff.ScrollY() <= 0 {
+		t.Fatalf("expected clicking bottom of minimap to scroll down, got ScrollY=%v", a.diff.ScrollY())
+	}
+
+	// 验证 selectHunk 配合 ScrollPastEnd 将末尾差异块定位到视口中并同步焦点侧。
+	a.diff.SetScrollY(0)
+	tt.Frame()
+	a.selectHunk(1)
+	tt.Frame()
+	if a.diff.ScrollY() <= 0 {
+		t.Fatalf("expected selectHunk on trailing hunk to scroll, got ScrollY=%v", a.diff.ScrollY())
+	}
+	if side := a.diff.ActiveSide(); side != editor.DiffOld && side != editor.DiffNew {
+		t.Fatalf("unexpected active side: %v", side)
+	}
+
+	// 忽略空行模式下也保持 ScrollPastEnd 与 SplitPercent。
+	a.ignoreBlankLines = true
+	blank := a.activeDiff()
+	if !blank.ScrollPastEnd || blank.SplitPercent != 42 {
+		t.Fatalf("expected blankDiff to keep ScrollPastEnd and SplitPercent=42, got %+v %v", blank.ScrollPastEnd, blank.SplitPercent)
 	}
 }

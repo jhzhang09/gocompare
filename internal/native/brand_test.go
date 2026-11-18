@@ -16,7 +16,7 @@ func TestWorkspaceShowsBrandAndFramework(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != "v0.7.4" {
+	if version != "v0.10.0" {
 		t.Fatalf("framework %s", version)
 	}
 	img, err := png.Decode(bytes.NewReader(brand.IconPNG()))

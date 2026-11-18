@@ -77,7 +77,7 @@ func TestComparisonResultsMatchSynchronousModel(t *testing.T) {
 			b.WriteString(pieces[random.IntN(len(pieces))])
 		}
 		before, after := editor.NewBuffer(a.String()), editor.NewBuffer(b.String())
-		sync := editor.DiffState{Old: before, New: after}
+		sync := editor.DiffState{Old: before, New: after, Editable: true}
 		async := editor.DiffState{Old: before, New: after, ExternalComparison: true}
 		result, err := editor.NewComparisonRequest(before, after).Compute(context.Background())
 		if err != nil || !async.ApplyComparison(result) {

@@ -28,7 +28,7 @@ jobs:
       - run: go test ./...
         env:
           CGO_ENABLED: '0'
-      - run: git apply --reverse --check patches/mygo-v0.7.3-native.patch
+      - run: git apply --reverse --check patches/mygo-v0.10.0-native.patch
       - run: go vet ./...
       - run: go tool mygo vet .
   build:

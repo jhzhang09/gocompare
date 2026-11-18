@@ -1,3 +1,41 @@
+# github.com/ProtonMail/go-crypto v1.4.1
+## explicit; go 1.23.0
+github.com/ProtonMail/go-crypto/bitcurves
+github.com/ProtonMail/go-crypto/brainpool
+github.com/ProtonMail/go-crypto/eax
+github.com/ProtonMail/go-crypto/internal/byteutil
+github.com/ProtonMail/go-crypto/ocb
+github.com/ProtonMail/go-crypto/openpgp
+github.com/ProtonMail/go-crypto/openpgp/aes/keywrap
+github.com/ProtonMail/go-crypto/openpgp/armor
+github.com/ProtonMail/go-crypto/openpgp/ecdh
+github.com/ProtonMail/go-crypto/openpgp/ecdsa
+github.com/ProtonMail/go-crypto/openpgp/ed25519
+github.com/ProtonMail/go-crypto/openpgp/ed448
+github.com/ProtonMail/go-crypto/openpgp/eddsa
+github.com/ProtonMail/go-crypto/openpgp/elgamal
+github.com/ProtonMail/go-crypto/openpgp/errors
+github.com/ProtonMail/go-crypto/openpgp/internal/algorithm
+github.com/ProtonMail/go-crypto/openpgp/internal/ecc
+github.com/ProtonMail/go-crypto/openpgp/internal/encoding
+github.com/ProtonMail/go-crypto/openpgp/packet
+github.com/ProtonMail/go-crypto/openpgp/s2k
+github.com/ProtonMail/go-crypto/openpgp/x25519
+github.com/ProtonMail/go-crypto/openpgp/x448
+# github.com/cloudflare/circl v1.6.2
+## explicit; go 1.22.0
+github.com/cloudflare/circl/dh/x25519
+github.com/cloudflare/circl/dh/x448
+github.com/cloudflare/circl/ecc/goldilocks
+github.com/cloudflare/circl/internal/conv
+github.com/cloudflare/circl/internal/sha3
+github.com/cloudflare/circl/math
+github.com/cloudflare/circl/math/fp25519
+github.com/cloudflare/circl/math/fp448
+github.com/cloudflare/circl/math/mlsbset
+github.com/cloudflare/circl/sign
+github.com/cloudflare/circl/sign/ed25519
+github.com/cloudflare/circl/sign/ed448
 # github.com/ebitengine/purego v0.11.2
 ## explicit; go 1.25.0
 github.com/ebitengine/purego
@@ -5,7 +43,7 @@ github.com/ebitengine/purego/internal/cgo
 github.com/ebitengine/purego/internal/fakecgo
 github.com/ebitengine/purego/internal/strings
 github.com/ebitengine/purego/objc
-# github.com/egoist/mygo v0.7.4
+# github.com/egoist/mygo v0.10.0
 ## explicit; go 1.27.3
 github.com/egoist/mygo
 github.com/egoist/mygo/cmd/mygo
@@ -24,15 +62,35 @@ github.com/egoist/mygo/internal/gpu/gl
 github.com/egoist/mygo/internal/gpu/metal
 github.com/egoist/mygo/internal/i18ngen
 github.com/egoist/mygo/internal/i18nlink
+github.com/egoist/mygo/internal/imagesrc
+github.com/egoist/mygo/internal/inotify
+github.com/egoist/mygo/internal/keepstate
+github.com/egoist/mygo/internal/kqueue
 github.com/egoist/mygo/internal/l10n
 github.com/egoist/mygo/internal/linux
+github.com/egoist/mygo/internal/media
 github.com/egoist/mygo/internal/menuicon
+github.com/egoist/mygo/internal/mobile
+github.com/egoist/mygo/internal/mobile/android
+github.com/egoist/mygo/internal/mobile/ios
+github.com/egoist/mygo/internal/mobile/wire
+github.com/egoist/mygo/internal/nativegen
+github.com/egoist/mygo/internal/nativehost
+github.com/egoist/mygo/internal/nativelib
 github.com/egoist/mygo/internal/nsis
+github.com/egoist/mygo/internal/pacing
 github.com/egoist/mygo/internal/platform
 github.com/egoist/mygo/internal/raster
 github.com/egoist/mygo/internal/rope
 github.com/egoist/mygo/internal/scene
 github.com/egoist/mygo/internal/schemehost
+github.com/egoist/mygo/internal/schemestream
+github.com/egoist/mygo/internal/shader
+github.com/egoist/mygo/internal/shaderir
+github.com/egoist/mygo/internal/shaderir/glsl
+github.com/egoist/mygo/internal/shaderir/hlsl
+github.com/egoist/mygo/internal/shaderir/interp
+github.com/egoist/mygo/internal/shaderir/msl
 github.com/egoist/mygo/internal/surface
 github.com/egoist/mygo/internal/svg
 github.com/egoist/mygo/internal/text
@@ -42,6 +100,7 @@ github.com/egoist/mygo/internal/uivet
 github.com/egoist/mygo/internal/unsupported
 github.com/egoist/mygo/internal/update
 github.com/egoist/mygo/internal/vec
+github.com/egoist/mygo/internal/viewhost
 github.com/egoist/mygo/internal/watchdriver
 github.com/egoist/mygo/internal/web
 github.com/egoist/mygo/internal/webview2
@@ -55,6 +114,7 @@ github.com/egoist/mygo/plugins/glass
 github.com/egoist/mygo/transfer
 github.com/egoist/mygo/ui
 github.com/egoist/mygo/ui/editor
+github.com/egoist/mygo/ui/shader
 # github.com/geoffgarside/ber v1.1.0
 ## explicit; go 1.13
 github.com/geoffgarside/ber
@@ -75,6 +135,16 @@ github.com/hirochachacha/go-smb2/internal/ntlm
 github.com/hirochachacha/go-smb2/internal/smb2
 github.com/hirochachacha/go-smb2/internal/spnego
 github.com/hirochachacha/go-smb2/internal/utf16le
+# github.com/klauspost/compress v1.18.6
+## explicit; go 1.24
+github.com/klauspost/compress
+github.com/klauspost/compress/fse
+github.com/klauspost/compress/huff0
+github.com/klauspost/compress/internal/cpuinfo
+github.com/klauspost/compress/internal/le
+github.com/klauspost/compress/internal/snapref
+github.com/klauspost/compress/zstd
+github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/kr/fs v0.1.0
 ## explicit
 github.com/kr/fs
@@ -84,22 +154,35 @@ github.com/oneo-me/onevra/source/components
 github.com/oneo-me/onevra/source/icons/lucide
 github.com/oneo-me/onevra/source/internal/l10n
 github.com/oneo-me/onevra/source/shells/sidebar
-github.com/oneo-me/onevra/source/theme
 # github.com/pkg/sftp v1.13.12
 ## explicit; go 1.25.0
 github.com/pkg/sftp
 github.com/pkg/sftp/internal/encoding/ssh/filexfer
 github.com/pkg/sftp/internal/encoding/ssh/filexfer/openssh
+# github.com/ulikunitz/xz v0.5.15
+## explicit; go 1.12
+github.com/ulikunitz/xz
+github.com/ulikunitz/xz/internal/hash
+github.com/ulikunitz/xz/internal/xlog
+github.com/ulikunitz/xz/lzma
+# go.digitalxero.dev/rpm v0.3.4
+## explicit; go 1.26.1
+go.digitalxero.dev/rpm
 # golang.org/x/crypto v0.58.0
 ## explicit; go 1.26.0
+golang.org/x/crypto/argon2
+golang.org/x/crypto/blake2b
 golang.org/x/crypto/blowfish
+golang.org/x/crypto/cast5
 golang.org/x/crypto/chacha20
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/curve25519
+golang.org/x/crypto/hkdf
 golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/md4
+golang.org/x/crypto/sha3
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
@@ -132,3 +215,4 @@ golang.org/x/text/internal/language/compact
 golang.org/x/text/internal/tag
 golang.org/x/text/language
 golang.org/x/text/transform
+golang.org/x/text/width

@@ -70,7 +70,7 @@ func (e *node) prepareSelectable() {
 	}
 	ed := e.st.editor
 	if ed == nil {
-		ed = newEditor(e.c.rt.now)
+		ed = newEditor(e.c.rt.now, e.c.rt.text)
 		ed.readOnly, ed.multiline = true, true
 		e.st.editor = ed
 	}
@@ -269,7 +269,7 @@ func textUnit(s *state, at, unit int) (int, int) {
 	case 2:
 		return s.editor.buf.wordAt(at)
 	case 3:
-		return s.editor.lineEdges(at)
+		return s.editor.buf.paraEdges(at)
 	}
 	return at, at
 }
@@ -313,7 +313,7 @@ func (rt *engine) pressTextSelection(s *state, x, y float32, mods Modifiers, cli
 	s = rt.states[p.id]
 	rt.focused, rt.focusVisible = s.id, false
 	rt.pressed = s
-	s.pressed, s.pressMods = true, mods
+	s.pressed, s.pressButton, s.pressMods = true, 0, mods
 	s.editor.dragging = false
 	return true
 }

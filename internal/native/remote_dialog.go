@@ -759,7 +759,7 @@ func (a *workspaceState) remoteBrowseView(c *ui.Context, pal uiPalette, d *remot
 		if shown == "" {
 			shown = i18n.T("remote.selectHint")
 		}
-		ui.Text(c, shown).FontSize(11).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(shown)
+		ui.Text(c, shown).FontSize(11).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().TruncateStart().Tooltip(shown)
 		if components.Button(c, i18n.T("dialog.cancel"), components.ButtonSecondary).Clicked() {
 			a.closeRemoteDialog()
 		}

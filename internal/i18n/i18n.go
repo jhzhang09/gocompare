@@ -785,6 +785,11 @@ var messages = map[string]map[Language]string{
 		ZhTW: "共 %d 處",
 		EnUS: "%d total",
 	},
+	"diff.minimap": {
+		ZhCN: "差异概览标尺（点击或拖动可定位）",
+		ZhTW: "差異概覽標尺（點擊或拖曳可定位）",
+		EnUS: "Diff overview minimap (click or drag to scroll)",
+	},
 	"dir.remoteLocalOnly": {
 		ZhCN: "同步与目录合并只支持本地目录",
 		ZhTW: "同步與目錄合併只支援本機目錄",

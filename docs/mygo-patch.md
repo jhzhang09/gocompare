@@ -1,6 +1,6 @@
 # MyGo 双侧编辑扩展
 
-日期：2026-10-31。基线：官方 MyGo v0.7.3，模块版本保持固定。
+日期：2026-11-18。基线：官方 MyGo v0.10.0，模块版本保持固定。
 
 ## 改动与契约
 
@@ -14,22 +14,22 @@ GoCompare 同时开启两个字段；加载与保存期间同时关闭。编辑�
 
 ## 依赖交付与维护
 
-依赖由 `go mod vendor` 生成，约 11 MiB，包含构建所需的第三方源文件和许可证。这是可重现的依赖快照，避免依赖尚未存在的远程 fork；不是应用私有编辑器副本。Go 的默认模块模式会使用该目录。不要使用 `-mod=mod` 构建 GUI，该选项绕过补丁。
+依赖由 `go mod vendor` 生成，包含构建所需的第三方源文件和许可证。这是可重现的依赖快照，避免依赖尚未存在的远程 fork；不是应用私有编辑器副本。Go 的默认模块模式会使用该目录。不要使用 `-mod=mod` 构建 GUI，该选项绕过补丁。
 
-改动唯一来源：`patches/mygo-v0.7.3-native.patch`，校验值在 `patches/mygo-v0.7.3-native.json`。它修改 `internal/diff` 的匹配与压缩，以及 `ui/editor` 的 `diffview.go`、`diffmodel.go`、`patch.go`，并新增 `internal/diff/context.go` 与 `ui/editor/comparison.go`。不要手改其他依赖文件。
+改动唯一来源：`patches/mygo-v0.10.0-native.patch`，校验值在 `patches/mygo-v0.10.0-native.json`。它修改 `internal/diff` 的匹配与压缩，以及 `ui/editor` 的 `diffview.go`、`diffmodel.go`、`difflayout.go`、`patch.go`，并新增 `internal/diff/context.go`、`ui/editor/comparison.go` 与 `ui/editor/comparison_rules.go`。不要手改其他依赖文件。
 
 重新生成同版依赖：
 
 ```sh
 go mod vendor
-git apply --check patches/mygo-v0.7.3-native.patch
-git apply patches/mygo-v0.7.3-native.patch
+git apply --check patches/mygo-v0.10.0-native.patch
+git apply patches/mygo-v0.10.0-native.patch
 ```
 
 验证已正确应用：
 
 ```sh
-git apply --reverse --check patches/mygo-v0.7.3-native.patch
+git apply --reverse --check patches/mygo-v0.10.0-native.patch
 CGO_ENABLED=0 go test ./...
 go tool mygo vet .
 ```

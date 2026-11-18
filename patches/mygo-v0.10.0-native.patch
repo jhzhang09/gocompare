@@ -1,0 +1,1162 @@
+diff --git a/vendor/github.com/egoist/mygo/internal/diff/compact.go b/vendor/github.com/egoist/mygo/internal/diff/compact.go
+index 8a743e5..18fa928 100644
+--- a/vendor/github.com/egoist/mygo/internal/diff/compact.go
++++ b/vendor/github.com/egoist/mygo/internal/diff/compact.go
+@@ -5,24 +5,33 @@ package diff
+ // them, as git's xdl_change_compact: groups merge when they meet, line
+ // up with a group of the other side (ro) where they can, and otherwise
+ // take the place the indent heuristic scores best.
+-func compact(r, ro []bool, ids []int32, lines []string) {
+-	g, gOther := groupInit(r), groupInit(ro)
++func compact(r, ro []bool, ids []int32, lines []string, checks ...func()) {
++	checkpoint := func() {
++		if len(checks) > 0 {
++			checks[0]()
++		}
++	}
++	g, gOther := groupInit(r, checkpoint), groupInit(ro, checkpoint)
+ 	for {
++		checkpoint()
+ 		if g.end != g.start {
+ 			var size, earliestEnd int
+ 			endMatchingOther := -1
+ 			for {
++				checkpoint()
+ 				size = g.end - g.start
+ 				endMatchingOther = -1
+-				for g.slideUp(r, ids) {
+-					gOther.previous(ro)
++				for g.slideUp(r, ids, checkpoint) {
++					checkpoint()
++					gOther.previous(ro, checkpoint)
+ 				}
+ 				earliestEnd = g.end
+ 				if gOther.end > gOther.start {
+ 					endMatchingOther = g.end
+ 				}
+-				for g.slideDown(r, ids) {
+-					gOther.next(ro)
++				for g.slideDown(r, ids, checkpoint) {
++					checkpoint()
++					gOther.next(ro, checkpoint)
+ 					if gOther.end > gOther.start {
+ 						endMatchingOther = g.end
+ 					}
+@@ -37,7 +46,8 @@ func compact(r, ro []bool, ids []int32, lines []string) {
+ 			case endMatchingOther != -1:
+ 				// Back to the last place matching a group of the other side.
+ 				for gOther.end == gOther.start {
+-					if !g.slideUp(r, ids) || !gOther.previous(ro) {
++					checkpoint()
++					if !g.slideUp(r, ids, checkpoint) || !gOther.previous(ro, checkpoint) {
+ 						break
+ 					}
+ 				}
+@@ -46,6 +56,7 @@ func compact(r, ro []bool, ids []int32, lines []string) {
+ 				best := -1
+ 				var bestScore score
+ 				for ; shift <= g.end; shift++ {
++					checkpoint()
+ 					var s score
+ 					s.add(measure(lines, shift))
+ 					s.add(measure(lines, shift-size))
+@@ -54,13 +65,14 @@ func compact(r, ro []bool, ids []int32, lines []string) {
+ 					}
+ 				}
+ 				for g.end > best {
+-					if !g.slideUp(r, ids) || !gOther.previous(ro) {
++					checkpoint()
++					if !g.slideUp(r, ids, checkpoint) || !gOther.previous(ro, checkpoint) {
+ 						break
+ 					}
+ 				}
+ 			}
+ 		}
+-		if !g.next(r) || !gOther.next(ro) {
++		if !g.next(r, checkpoint) || !gOther.next(ro, checkpoint) {
+ 			return
+ 		}
+ 	}
+@@ -69,41 +81,65 @@ func compact(r, ro []bool, ids []int32, lines []string) {
+ // group is a run of changed lines, maybe empty, between unchanged ones.
+ type group struct{ start, end int }
+ 
+-func groupInit(r []bool) group {
++func groupInit(r []bool, checks ...func()) group {
++	checkpoint := func() {
++		if len(checks) > 0 {
++			checks[0]()
++		}
++	}
+ 	g := group{}
+ 	for g.end < len(r) && r[g.end] {
++		checkpoint()
+ 		g.end++
+ 	}
+ 	return g
+ }
+ 
+-func (g *group) next(r []bool) bool {
++func (g *group) next(r []bool, checks ...func()) bool {
++	checkpoint := func() {
++		if len(checks) > 0 {
++			checks[0]()
++		}
++	}
+ 	if g.end >= len(r) {
+ 		return false
+ 	}
+ 	g.start = g.end + 1
+ 	for g.end = g.start; g.end < len(r) && r[g.end]; g.end++ {
++		checkpoint()
+ 	}
+ 	return true
+ }
+ 
+-func (g *group) previous(r []bool) bool {
++func (g *group) previous(r []bool, checks ...func()) bool {
++	checkpoint := func() {
++		if len(checks) > 0 {
++			checks[0]()
++		}
++	}
+ 	if g.start <= 0 {
+ 		return false
+ 	}
+ 	g.end = g.start - 1
+ 	for g.start = g.end; g.start > 0 && r[g.start-1]; g.start-- {
++		checkpoint()
+ 	}
+ 	return true
+ }
+ 
+-func (g *group) slideDown(r []bool, ids []int32) bool {
++func (g *group) slideDown(r []bool, ids []int32, checks ...func()) bool {
++	checkpoint := func() {
++		if len(checks) > 0 {
++			checks[0]()
++		}
++	}
+ 	if g.start < g.end && g.end < len(r) && ids[g.start] == ids[g.end] {
+ 		r[g.start] = false
+ 		g.start++
+ 		r[g.end] = true
+ 		g.end++
+ 		for g.end < len(r) && r[g.end] {
++			checkpoint()
+ 			g.end++
+ 		}
+ 		return true
+@@ -111,13 +147,19 @@ func (g *group) slideDown(r []bool, ids []int32) bool {
+ 	return false
+ }
+ 
+-func (g *group) slideUp(r []bool, ids []int32) bool {
++func (g *group) slideUp(r []bool, ids []int32, checks ...func()) bool {
++	checkpoint := func() {
++		if len(checks) > 0 {
++			checks[0]()
++		}
++	}
+ 	if g.start < g.end && g.start > 0 && ids[g.start-1] == ids[g.end-1] {
+ 		g.start--
+ 		r[g.start] = true
+ 		g.end--
+ 		r[g.end] = false
+ 		for g.start > 0 && r[g.start-1] {
++			checkpoint()
+ 			g.start--
+ 		}
+ 		return true
+diff --git a/vendor/github.com/egoist/mygo/internal/diff/context.go b/vendor/github.com/egoist/mygo/internal/diff/context.go
+new file mode 100644
+index 0000000..90ee32e
+--- /dev/null
++++ b/vendor/github.com/egoist/mygo/internal/diff/context.go
+@@ -0,0 +1,61 @@
++package diff
++
++import "context"
++
++// cancelled 只用于内部递归算法的取消展开，不拦截其他 panic。
++type cancelled struct{ err error }
++
++func (d *differ) checkpoint() {
++	if d.ctx == nil {
++		return
++	}
++	d.steps++
++	if d.steps&1023 == 0 {
++		if err := d.ctx.Err(); err != nil {
++			panic(cancelled{err})
++		}
++	}
++}
++
++// LinesContext 与 Lines 使用同一算法，在分词、匹配及压缩阶段检查取消。
++func LinesContext(ctx context.Context, a, b []string) (hunks []Hunk, err error) {
++	if err = ctx.Err(); err != nil {
++		return nil, err
++	}
++	defer func() {
++		if p := recover(); p != nil {
++			if c, ok := p.(cancelled); ok {
++				hunks = nil
++				err = c.err
++			} else {
++				panic(p)
++			}
++		}
++	}()
++	d := differ{ctx: ctx}
++	ids := make(map[string]int32, len(a)+len(b))
++	intern := func(lines []string) []int32 {
++		out := make([]int32, len(lines))
++		for i, line := range lines {
++			d.checkpoint()
++			id, ok := ids[line]
++			if !ok {
++				id = int32(len(ids))
++				ids[line] = id
++			}
++			out[i] = id
++		}
++		return out
++	}
++	d.a, d.b = intern(a), intern(b)
++	d.histogram(0, len(a), 0, len(b), 0)
++	if d.da != nil {
++		compact(d.da, d.db, d.a, a, d.checkpoint)
++		compact(d.db, d.da, d.b, b, d.checkpoint)
++		hunks = d.hunks()
++	}
++	if err = ctx.Err(); err != nil {
++		return nil, err
++	}
++	return hunks, nil
++}
+diff --git a/vendor/github.com/egoist/mygo/internal/diff/diff.go b/vendor/github.com/egoist/mygo/internal/diff/diff.go
+index 6b3dbfa..ddd9041 100644
+--- a/vendor/github.com/egoist/mygo/internal/diff/diff.go
++++ b/vendor/github.com/egoist/mygo/internal/diff/diff.go
+@@ -8,6 +8,8 @@
+ // heuristic.
+ package diff
+ 
++import "context"
++
+ // Hunk is a change: the elements A0 to A1 of the old sequence replaced by
+ // B0 to B1 of the new one. A0 == A1 is an insertion before A0, B0 == B1 a
+ // deletion.
+@@ -56,6 +58,8 @@ func Intern(a, b []string) ([]int32, []int32) {
+ 
+ // differ marks the elements of a and b that the hunks change.
+ type differ struct {
++	ctx        context.Context
++	steps      uint32
+ 	a, b       []int32
+ 	da, db     []bool // changed elements
+ 	next, cnt  []int  // histogram scratch, by position in a
+@@ -75,9 +79,11 @@ func (d *differ) mark(a0, a1, b0, b1 int) {
+ 		d.da, d.db = make([]bool, len(d.a)), make([]bool, len(d.b))
+ 	}
+ 	for i := a0; i < a1; i++ {
++		d.checkpoint()
+ 		d.da[i] = true
+ 	}
+ 	for i := b0; i < b1; i++ {
++		d.checkpoint()
+ 		d.db[i] = true
+ 	}
+ }
+@@ -90,6 +96,7 @@ func (d *differ) hunks() []Hunk {
+ 	var out []Hunk
+ 	i, j := 0, 0
+ 	for i < len(d.a) || j < len(d.b) {
++		d.checkpoint()
+ 		if i < len(d.a) && j < len(d.b) && !d.da[i] && !d.db[j] {
+ 			i++
+ 			j++
+@@ -97,9 +104,11 @@ func (d *differ) hunks() []Hunk {
+ 		}
+ 		h := Hunk{A0: i, B0: j}
+ 		for i < len(d.a) && d.da[i] {
++			d.checkpoint()
+ 			i++
+ 		}
+ 		for j < len(d.b) && d.db[j] {
++			d.checkpoint()
+ 			j++
+ 		}
+ 		h.A1, h.B1 = i, j
+diff --git a/vendor/github.com/egoist/mygo/internal/diff/histogram.go b/vendor/github.com/egoist/mygo/internal/diff/histogram.go
+index 993da2d..e25c0d2 100644
+--- a/vendor/github.com/egoist/mygo/internal/diff/histogram.go
++++ b/vendor/github.com/egoist/mygo/internal/diff/histogram.go
+@@ -13,12 +13,15 @@ const maxDepth = 256
+ // before and after it the same way.
+ func (d *differ) histogram(a0, a1, b0, b1, depth int) {
+ 	for {
++		d.checkpoint()
+ 		// Common prefix and suffix.
+ 		for a0 < a1 && b0 < b1 && d.a[a0] == d.b[b0] {
++			d.checkpoint()
+ 			a0++
+ 			b0++
+ 		}
+ 		for a0 < a1 && b0 < b1 && d.a[a1-1] == d.b[b1-1] {
++			d.checkpoint()
+ 			a1--
+ 			b1--
+ 		}
+@@ -70,6 +73,7 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
+ 	recs := d.recs
+ 	// From the end, so each record's chain goes forward from its first.
+ 	for i := a1 - 1; i >= a0; i-- {
++		d.checkpoint()
+ 		r, seen := recs[d.a[i]]
+ 		if seen {
+ 			next[i-a0] = r.first
+@@ -85,12 +89,14 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
+ 	// CNT, not the count from it to the region's end, which makes the last
+ 	// of many blank lines look unique.
+ 	for i := a0; i < a1; i++ {
++		d.checkpoint()
+ 		cnt[i-a0] = recs[d.a[i]].count
+ 	}
+ 	best := maxChain + 1
+ 	common := false
+ 	la0, la1 = a0, a0
+ 	for bi := b0; bi < b1; {
++		d.checkpoint()
+ 		bnext := bi + 1
+ 		r, found := recs[d.b[bi]]
+ 		if !found {
+@@ -103,9 +109,11 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
+ 			continue
+ 		}
+ 		for as := r.first; as >= 0; {
++			d.checkpoint()
+ 			s, bs, e, be := as, bi, as+1, bi+1
+ 			rc := cnt[as-a0]
+ 			for s > a0 && bs > b0 && d.a[s-1] == d.b[bs-1] {
++				d.checkpoint()
+ 				s--
+ 				bs--
+ 				if rc > 1 {
+@@ -113,6 +121,7 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
+ 				}
+ 			}
+ 			for e < a1 && be < b1 && d.a[e] == d.b[be] {
++				d.checkpoint()
+ 				if rc > 1 {
+ 					rc = min(rc, cnt[e-a0])
+ 				}
+@@ -128,6 +137,7 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
+ 			// The next occurrence past this run.
+ 			np := next[as-a0]
+ 			for np >= 0 && np < e {
++				d.checkpoint()
+ 				np = next[np-a0]
+ 			}
+ 			as = np
+diff --git a/vendor/github.com/egoist/mygo/internal/diff/myers.go b/vendor/github.com/egoist/mygo/internal/diff/myers.go
+index be7030b..64c3386 100644
+--- a/vendor/github.com/egoist/mygo/internal/diff/myers.go
++++ b/vendor/github.com/egoist/mygo/internal/diff/myers.go
+@@ -18,6 +18,7 @@ func (d *differ) myers(a0, a1, b0, b1 int) {
+ 	}
+ 	cost := 1
+ 	for cost*cost < n {
++		d.checkpoint()
+ 		cost <<= 1
+ 	}
+ 	d.myersExtra = max(cost, maxCostMin)
+@@ -26,10 +27,12 @@ func (d *differ) myers(a0, a1, b0, b1 int) {
+ 
+ func (d *differ) recsCmp(off1, lim1, off2, lim2 int, needMin bool) {
+ 	for off1 < lim1 && off2 < lim2 && d.a[off1] == d.b[off2] {
++		d.checkpoint()
+ 		off1++
+ 		off2++
+ 	}
+ 	for off1 < lim1 && off2 < lim2 && d.a[lim1-1] == d.b[lim2-1] {
++		d.checkpoint()
+ 		lim1--
+ 		lim2--
+ 	}
+@@ -58,6 +61,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
+ 	vf[base+fmid] = off1
+ 	vb[base+bmid] = lim1
+ 	for ec := 1; ; ec++ {
++		d.checkpoint()
+ 		// Forward.
+ 		if fmin > dmin {
+ 			fmin--
+@@ -72,6 +76,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
+ 			fmax--
+ 		}
+ 		for k := fmax; k >= fmin; k -= 2 {
++			d.checkpoint()
+ 			var i1 int
+ 			if vf[base+k-1] >= vf[base+k+1] {
+ 				i1 = vf[base+k-1] + 1
+@@ -80,6 +85,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
+ 			}
+ 			i2 := i1 - k
+ 			for i1 < lim1 && i2 < lim2 && ha1[i1] == ha2[i2] {
++				d.checkpoint()
+ 				i1++
+ 				i2++
+ 			}
+@@ -102,6 +108,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
+ 			bmax--
+ 		}
+ 		for k := bmax; k >= bmin; k -= 2 {
++			d.checkpoint()
+ 			var i1 int
+ 			if vb[base+k-1] < vb[base+k+1] {
+ 				i1 = vb[base+k-1]
+@@ -110,6 +117,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
+ 			}
+ 			i2 := i1 - k
+ 			for i1 > off1 && i2 > off2 && ha1[i1-1] == ha2[i2-1] {
++				d.checkpoint()
+ 				i1--
+ 				i2--
+ 			}
+@@ -124,6 +132,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
+ 		// Too costly: split where the furthest diagonals got.
+ 		fbest, fbest1 := -1, -1
+ 		for k := fmax; k >= fmin; k -= 2 {
++			d.checkpoint()
+ 			i1 := min(vf[base+k], lim1)
+ 			i2 := i1 - k
+ 			if lim2 < i2 {
+@@ -135,6 +144,7 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
+ 		}
+ 		bbest, bbest1 := lineMax, lineMax
+ 		for k := bmax; k >= bmin; k -= 2 {
++			d.checkpoint()
+ 			i1 := max(off1, vb[base+k])
+ 			i2 := i1 - k
+ 			if i2 < off2 {
+diff --git a/vendor/github.com/egoist/mygo/ui/editor/comparison.go b/vendor/github.com/egoist/mygo/ui/editor/comparison.go
+new file mode 100644
+index 0000000..8a088a0
+--- /dev/null
++++ b/vendor/github.com/egoist/mygo/ui/editor/comparison.go
+@@ -0,0 +1,214 @@
++package editor
++
++import (
++	"context"
++	"errors"
++	"github.com/egoist/mygo/internal/diff"
++)
++
++// ComparisonRequest 固定输入快照与缓冲区身份，可在后台计算而不读取控件状态。
++type ComparisonRequest struct {
++	old, new      *Buffer
++	before, after Snapshot
++}
++
++// Comparison 是只读计算结果；只能应用到请求对应的缓冲区版本。
++type Comparison struct {
++	request ComparisonRequest
++	inline  DiffInline
++	words   map[wordKey]*hunkWords
++	hunks   []diff.Hunk
++}
++
++// NewComparisonRequest 在调用线程捕获不可变快照。
++func NewComparisonRequest(old, new *Buffer) ComparisonRequest {
++	if old == nil || new == nil {
++		return ComparisonRequest{}
++	}
++	return ComparisonRequest{old: old, new: new, before: old.Snapshot(), after: new.Snapshot()}
++}
++
++// Compute 执行可取消的行级比较，适合由应用的后台任务调用。
++func (r ComparisonRequest) Compute(ctx context.Context, inline ...DiffInline) (Comparison, error) {
++	if err := ctx.Err(); err != nil {
++		return Comparison{}, err
++	}
++	if r.old == nil || r.new == nil {
++		return Comparison{}, errors.New("invalid comparison request")
++	}
++	a, b := r.before.t, r.after.t
++	hunks, err := diff.LinesContext(ctx, ropeLines(a, 0, a.LineCount()), ropeLines(b, 0, b.LineCount()))
++	if err != nil {
++		return Comparison{}, err
++	}
++	mode := DiffInlineWordAlt
++	if len(inline) > 1 {
++		return Comparison{}, errors.New("at most one inline mode is allowed")
++	}
++	if len(inline) == 1 {
++		mode = inline[0]
++	}
++	if mode > DiffInlineNone {
++		return Comparison{}, errors.New("invalid inline mode")
++	}
++	model := diffModel{oldText: a, newText: b, hunks: hunks}
++	for i := range hunks {
++		if _, err := model.wordsOfContext(ctx, i, mode); err != nil {
++			return Comparison{}, err
++		}
++	}
++	return Comparison{request: r, hunks: hunks, inline: mode, words: model.words}, nil
++}
++
++// Hunks 返回独立的差异块副本，不能修改结果内部切片。
++func (r Comparison) Hunks() []DiffHunk {
++	out := make([]DiffHunk, len(r.hunks))
++	for i, h := range r.hunks {
++		out[i] = DiffHunk{h.A0, h.A1, h.B0, h.B1}
++	}
++	return out
++}
++
++// ComparisonReady 区分“正在计算”和“无差异”。
++func (d *DiffState) ComparisonReady() bool { d.ensure(); return !d.ExternalComparison || d.model.ready }
++
++// ApplyComparison 在 UI 线程应用结果，过期版本或其他缓冲区的结果返回 false。
++func (d *DiffState) ApplyComparison(result Comparison) bool {
++	d.ensure()
++	r := result.request
++	if !d.ExternalComparison || result.inline != d.Inline || r.old != d.Old || r.new != d.New || r.old == nil || r.new == nil {
++		return false
++	}
++	if r.before.Version() != d.Old.Version() || r.after.Version() != d.New.Version() {
++		return false
++	}
++	m := &d.model
++	m.hunks = append([]diff.Hunk(nil), result.hunks...)
++	m.words = make(map[wordKey]*hunkWords, len(result.words))
++	for key, words := range result.words {
++		m.words[key] = words
++	}
++	m.ready = true
++	m.version++
++	return true
++}
++
++// ApplyHunks 用调用方给出的半开行区间替换外部比较结果。
++// 区间必须落在当前缓冲区内且按左右起点非递减；否则返回 false，不改已有结果。
++func (d *DiffState) ApplyHunks(hunks []DiffHunk) bool {
++	d.ensure()
++	if !d.ExternalComparison || d.Old == nil || d.New == nil {
++		return false
++	}
++	oldN, newN := d.Old.LineCount(), d.New.LineCount()
++	out := make([]diff.Hunk, len(hunks))
++	prevOld, prevNew := 0, 0
++	for i, h := range hunks {
++		if h.OldStart < prevOld || h.NewStart < prevNew || h.OldEnd < h.OldStart || h.NewEnd < h.NewStart || h.OldEnd > oldN || h.NewEnd > newN {
++			return false
++		}
++		out[i] = diff.Hunk{A0: h.OldStart, A1: h.OldEnd, B0: h.NewStart, B1: h.NewEnd}
++		prevOld, prevNew = h.OldEnd, h.NewEnd
++	}
++	oldText, oldVer := d.Old.snapshot()
++	newText, newVer := d.New.snapshot()
++	m := &d.model
++	m.oldText, m.newText, m.oldVer, m.newVer = oldText, newText, oldVer, newVer
++	m.hunks = out
++	m.words = nil
++	m.ready = true
++	m.version++
++	return true
++}
++
++// DiffHunkBand 描述分栏视图中一个差异块在当前视口内的纵向像素范围（DIP）。
++type DiffHunkBand struct {
++	Index       int
++	Hunk        DiffHunk
++	Top, Height float32
++}
++
++// HunkBands 返回分栏模式下各差异块在视口中的纵向位置，供中间差异操作列对齐绘制。
++func (d *DiffState) HunkBands() []DiffHunkBand {
++	d.ensure()
++	if d.Layout != DiffSplit || len(d.model.hunks) == 0 {
++		return nil
++	}
++	out := make([]DiffHunkBand, 0, len(d.model.hunks))
++	scrollY := d.eds[1].scrollY
++	for i, h := range d.model.hunks {
++		nA, nB := h.A1-h.A0, h.B1-h.B0
++		if nA <= 0 && nB <= 0 {
++			continue
++		}
++		side, start, end := 1, h.B0, h.B1
++		if nA >= nB {
++			side, start, end = 0, h.A0, h.A1
++		}
++		vh := &d.eds[side].view.heights
++		if vh.n <= 0 || vh.lh <= 0 {
++			continue
++		}
++		start = max(0, min(start, vh.n-1))
++		last := max(start, min(end-1, vh.n-1))
++		top := vh.geometry(start).rows
++		gLast := vh.geometry(last)
++		bottom := gLast.below
++		_, below := vh.blocksOf(last)
++		for _, b := range below {
++			if b.kind == blockSpacer || b.kind == blockAnnotation {
++				bottom += float64(b.height)
++			}
++		}
++		if bottom < top {
++			bottom = top
++		}
++		out = append(out, DiffHunkBand{
++			Index:  i,
++			Hunk:   DiffHunk{h.A0, h.A1, h.B0, h.B1},
++			Top:    float32(top - scrollY),
++			Height: float32(bottom - top),
++		})
++	}
++	return out
++}
++
++// DiffLineBand 描述分栏视图中某一侧的一段行范围在当前视口内的纵向像素范围（DIP）。
++type DiffLineBand struct {
++	Range       DiffLineRange
++	Top, Height float32
++}
++
++// LineBands 返回分栏模式下指定行区间在当前视口中的纵向位置，供中间列绘制已应用标记。
++func (d *DiffState) LineBands(ranges []DiffLineRange) []DiffLineBand {
++	d.ensure()
++	if d.Layout != DiffSplit || len(ranges) == 0 {
++		return nil
++	}
++	out := make([]DiffLineBand, 0, len(ranges))
++	scrollY := d.eds[1].scrollY
++	for _, r := range ranges {
++		side := 0
++		if r.Side == DiffNew {
++			side = 1
++		}
++		vh := &d.eds[side].view.heights
++		if vh.n <= 0 || vh.lh <= 0 {
++			continue
++		}
++		start := max(0, min(r.Start, vh.n-1))
++		last := max(start, min(r.End, vh.n-1))
++		top := vh.geometry(start).rows
++		gLast := vh.geometry(last)
++		bottom := gLast.below
++		if bottom < top {
++			bottom = top
++		}
++		out = append(out, DiffLineBand{
++			Range:  r,
++			Top:    float32(top - scrollY),
++			Height: float32(bottom - top),
++		})
++	}
++	return out
++}
+diff --git a/vendor/github.com/egoist/mygo/ui/editor/comparison_rules.go b/vendor/github.com/egoist/mygo/ui/editor/comparison_rules.go
+new file mode 100644
+index 0000000..636a3b7
+--- /dev/null
++++ b/vendor/github.com/egoist/mygo/ui/editor/comparison_rules.go
+@@ -0,0 +1,67 @@
++package editor
++
++import (
++	"context"
++	"errors"
++	"github.com/egoist/mygo/internal/diff"
++	"strings"
++	"unicode"
++)
++
++// ComputeRules 在原始快照的行坐标中应用空白规则及单调锚点。
++// 结果保留缓冲区身份与版本；不把规范化内容写入缓冲区。
++func (r ComparisonRequest) ComputeRules(ctx context.Context, ignoreSpace bool, anchors [][2]int, mode DiffInline) (Comparison, error) {
++	if r.old == nil || r.new == nil {
++		return Comparison{}, errors.New("invalid comparison request")
++	}
++	if mode > DiffInlineNone {
++		return Comparison{}, errors.New("invalid inline mode")
++	}
++	if err := ctx.Err(); err != nil {
++		return Comparison{}, err
++	}
++	old, new := r.before.t, r.after.t
++	a, b := ropeLines(old, 0, old.LineCount()), ropeLines(new, 0, new.LineCount())
++	if ignoreSpace {
++		for _, lines := range [][]string{a, b} {
++			for i, s := range lines {
++				if err := ctx.Err(); err != nil {
++					return Comparison{}, err
++				}
++				lines[i] = strings.Map(func(c rune) rune {
++					if unicode.IsSpace(c) {
++						return -1
++					}
++					return c
++				}, s)
++			}
++		}
++	}
++	points := append(append([][2]int(nil), anchors...), [2]int{len(a), len(b)})
++	left, right := 0, 0
++	var hunks []diff.Hunk
++	for _, point := range points {
++		if point[0] < left || point[1] < right || point[0] > len(a) || point[1] > len(b) {
++			return Comparison{}, errors.New("anchor out of order or out of range")
++		}
++		part, err := diff.LinesContext(ctx, a[left:point[0]], b[right:point[1]])
++		if err != nil {
++			return Comparison{}, err
++		}
++		for _, h := range part {
++			h.A0 += left
++			h.A1 += left
++			h.B0 += right
++			h.B1 += right
++			hunks = append(hunks, h)
++		}
++		left, right = point[0], point[1]
++	}
++	model := diffModel{oldText: old, newText: new, hunks: hunks}
++	for i := range hunks {
++		if _, err := model.wordsOfContext(ctx, i, mode); err != nil {
++			return Comparison{}, err
++		}
++	}
++	return Comparison{request: r, hunks: hunks, inline: mode, words: model.words}, nil
++}
+diff --git a/vendor/github.com/egoist/mygo/ui/editor/difflayout.go b/vendor/github.com/egoist/mygo/ui/editor/difflayout.go
+index 65a7c1d..52c9371 100644
+--- a/vendor/github.com/egoist/mygo/ui/editor/difflayout.go
++++ b/vendor/github.com/egoist/mygo/ui/editor/difflayout.go
+@@ -52,7 +52,7 @@ func (d *DiffState) prepare() {
+ 	viewB := &edB.view
+ 	key := diffPrepared{version: d.model.version, expandV: d.expandV, layout: d.Layout, context: d.context(), anns: annotationsKey(d.Annotations),
+ 		wrapsA: viewA.heights.wraps.version, wrapsB: viewB.heights.wraps.version, lh: viewB.lineHeight, wrap: d.Wrap,
+-		expAll: d.ExpandUnchanged, inline: d.Inline, nOld: viewA.text.LineCount(), nNew: viewB.text.LineCount(), editable: d.Editable}
++		expAll: d.ExpandUnchanged, inline: d.Inline, nOld: viewA.text.LineCount(), nNew: viewB.text.LineCount(), editable: d.showFinalEmptyLine()}
+ 	if d.prepared == key {
+ 		return
+ 	}
+@@ -349,6 +349,10 @@ func (v *view) wrapLineNow(i int) {
+ 	w.set(i, len(v.wrapBreaks(l.disp, l.faces, false))+1)
+ }
+ 
++func (d *DiffState) showFinalEmptyLine() bool {
++	return d.Editable || d.OldEditable || d.ExternalComparison
++}
++
+ // shownLines returns how many lines of a side's text the diff shows. A
+ // diff that cannot be edited ends at the text's final newline, as git
+ // diff does, leaving out the empty line the editor starts after it,
+@@ -356,7 +360,7 @@ func (v *view) wrapLineNow(i int) {
+ // editable one shows it, as there is where typing adds a line.
+ func (d *DiffState) shownLines(text rope.Text) int {
+ 	n := text.LineCount()
+-	if d.Editable || n < 2 || text.LineStart(n-1) != text.Len() {
++	if d.showFinalEmptyLine() || n < 2 || text.LineStart(n-1) != text.Len() {
+ 		return n
+ 	}
+ 	return n - 1
+@@ -377,7 +381,7 @@ func (d *DiffState) markEnds() {
+ // either way. An empty text has no line to mark.
+ func (d *DiffState) noNewlineAtEnd(text rope.Text, old bool) bool {
+ 	switch {
+-	case d.Editable || text.Len() == 0:
++	case d.showFinalEmptyLine() || text.Len() == 0:
+ 		return false
+ 	case d.partial != nil && old:
+ 		return d.partial.oldNoEOL
+diff --git a/vendor/github.com/egoist/mygo/ui/editor/diffmodel.go b/vendor/github.com/egoist/mygo/ui/editor/diffmodel.go
+index ea943b4..c5519f4 100644
+--- a/vendor/github.com/egoist/mygo/ui/editor/diffmodel.go
++++ b/vendor/github.com/egoist/mygo/ui/editor/diffmodel.go
+@@ -1,6 +1,7 @@
+ package editor
+ 
+ import (
++	"context"
+ 	"slices"
+ 	"sort"
+ 	"strings"
+@@ -16,6 +17,8 @@ import (
+ // touches to those after, as each keystroke would otherwise compare the
+ // whole texts; a change of the old text compares them anew.
+ type diffModel struct {
++	external         bool
++	ready            bool
+ 	old, new         *Buffer
+ 	oldText, newText rope.Text
+ 	oldVer, newVer   uint64
+@@ -93,6 +96,17 @@ func (d *diffModel) update() bool {
+ 	}
+ 	oldText, oldVer := d.old.snapshot()
+ 	newText, newVer := d.new.snapshot()
++	if d.external {
++		d.job = nil
++		if oldVer == d.oldVer && newVer == d.newVer {
++			return false
++		}
++		d.oldText, d.newText, d.oldVer, d.newVer = oldText, newText, oldVer, newVer
++		d.hunks, d.words = nil, nil
++		d.ready = false
++		d.version++
++		return true
++	}
+ 	took := false
+ 	if j := d.job; j != nil && d.old != d.new {
+ 		if j.oldVer != oldVer {
+@@ -474,10 +488,19 @@ type hunkWords struct {
+ 
+ // wordsOf returns the inline diff of hunk i.
+ func (d *diffModel) wordsOf(i int, mode DiffInline) *hunkWords {
++	// 同步调用使用不可取消的 Context；保持上游懒计算接口。
++	w, _ := d.wordsOfContext(context.Background(), i, mode)
++	return w
++}
++
++func (d *diffModel) wordsOfContext(ctx context.Context, i int, mode DiffInline) (*hunkWords, error) {
++	if err := ctx.Err(); err != nil {
++		return nil, err
++	}
+ 	h := d.hunks[i]
+ 	key := wordKey{h.A0, h.A1, h.B0, h.B1, mode}
+ 	if w, ok := d.words[key]; ok {
+-		return w
++		return w, nil
+ 	}
+ 	if d.words == nil {
+ 		d.words = map[wordKey]*hunkWords{}
+@@ -485,12 +508,21 @@ func (d *diffModel) wordsOf(i int, mode DiffInline) *hunkWords {
+ 	w := &hunkWords{oldWords: map[int][]diffRange{}, newWords: map[int][]diffRange{}}
+ 	d.words[key] = w
+ 	if h.A0 == h.A1 || h.B0 == h.B1 || mode == DiffInlineNone {
+-		return w
++		return w, nil
+ 	}
+ 	a := ropeLines(d.oldText, h.A0, h.A1)
+ 	b := ropeLines(d.newText, h.B0, h.B1)
+-	w.offset = alignBySimilarity(a, b)
++	var err error
++	w.offset, err = alignBySimilarityContext(ctx, a, b)
++	if err != nil {
++		delete(d.words, key)
++		return nil, err
++	}
+ 	for i := range a {
++		if err := ctx.Err(); err != nil {
++			delete(d.words, key)
++			return nil, err
++		}
+ 		j := i - w.offset
+ 		if len(a) < len(b) {
+ 			j = i + w.offset
+@@ -509,7 +541,7 @@ func (d *diffModel) wordsOf(i int, mode DiffInline) *hunkWords {
+ 			w.newWords[h.B0+j] = rb
+ 		}
+ 	}
+-	return w
++	return w, nil
+ }
+ 
+ // alignBySimilarity returns how far to push the lines of the shorter side
+@@ -518,27 +550,43 @@ func (d *diffModel) wordsOf(i int, mode DiffInline) *hunkWords {
+ // and suffix of the lines without their whitespace, over their longer
+ // length, taking an offset only when it pairs better by half a line.
+ func alignBySimilarity(a, b []string) int {
++	offset, _ := alignBySimilarityContext(context.Background(), a, b)
++	return offset
++}
++
++func alignBySimilarityContext(ctx context.Context, a, b []string) (int, error) {
+ 	short, long := a, b
+ 	if len(a) > len(b) {
+ 		short, long = b, a
+ 	}
+ 	if len(short) == len(long) || len(short) == 0 || len(short)*(len(long)-len(short)+1) > 4096 {
+-		return 0
++		return 0, ctx.Err()
+ 	}
+-	score := func(off int) float64 {
+-		s := 0.0
++	score := func(off int) (float64, error) {
++		sum := 0.0
+ 		for i, x := range short {
+-			s += similarity(x, long[i+off])
++			if err := ctx.Err(); err != nil {
++				return 0, err
++			}
++			sum += similarity(x, long[i+off])
+ 		}
+-		return s
++		return sum, nil
++	}
++	best := 0
++	bestScore, err := score(0)
++	if err != nil {
++		return 0, err
+ 	}
+-	best, bestScore := 0, score(0)
+ 	for off := 1; off <= len(long)-len(short); off++ {
+-		if s := score(off); s > bestScore+0.5*float64(len(short)) {
+-			best, bestScore = off, s
++		value, err := score(off)
++		if err != nil {
++			return 0, err
++		}
++		if value > bestScore+0.5*float64(len(short)) {
++			best, bestScore = off, value
+ 		}
+ 	}
+-	return best
++	return best, nil
+ }
+ 
+ func similarity(a, b string) float64 {
+@@ -629,6 +677,10 @@ func (d *diffModel) hunkEdit(h diff.Hunk, old, nw rope.Text) Edit {
+ 	if h.A1 > h.A0 {
+ 		text = old.Slice(old.LineStart(h.A0), old.LineEnd(h.A1-1))
+ 	}
++	// 空缓冲区在编辑器中有一个占位行，不能为它附加额外换行。
++	if nw.Len() == 0 {
++		return Edit{Start: 0, End: 0, Text: text}
++	}
+ 	n := nw.LineCount()
+ 	switch {
+ 	case h.B1 > h.B0 && h.A1 > h.A0:
+diff --git a/vendor/github.com/egoist/mygo/ui/editor/diffview.go b/vendor/github.com/egoist/mygo/ui/editor/diffview.go
+index f386bbf..3431ca3 100644
+--- a/vendor/github.com/egoist/mygo/ui/editor/diffview.go
++++ b/vendor/github.com/egoist/mygo/ui/editor/diffview.go
+@@ -36,6 +36,10 @@ type DiffState struct {
+ 	// compares lines with their line feeds, and marks a last line without
+ 	// one "No newline at end of file".
+ 	Editable bool
++	// OldEditable 允许编辑分栏左侧；默认关闭，保持上游只读行为。
++	OldEditable bool
++	// ExternalComparison 使用带版本检查的外部计算结果；等待结果期间不展示差异。
++	ExternalComparison bool
+ 	// Inline highlights what changed within changed lines.
+ 	Inline DiffInline
+ 	// Indicators mark changed lines: with bars, + and -, or nothing.
+@@ -104,6 +108,15 @@ type DiffState struct {
+ 	// editors, as State's.
+ 	RenderFindBar  func(c *ui.Context, bar ui.Element, f *FindBar)
+ 	RenderGoToLine func(c *ui.Context, bar ui.Element, g *GoToLineBar)
++	// CenterWidth and RenderCenter customize the center column between the
++	// two editors in split view; when CenterWidth <= 1 or RenderCenter is nil,
++	// a 1px divider is drawn.
++	CenterWidth  float32
++	RenderCenter func(c *ui.Context, col ui.Element)
++	// Backgrounds and GutterMarks highlight line ranges and gutter lines on the
++	// old (0) and new (1) sides (for example, applied changes).
++	Backgrounds [2][]LineBackground
++	GutterMarks [2][]GutterMark
+ 
+ 	model   diffModel
+ 	eds     [2]editor // the old side's and the new side's
+@@ -241,7 +254,12 @@ func (d *DiffState) ensure() {
+ 		d.partial = nil
+ 		d.prepared = diffPrepared{}
+ 	}
+-	d.model.set(d.Old, d.New, !d.Editable)
++	if d.model.external != d.ExternalComparison {
++		d.model.external = d.ExternalComparison
++		d.model.oldVer, d.model.newVer = ^uint64(0), ^uint64(0)
++		d.model.ready = false
++	}
++	d.model.set(d.Old, d.New, !d.Editable && !d.OldEditable && !d.ExternalComparison)
+ 	d.model.update()
+ 	// The lines revealed move with edits of the old text, as Keep makes,
+ 	// and go with it.
+@@ -337,14 +355,20 @@ func (d *DiffState) GoToHunk(i int) {
+ 	}
+ 	h := d.model.hunks[i]
+ 	side := d.ActiveSide()
+-	ed := d.editorOf(side)
+-	line := h.B0
+-	if side == DiffOld {
+-		line = h.A0
++	for _, s := range []DiffSide{DiffOld, DiffNew} {
++		ed := d.editorOf(s)
++		line := h.B0
++		if s == DiffOld {
++			line = h.A0
++		}
++		r := &ed.view.text
++		off := r.LineStart(min(line, max(0, r.LineCount()-1)))
++		rev := revealNone
++		if s == side {
++			rev = revealCenter
++		}
++		ed.setSels([]sel{ed.newSel(off, off)}, rev)
+ 	}
+-	r := &ed.view.text
+-	off := r.LineStart(min(line, r.LineCount()-1))
+-	ed.setSels([]sel{ed.newSel(off, off)}, revealCenter)
+ }
+ 
+ // Focus gives the keyboard to the editor of the active side when the
+@@ -572,12 +596,17 @@ func (d *DiffState) editorOf(side DiffSide) *editor {
+ func (d *DiffState) sideOptions(old bool) options {
+ 	// Both gutters as wide, so that both sides wrap alike.
+ 	digits := max(3, len(strconv.Itoa(max(d.Old.LineCount(), d.New.LineCount()))))
++	side := 1
++	if old {
++		side = 0
++	}
+ 	o := options{
+-		readOnly: old || !d.Editable, font: d.Font, lineHeight: d.LineHeight, tabSize: d.TabSize,
++		readOnly: (old && !d.OldEditable) || (!old && !d.Editable), font: d.Font, lineHeight: d.LineHeight, tabSize: d.TabSize,
+ 		wrap: d.Wrap, lineNumbers: LineNumbersOn, whitespace: WhitespaceNone, autoClose: true,
+ 		theme: d.Theme, bindings: d.Bindings, fitContent: d.FitContent, minDigits: digits,
+ 		scrollPastEnd:  d.ScrollPastEnd && !d.FitContent,
+ 		keepScrollbars: d.KeepScrollbars, hideScrollbars: d.NoScrollbars,
++		backgrounds: d.Backgrounds[side], gutterMarks: d.GutterMarks[side],
+ 		renderFindBar: d.RenderFindBar, renderGoToLine: d.RenderGoToLine,
+ 	}
+ 	o.scrollMargin = defaultScrollMargin
+@@ -591,6 +620,13 @@ func (d *DiffState) sideOptions(old bool) options {
+ 	return o
+ }
+ 
++func (d *DiffState) centerWidth() float32 {
++	if d.CenterWidth > 1 && d.RenderCenter != nil {
++		return d.CenterWidth
++	}
++	return 1
++}
++
+ // DiffView builds the diff viewer.
+ func DiffView(c *ui.Context, d *DiffState) ui.Element {
+ 	if d.New == nil {
+@@ -654,6 +690,7 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
+ 	}
+ 	// Side by side: two editors sharing their scroll.
+ 	d.scroll.eds = []*editor{&d.eds[0], &d.eds[1]}
++	d.split.center = d.centerWidth()
+ 	// The old text on the left, as code reads left to right.
+ 	row := ui.Row(c).Direction(ui.LeftToRight).Clip()
+ 	row.Draw(func(p *ui.Painter, r ui.Rect) {
+@@ -695,7 +732,8 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
+ 	})
+ 	row.Children(func() {
+ 		var sides [2]ui.Element
+-		var div ui.Element
++		var div, centerCol ui.Element
++		hasCenter := d.CenterWidth > 1 && d.RenderCenter != nil
+ 		for i, b := range []*Buffer{d.Old, d.New} {
+ 			o := opts(i == 0)
+ 			o.decor = &d.sides[i]
+@@ -709,13 +747,41 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
+ 			}
+ 			sides[i] = d.eds[i].build(c, b, o).Basis(0).FillHeight()
+ 			if i == 0 {
+-				div = ui.Box(c).Key("diff divider").Width(1).Shrink(0).FillHeight()
++				if hasCenter {
++					centerCol = ui.Box(c).Key("diff-center").Width(d.CenterWidth).Shrink(0).FillHeight().Clip()
++				} else {
++					div = ui.Box(c).Key("diff divider").Width(1).Shrink(0).FillHeight()
++				}
+ 			}
+ 			if d.eds[i].focused {
+ 				d.oldActive = i == 0
+ 			}
+ 		}
+-		if d.buildDivider(c, ct, div) {
++		if hasCenter {
++			d.prepare()
++			for i := range d.eds {
++				d.eds[i].view.heights.lh = d.eds[i].view.lineHeight
++				d.eds[i].view.heights.setLines(d.eds[i].view.text.LineCount())
++				d.eds[i].view.heights.setHidden(d.sides[i].hide)
++				d.eds[i].view.heights.setBlocks(d.sides[i].blks)
++			}
++			room := max(d.split.width-d.split.center, 0)
++			if d.SplitPercent > 0 {
++				share := min(d.SplitPercent, 100) / 100
++				minSide := d.sideMin(t)
++				if d.split.width > 0 && room >= 2*minSide {
++					shown := max(minSide, min(share*room, room-minSide))
++					d.split.grow = [2]float32{shown, room - shown}
++				} else if d.split.width == 0 {
++					d.split.grow = [2]float32{share, 1 - share}
++				} else {
++					d.split.grow = [2]float32{1, 1}
++				}
++			} else {
++				d.split.grow = [2]float32{1, 1}
++			}
++			d.RenderCenter(c, centerCol)
++		} else if d.buildDivider(c, ct, div) {
+ 			row.SetChanged()
+ 		}
+ 		for i := range sides {
+@@ -764,17 +830,19 @@ type diffSplit struct {
+ 	// width is the view's as the last frame drew it, which the build
+ 	// shares out and the divider moves within.
+ 	width float32
++	// center is the center column's width (1 for the default divider).
++	center float32
+ 	// grow are the sides' factors of growth as built, by which the frame
+ 	// lays them out (widths).
+ 	grow [2]float32
+ }
+ 
+ // widths returns the widths the layout gives the sides in a view w wide,
+-// the divider taking 1 DIP: its arithmetic, that of a row whose items
++// the center taking s.center DIPs: its arithmetic, that of a row whose items
+ // grow from nothing, so that the sides are laid out for painting at the
+ // widths they are drawn at to the bit.
+ func (s *diffSplit) widths(w float32) [2]float32 {
+-	free := w - 1
++	free := max(w-max(float32(1), s.center), 0)
+ 	var sum float32
+ 	sum += s.grow[0]
+ 	sum += s.grow[1]
+@@ -1025,6 +1093,7 @@ func isDark(c ui.Color) bool {
+ // as its separators, which the view builds from the last frame's layout:
+ // the blocks, the wraps of the lines, the height and the scroll.
+ type diffGeom struct {
++	version        uint64
+ 	blocks         int
+ 	wrapsA, wrapsB uint64
+ 	total, scroll  float64
+@@ -1036,7 +1105,7 @@ func (d *DiffState) geom() diffGeom {
+ 		a = &d.oldView
+ 	}
+ 	b := &d.eds[1]
+-	return diffGeom{d.blocksV, a.heights.wraps.version, b.view.heights.wraps.version, b.view.heights.total(), b.scrollY}
++	return diffGeom{d.model.version, d.blocksV, a.heights.wraps.version, b.view.heights.wraps.version, b.view.heights.total(), b.scrollY}
+ }
+ 
+ // rebuildIfMoved asks for the view to be built again when laying it out
+diff --git a/vendor/github.com/egoist/mygo/ui/editor/patch.go b/vendor/github.com/egoist/mygo/ui/editor/patch.go
+index 99aca5d..63683bb 100644
+--- a/vendor/github.com/egoist/mygo/ui/editor/patch.go
++++ b/vendor/github.com/egoist/mygo/ui/editor/patch.go
+@@ -401,10 +401,14 @@ func (d *DiffState) showPatch(p FilePatch, old, new *Buffer, hunks []diff.Hunk)
+ 		d.Old.SetLanguage(l)
+ 		d.New.SetLanguage(l)
+ 	}
++	d.OldEditable = false
++	d.ExternalComparison = false
+ 	d.partial = nil
+ 	d.prepared = diffPrepared{}
+ 	m := &d.model
+-	m.set(d.Old, d.New, !d.Editable)
++	m.external = false
++	m.ready = false
++	m.set(d.Old, d.New, !d.Editable && !d.OldEditable && !d.ExternalComparison)
+ 	m.oldText, m.oldVer = d.Old.snapshot()
+ 	m.newText, m.newVer = d.New.snapshot()
+ 	m.hunks, m.words = hunks, nil

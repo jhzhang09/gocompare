@@ -1,12 +1,12 @@
 # Beyond Compare 5 功能对齐矩阵
 
-基线：BC 5.2.7（Standard 与 Pro）、MyGo v0.7.3；核对日期：2026-10-31。
+基线：BC 5.2.7（Standard 与 Pro）、MyGo v0.10.0；核对日期：2026-11-18。
 
 “部分”表示已有可运行能力，但该条尚未完整验收。“待验证”不等于支持。“未实现”保留为最终目标。
 
 | 编号 | 能力 | 状态 | 当前证据／下一步 |
 |---|---|---|---|
-| F01 | 原生窗口、GoCompare 品牌、最新框架 | 部分 | 工作区用嵌入的 `icon.png`：箭头像素 `(512,488)` 为 R38 G93 B171，圆角外 `(10,10)` 透明，左右页和底色与 `icon.svg` 一致。界面有「应用图标」和 `MyGo v0.7.3`，版本来自构建信息里的 `github.com/egoist/mygo`。`Run(--help)` 打印 `GoCompare (v0.7.3)`。启动时用 `Dock.SetIcon` 设置同一张 PNG；darwin 的 `Window.SetIcon` 不会改图标。Windows 与 Linux 实机窗口未运行，因此不标完成 |
+| F01 | 原生窗口、GoCompare 品牌、最新框架 | 部分 | 工作区用嵌入的 `icon.png`：箭头像素 `(512,488)` 为 R38 G93 B171，圆角外 `(10,10)` 透明，左右页和底色与 `icon.svg` 一致。界面有「应用图标」和 `MyGo v0.10.0`，版本来自构建信息里的 `github.com/egoist/mygo`。`Run(--help)` 打印 `GoCompare (v0.10.0)`。启动时用 `Dock.SetIcon` 设置同一张 PNG；darwin 的 `Window.SetIcon` 不会改图标。Windows 与 Linux 实机窗口未运行，因此不标完成 |
 | F02 | 双文件文本比较、语法与行内差异 | 完成 | 工作区用 `ReadDetected` 打开可识别的 GBK `.go`：`func` 为关键字、`//` 为注释，差异块只有改动的那一行；行内高亮开关后的像素差落在 `alpha`／`beta` 上。界面显示 `GBK / LF`。超过 16 MiB 拒绝。Latin-1 仍须显式指定 |
 | F03 | 双侧编辑、撤销、查找替换 | 部分 | 同屏双侧输入、撤销、焦点侧保存和 `ReplaceAll` 已测；真实 IME 待验证 |
 | F04 | 差异导航与双向应用 | 完成 | 界面可上一处／下一处差异，并把当前块应用到左侧或右侧，且不立即写盘。标记左右行后，左侧 `keep` 对齐到右侧 `keep`，该行不再落入差异块；逆序锚点显示错误且不改变结果；解除对齐后第一行重新成为差异 |

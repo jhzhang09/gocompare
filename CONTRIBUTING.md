@@ -32,7 +32,7 @@ gofmt -l cmd internal tools     # must print nothing
 go vet ./...
 CGO_ENABLED=0 go test ./...
 go tool mygo vet .
-git apply --reverse --check patches/mygo-v0.7.3-native.patch
+git apply --reverse --check patches/mygo-v0.10.0-native.patch
 ```
 
 Guidelines:

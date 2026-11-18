@@ -722,7 +722,7 @@ func (a *workspaceState) install(left, right *document.File) {
 	a.kind = kindFile
 	a.directoryRows = nil
 	a.paths = [2]string{left.Path, right.Path}
-	a.diff = editor.DiffState{Old: a.panes[0].buffer, New: a.panes[1].buffer, ExpandUnchanged: true, Editable: true, OldEditable: true, ExternalComparison: true}
+	a.diff = editor.DiffState{Old: a.panes[0].buffer, New: a.panes[1].buffer, ExpandUnchanged: true, Editable: true, OldEditable: true, ExternalComparison: true, ScrollPastEnd: true}
 	a.history = editHistory{}
 	a.history.sync(a.panes)
 	a.anchors = nil
@@ -1203,6 +1203,7 @@ func (a *workspaceState) ensureScratch() {
 		Editable:           true,
 		OldEditable:        true,
 		ExternalComparison: true,
+		ScrollPastEnd:      true,
 	}
 	a.scratchHistory = editHistory{}
 	a.scratchHistory.sync(a.scratchPanes)
@@ -1254,7 +1255,15 @@ func (a *workspaceState) ensureBlankView(src [2]*pane, base *editor.DiffState) b
 		a.blankPanes[i] = view
 	}
 	a.blankSources, a.blankVersions = sources, versions
-	a.blankDiff = editor.DiffState{Old: a.blankPanes[0].buffer, New: a.blankPanes[1].buffer, ExpandUnchanged: true, ExternalComparison: true, Inline: base.Inline}
+	a.blankDiff = editor.DiffState{
+		Old:                a.blankPanes[0].buffer,
+		New:                a.blankPanes[1].buffer,
+		ExpandUnchanged:    true,
+		ExternalComparison: true,
+		Inline:             base.Inline,
+		ScrollPastEnd:      true,
+		SplitPercent:       base.SplitPercent,
+	}
 	return true
 }
 
