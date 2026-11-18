@@ -18,7 +18,6 @@ func (d *differ) myers(a0, a1, b0, b1 int) {
 	}
 	cost := 1
 	for cost*cost < n {
-		d.checkpoint()
 		cost <<= 1
 	}
 	d.myersExtra = max(cost, maxCostMin)
@@ -27,12 +26,10 @@ func (d *differ) myers(a0, a1, b0, b1 int) {
 
 func (d *differ) recsCmp(off1, lim1, off2, lim2 int, needMin bool) {
 	for off1 < lim1 && off2 < lim2 && d.a[off1] == d.b[off2] {
-		d.checkpoint()
 		off1++
 		off2++
 	}
 	for off1 < lim1 && off2 < lim2 && d.a[lim1-1] == d.b[lim2-1] {
-		d.checkpoint()
 		lim1--
 		lim2--
 	}
@@ -61,7 +58,6 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
 	vf[base+fmid] = off1
 	vb[base+bmid] = lim1
 	for ec := 1; ; ec++ {
-		d.checkpoint()
 		// Forward.
 		if fmin > dmin {
 			fmin--
@@ -76,7 +72,6 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
 			fmax--
 		}
 		for k := fmax; k >= fmin; k -= 2 {
-			d.checkpoint()
 			var i1 int
 			if vf[base+k-1] >= vf[base+k+1] {
 				i1 = vf[base+k-1] + 1
@@ -85,7 +80,6 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
 			}
 			i2 := i1 - k
 			for i1 < lim1 && i2 < lim2 && ha1[i1] == ha2[i2] {
-				d.checkpoint()
 				i1++
 				i2++
 			}
@@ -108,7 +102,6 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
 			bmax--
 		}
 		for k := bmax; k >= bmin; k -= 2 {
-			d.checkpoint()
 			var i1 int
 			if vb[base+k-1] < vb[base+k+1] {
 				i1 = vb[base+k-1]
@@ -117,7 +110,6 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
 			}
 			i2 := i1 - k
 			for i1 > off1 && i2 > off2 && ha1[i1-1] == ha2[i2-1] {
-				d.checkpoint()
 				i1--
 				i2--
 			}
@@ -132,7 +124,6 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
 		// Too costly: split where the furthest diagonals got.
 		fbest, fbest1 := -1, -1
 		for k := fmax; k >= fmin; k -= 2 {
-			d.checkpoint()
 			i1 := min(vf[base+k], lim1)
 			i2 := i1 - k
 			if lim2 < i2 {
@@ -144,7 +135,6 @@ func (d *differ) split(off1, lim1, off2, lim2 int, needMin bool) (int, int, bool
 		}
 		bbest, bbest1 := lineMax, lineMax
 		for k := bmax; k >= bmin; k -= 2 {
-			d.checkpoint()
 			i1 := max(off1, vb[base+k])
 			i2 := i1 - k
 			if i2 < off2 {
