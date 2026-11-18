@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-18
+
+### Added
+
+- **Interactive Diff Overview Minimap**: Added a clickable and draggable overview ruler beside split and scratch diff views powered by `DiffState.LineTop`, `ScrollY`, `SetScrollY`, and `ViewportHeight`, displaying color-coded insertion/deletion/modification markers, active hunk focus, and a theme-aware viewport lens.
+- **Smoother Hunk Navigation & List UX**: Enabled `ScrollPastEnd` across file, scratch text, and ignore-blank-lines comparison views so trailing hunks scroll cleanly to the center; focused the active side editor via `DiffState.Focus()` on hunk navigation; added `ListState.MoveAnimation` (`160ms`) to directory and sync/merge preview lists; and used `TruncateStart()` for long paths in sync previews and the remote file chooser.
+
+### Changed
+
+- **MyGo `v0.10.0` Framework Upgrade**: Upgraded `github.com/egoist/mygo` from `v0.7.4` to `v0.10.0`, ported the controlled dual-side editing, external async comparison, center gutter, and rule-based comparison patches (`patches/mygo-v0.10.0-native.{patch,json}`), and adapted `difflayout` for upstream `eol` comparison mode.
+- **Homebrew Cask Quarantine Handling**: Updated the Homebrew Cask tap script to run `xattr -dr com.apple.quarantine` in `postflight_steps` on macOS installs.
+
 ## [1.0.0] - 2026-11-04
 
 ### Added
@@ -114,7 +126,8 @@ First public release.
 - Merges treat a missing final newline as a change; merge output can be saved repeatedly.
 - `.reg` exports in UTF-16 with continued hex lines and ID3v2.4 tags are parsed correctly.
 
-[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/jhzhang09/gocompare/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/jhzhang09/gocompare/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/jhzhang09/gocompare/compare/v0.3.4...v1.0.0
 [0.3.4]: https://github.com/jhzhang09/gocompare/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/jhzhang09/gocompare/compare/v0.3.2...v0.3.3
