@@ -13,15 +13,12 @@ const maxDepth = 256
 // before and after it the same way.
 func (d *differ) histogram(a0, a1, b0, b1, depth int) {
 	for {
-		d.checkpoint()
 		// Common prefix and suffix.
 		for a0 < a1 && b0 < b1 && d.a[a0] == d.b[b0] {
-			d.checkpoint()
 			a0++
 			b0++
 		}
 		for a0 < a1 && b0 < b1 && d.a[a1-1] == d.b[b1-1] {
-			d.checkpoint()
 			a1--
 			b1--
 		}
@@ -73,7 +70,6 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
 	recs := d.recs
 	// From the end, so each record's chain goes forward from its first.
 	for i := a1 - 1; i >= a0; i-- {
-		d.checkpoint()
 		r, seen := recs[d.a[i]]
 		if seen {
 			next[i-a0] = r.first
@@ -89,14 +85,12 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
 	// CNT, not the count from it to the region's end, which makes the last
 	// of many blank lines look unique.
 	for i := a0; i < a1; i++ {
-		d.checkpoint()
 		cnt[i-a0] = recs[d.a[i]].count
 	}
 	best := maxChain + 1
 	common := false
 	la0, la1 = a0, a0
 	for bi := b0; bi < b1; {
-		d.checkpoint()
 		bnext := bi + 1
 		r, found := recs[d.b[bi]]
 		if !found {
@@ -109,11 +103,9 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
 			continue
 		}
 		for as := r.first; as >= 0; {
-			d.checkpoint()
 			s, bs, e, be := as, bi, as+1, bi+1
 			rc := cnt[as-a0]
 			for s > a0 && bs > b0 && d.a[s-1] == d.b[bs-1] {
-				d.checkpoint()
 				s--
 				bs--
 				if rc > 1 {
@@ -121,7 +113,6 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
 				}
 			}
 			for e < a1 && be < b1 && d.a[e] == d.b[be] {
-				d.checkpoint()
 				if rc > 1 {
 					rc = min(rc, cnt[e-a0])
 				}
@@ -137,7 +128,6 @@ func (d *differ) lcs(a0, a1, b0, b1 int) (la0, la1, lb0, lb1 int, ok bool) {
 			// The next occurrence past this run.
 			np := next[as-a0]
 			for np >= 0 && np < e {
-				d.checkpoint()
 				np = next[np-a0]
 			}
 			as = np

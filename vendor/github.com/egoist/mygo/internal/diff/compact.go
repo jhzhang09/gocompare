@@ -5,33 +5,24 @@ package diff
 // them, as git's xdl_change_compact: groups merge when they meet, line
 // up with a group of the other side (ro) where they can, and otherwise
 // take the place the indent heuristic scores best.
-func compact(r, ro []bool, ids []int32, lines []string, checks ...func()) {
-	checkpoint := func() {
-		if len(checks) > 0 {
-			checks[0]()
-		}
-	}
-	g, gOther := groupInit(r, checkpoint), groupInit(ro, checkpoint)
+func compact(r, ro []bool, ids []int32, lines []string) {
+	g, gOther := groupInit(r), groupInit(ro)
 	for {
-		checkpoint()
 		if g.end != g.start {
 			var size, earliestEnd int
 			endMatchingOther := -1
 			for {
-				checkpoint()
 				size = g.end - g.start
 				endMatchingOther = -1
-				for g.slideUp(r, ids, checkpoint) {
-					checkpoint()
-					gOther.previous(ro, checkpoint)
+				for g.slideUp(r, ids) {
+					gOther.previous(ro)
 				}
 				earliestEnd = g.end
 				if gOther.end > gOther.start {
 					endMatchingOther = g.end
 				}
-				for g.slideDown(r, ids, checkpoint) {
-					checkpoint()
-					gOther.next(ro, checkpoint)
+				for g.slideDown(r, ids) {
+					gOther.next(ro)
 					if gOther.end > gOther.start {
 						endMatchingOther = g.end
 					}
@@ -46,8 +37,7 @@ func compact(r, ro []bool, ids []int32, lines []string, checks ...func()) {
 			case endMatchingOther != -1:
 				// Back to the last place matching a group of the other side.
 				for gOther.end == gOther.start {
-					checkpoint()
-					if !g.slideUp(r, ids, checkpoint) || !gOther.previous(ro, checkpoint) {
+					if !g.slideUp(r, ids) || !gOther.previous(ro) {
 						break
 					}
 				}
@@ -56,7 +46,6 @@ func compact(r, ro []bool, ids []int32, lines []string, checks ...func()) {
 				best := -1
 				var bestScore score
 				for ; shift <= g.end; shift++ {
-					checkpoint()
 					var s score
 					s.add(measure(lines, shift))
 					s.add(measure(lines, shift-size))
@@ -65,14 +54,13 @@ func compact(r, ro []bool, ids []int32, lines []string, checks ...func()) {
 					}
 				}
 				for g.end > best {
-					checkpoint()
-					if !g.slideUp(r, ids, checkpoint) || !gOther.previous(ro, checkpoint) {
+					if !g.slideUp(r, ids) || !gOther.previous(ro) {
 						break
 					}
 				}
 			}
 		}
-		if !g.next(r, checkpoint) || !gOther.next(ro, checkpoint) {
+		if !g.next(r) || !gOther.next(ro) {
 			return
 		}
 	}
@@ -81,65 +69,41 @@ func compact(r, ro []bool, ids []int32, lines []string, checks ...func()) {
 // group is a run of changed lines, maybe empty, between unchanged ones.
 type group struct{ start, end int }
 
-func groupInit(r []bool, checks ...func()) group {
-	checkpoint := func() {
-		if len(checks) > 0 {
-			checks[0]()
-		}
-	}
+func groupInit(r []bool) group {
 	g := group{}
 	for g.end < len(r) && r[g.end] {
-		checkpoint()
 		g.end++
 	}
 	return g
 }
 
-func (g *group) next(r []bool, checks ...func()) bool {
-	checkpoint := func() {
-		if len(checks) > 0 {
-			checks[0]()
-		}
-	}
+func (g *group) next(r []bool) bool {
 	if g.end >= len(r) {
 		return false
 	}
 	g.start = g.end + 1
 	for g.end = g.start; g.end < len(r) && r[g.end]; g.end++ {
-		checkpoint()
 	}
 	return true
 }
 
-func (g *group) previous(r []bool, checks ...func()) bool {
-	checkpoint := func() {
-		if len(checks) > 0 {
-			checks[0]()
-		}
-	}
+func (g *group) previous(r []bool) bool {
 	if g.start <= 0 {
 		return false
 	}
 	g.end = g.start - 1
 	for g.start = g.end; g.start > 0 && r[g.start-1]; g.start-- {
-		checkpoint()
 	}
 	return true
 }
 
-func (g *group) slideDown(r []bool, ids []int32, checks ...func()) bool {
-	checkpoint := func() {
-		if len(checks) > 0 {
-			checks[0]()
-		}
-	}
+func (g *group) slideDown(r []bool, ids []int32) bool {
 	if g.start < g.end && g.end < len(r) && ids[g.start] == ids[g.end] {
 		r[g.start] = false
 		g.start++
 		r[g.end] = true
 		g.end++
 		for g.end < len(r) && r[g.end] {
-			checkpoint()
 			g.end++
 		}
 		return true
@@ -147,19 +111,13 @@ func (g *group) slideDown(r []bool, ids []int32, checks ...func()) bool {
 	return false
 }
 
-func (g *group) slideUp(r []bool, ids []int32, checks ...func()) bool {
-	checkpoint := func() {
-		if len(checks) > 0 {
-			checks[0]()
-		}
-	}
+func (g *group) slideUp(r []bool, ids []int32) bool {
 	if g.start < g.end && g.start > 0 && ids[g.start-1] == ids[g.end-1] {
 		g.start--
 		r[g.start] = true
 		g.end--
 		r[g.end] = false
 		for g.start > 0 && r[g.start-1] {
-			checkpoint()
 			g.start--
 		}
 		return true

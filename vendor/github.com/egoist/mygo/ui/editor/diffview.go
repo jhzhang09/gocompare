@@ -36,10 +36,6 @@ type DiffState struct {
 	// compares lines with their line feeds, and marks a last line without
 	// one "No newline at end of file".
 	Editable bool
-	// OldEditable 允许编辑分栏左侧；默认关闭，保持上游只读行为。
-	OldEditable bool
-	// ExternalComparison 使用带版本检查的外部计算结果；等待结果期间不展示差异。
-	ExternalComparison bool
 	// Inline highlights what changed within changed lines.
 	Inline DiffInline
 	// Indicators mark changed lines: with bars, + and -, or nothing.
@@ -108,15 +104,6 @@ type DiffState struct {
 	// editors, as State's.
 	RenderFindBar  func(c *ui.Context, bar ui.Element, f *FindBar)
 	RenderGoToLine func(c *ui.Context, bar ui.Element, g *GoToLineBar)
-	// CenterWidth and RenderCenter customize the center column between the
-	// two editors in split view; when CenterWidth <= 1 or RenderCenter is nil,
-	// a 1px divider is drawn.
-	CenterWidth  float32
-	RenderCenter func(c *ui.Context, col ui.Element)
-	// Backgrounds and GutterMarks highlight line ranges and gutter lines on the
-	// old (0) and new (1) sides (for example, applied changes).
-	Backgrounds [2][]LineBackground
-	GutterMarks [2][]GutterMark
 
 	model   diffModel
 	eds     [2]editor // the old side's and the new side's
@@ -254,12 +241,7 @@ func (d *DiffState) ensure() {
 		d.partial = nil
 		d.prepared = diffPrepared{}
 	}
-	if d.model.external != d.ExternalComparison {
-		d.model.external = d.ExternalComparison
-		d.model.oldVer, d.model.newVer = ^uint64(0), ^uint64(0)
-		d.model.ready = false
-	}
-	d.model.set(d.Old, d.New, !d.Editable && !d.OldEditable && !d.ExternalComparison)
+	d.model.set(d.Old, d.New, !d.Editable)
 	d.model.update()
 	// The lines revealed move with edits of the old text, as Keep makes,
 	// and go with it.
@@ -355,20 +337,14 @@ func (d *DiffState) GoToHunk(i int) {
 	}
 	h := d.model.hunks[i]
 	side := d.ActiveSide()
-	for _, s := range []DiffSide{DiffOld, DiffNew} {
-		ed := d.editorOf(s)
-		line := h.B0
-		if s == DiffOld {
-			line = h.A0
-		}
-		r := &ed.view.text
-		off := r.LineStart(min(line, max(0, r.LineCount()-1)))
-		rev := revealNone
-		if s == side {
-			rev = revealCenter
-		}
-		ed.setSels([]sel{ed.newSel(off, off)}, rev)
+	ed := d.editorOf(side)
+	line := h.B0
+	if side == DiffOld {
+		line = h.A0
 	}
+	r := &ed.view.text
+	off := r.LineStart(min(line, r.LineCount()-1))
+	ed.setSels([]sel{ed.newSel(off, off)}, revealCenter)
 }
 
 // Focus gives the keyboard to the editor of the active side when the
@@ -596,17 +572,12 @@ func (d *DiffState) editorOf(side DiffSide) *editor {
 func (d *DiffState) sideOptions(old bool) options {
 	// Both gutters as wide, so that both sides wrap alike.
 	digits := max(3, len(strconv.Itoa(max(d.Old.LineCount(), d.New.LineCount()))))
-	side := 1
-	if old {
-		side = 0
-	}
 	o := options{
-		readOnly: (old && !d.OldEditable) || (!old && !d.Editable), font: d.Font, lineHeight: d.LineHeight, tabSize: d.TabSize,
+		readOnly: old || !d.Editable, font: d.Font, lineHeight: d.LineHeight, tabSize: d.TabSize,
 		wrap: d.Wrap, lineNumbers: LineNumbersOn, whitespace: WhitespaceNone, autoClose: true,
 		theme: d.Theme, bindings: d.Bindings, fitContent: d.FitContent, minDigits: digits,
 		scrollPastEnd:  d.ScrollPastEnd && !d.FitContent,
 		keepScrollbars: d.KeepScrollbars, hideScrollbars: d.NoScrollbars,
-		backgrounds: d.Backgrounds[side], gutterMarks: d.GutterMarks[side],
 		renderFindBar: d.RenderFindBar, renderGoToLine: d.RenderGoToLine,
 	}
 	o.scrollMargin = defaultScrollMargin
@@ -618,13 +589,6 @@ func (d *DiffState) sideOptions(old bool) options {
 		o.diffSide = diffOldSide
 	}
 	return o
-}
-
-func (d *DiffState) centerWidth() float32 {
-	if d.CenterWidth > 1 && d.RenderCenter != nil {
-		return d.CenterWidth
-	}
-	return 1
 }
 
 // DiffView builds the diff viewer.
@@ -690,7 +654,6 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 	}
 	// Side by side: two editors sharing their scroll.
 	d.scroll.eds = []*editor{&d.eds[0], &d.eds[1]}
-	d.split.center = d.centerWidth()
 	// The old text on the left, as code reads left to right.
 	row := ui.Row(c).Direction(ui.LeftToRight).Clip()
 	row.Draw(func(p *ui.Painter, r ui.Rect) {
@@ -732,8 +695,7 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 	})
 	row.Children(func() {
 		var sides [2]ui.Element
-		var div, centerCol ui.Element
-		hasCenter := d.CenterWidth > 1 && d.RenderCenter != nil
+		var div ui.Element
 		for i, b := range []*Buffer{d.Old, d.New} {
 			o := opts(i == 0)
 			o.decor = &d.sides[i]
@@ -747,41 +709,13 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 			}
 			sides[i] = d.eds[i].build(c, b, o).Basis(0).FillHeight()
 			if i == 0 {
-				if hasCenter {
-					centerCol = ui.Box(c).Key("diff-center").Width(d.CenterWidth).Shrink(0).FillHeight().Clip()
-				} else {
-					div = ui.Box(c).Key("diff divider").Width(1).Shrink(0).FillHeight()
-				}
+				div = ui.Box(c).Key("diff divider").Width(1).Shrink(0).FillHeight()
 			}
 			if d.eds[i].focused {
 				d.oldActive = i == 0
 			}
 		}
-		if hasCenter {
-			d.prepare()
-			for i := range d.eds {
-				d.eds[i].view.heights.lh = d.eds[i].view.lineHeight
-				d.eds[i].view.heights.setLines(d.eds[i].view.text.LineCount())
-				d.eds[i].view.heights.setHidden(d.sides[i].hide)
-				d.eds[i].view.heights.setBlocks(d.sides[i].blks)
-			}
-			room := max(d.split.width-d.split.center, 0)
-			if d.SplitPercent > 0 {
-				share := min(d.SplitPercent, 100) / 100
-				minSide := d.sideMin(t)
-				if d.split.width > 0 && room >= 2*minSide {
-					shown := max(minSide, min(share*room, room-minSide))
-					d.split.grow = [2]float32{shown, room - shown}
-				} else if d.split.width == 0 {
-					d.split.grow = [2]float32{share, 1 - share}
-				} else {
-					d.split.grow = [2]float32{1, 1}
-				}
-			} else {
-				d.split.grow = [2]float32{1, 1}
-			}
-			d.RenderCenter(c, centerCol)
-		} else if d.buildDivider(c, ct, div) {
+		if d.buildDivider(c, ct, div) {
 			row.SetChanged()
 		}
 		for i := range sides {
@@ -830,19 +764,17 @@ type diffSplit struct {
 	// width is the view's as the last frame drew it, which the build
 	// shares out and the divider moves within.
 	width float32
-	// center is the center column's width (1 for the default divider).
-	center float32
 	// grow are the sides' factors of growth as built, by which the frame
 	// lays them out (widths).
 	grow [2]float32
 }
 
 // widths returns the widths the layout gives the sides in a view w wide,
-// the center taking s.center DIPs: its arithmetic, that of a row whose items
+// the divider taking 1 DIP: its arithmetic, that of a row whose items
 // grow from nothing, so that the sides are laid out for painting at the
 // widths they are drawn at to the bit.
 func (s *diffSplit) widths(w float32) [2]float32 {
-	free := max(w-max(float32(1), s.center), 0)
+	free := w - 1
 	var sum float32
 	sum += s.grow[0]
 	sum += s.grow[1]
@@ -1093,7 +1025,6 @@ func isDark(c ui.Color) bool {
 // as its separators, which the view builds from the last frame's layout:
 // the blocks, the wraps of the lines, the height and the scroll.
 type diffGeom struct {
-	version        uint64
 	blocks         int
 	wrapsA, wrapsB uint64
 	total, scroll  float64
@@ -1105,7 +1036,7 @@ func (d *DiffState) geom() diffGeom {
 		a = &d.oldView
 	}
 	b := &d.eds[1]
-	return diffGeom{d.model.version, d.blocksV, a.heights.wraps.version, b.view.heights.wraps.version, b.view.heights.total(), b.scrollY}
+	return diffGeom{d.blocksV, a.heights.wraps.version, b.view.heights.wraps.version, b.view.heights.total(), b.scrollY}
 }
 
 // rebuildIfMoved asks for the view to be built again when laying it out
